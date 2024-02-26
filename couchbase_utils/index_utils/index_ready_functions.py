@@ -39,9 +39,9 @@ class IndexUtils:
         restClient_Obj_list = self.create_restClient_obj_list(cluster.query_nodes)
         self.log.info("Building indexes")
         x = 0
-        for bucket, bucket_data in indexes_to_build.items():
-            for scope, collection_data in bucket_data.items():
-                for collection, gsi_index_names in collection_data.items():
+        for bucket, bucket_data in list(indexes_to_build.items()):
+            for scope, collection_data in list(bucket_data.items()):
+                for collection, gsi_index_names in list(collection_data.items()):
                     build_query = "BUILD INDEX on `%s`.`%s`.`%s`(%s) " \
                                   "USING GSI" \
                                   % (bucket, scope, collection, gsi_index_names)
@@ -72,12 +72,12 @@ class IndexUtils:
         for bucket in couchbase_buckets:
             if bucket.name not in indexes_to_build:
                 indexes_to_build[bucket.name] = dict()
-            for _, scope in bucket.scopes.items():
+            for _, scope in list(bucket.scopes.items()):
                 if scope.name == CbServer.system_scope or scope.name == CbServer.default_scope:
                     continue
                 if scope.name not in indexes_to_build[bucket.name]:
                     indexes_to_build[bucket.name][scope.name] = dict()
-                for _, collection in scope.collections.items():
+                for _, collection in list(scope.collections.items()):
                     for tempCount in range(count, number_of_indexes_per_coll):
                         if gsi_base_name is None:
                             gsi_index_name = bucket.name.replace(".", "") + "_" + scope.name + "_" +\
@@ -130,10 +130,10 @@ class IndexUtils:
         couchbase_buckets = [bucket for bucket in buckets
                              if bucket.bucketType == "couchbase"]
         for bucket in couchbase_buckets:
-            for _, scope in bucket.scopes.items():
+            for _, scope in list(bucket.scopes.items()):
                 if scope.name == CbServer.system_scope or scope.name == CbServer.default_scope:
                     continue
-                for _, collection in scope.collections.items():
+                for _, collection in list(scope.collections.items()):
                     gsi_index_names = indexes_dropped[bucket.name][scope.name][collection.name]
                     for gsi_index_name in list(gsi_index_names):
                         if replica > 0:
@@ -176,14 +176,14 @@ class IndexUtils:
         dropIndexTaskList = list()
         for bucket in couchbase_buckets:
             indexes_dropped[bucket.name] = dict()
-            for scope_name, scope in bucket.scopes.items():
+            for scope_name, scope in list(bucket.scopes.items()):
                 if scope_name == '_default' or scope_name == '_system':
                     continue
                 if drop_only_given_indexes:
-                    if scope.name not in indexList[bucket.name].keys():
+                    if scope.name not in list(indexList[bucket.name].keys()):
                         continue
                 indexes_dropped[bucket.name][scope.name] = dict()
-                for _, collection in scope.collections.items():
+                for _, collection in list(scope.collections.items()):
                     gsi_index_names = indexList[bucket.name][scope.name][collection.name]
                     for gsi_index_name in list(gsi_index_names):
                         drop_index_query = "DROP INDEX `%s` ON " \
@@ -208,9 +208,9 @@ class IndexUtils:
         alter_index_task_info = list()
         x = 0
         query_len = len(cluster.query_nodes)
-        for bucket, bucket_data in indexesDict.items():
-            for scope, collection_data in bucket_data.items():
-                for collection, gsi_index_names in collection_data.items():
+        for bucket, bucket_data in list(indexesDict.items()):
+            for scope, collection_data in list(bucket_data.items()):
+                for collection, gsi_index_names in list(collection_data.items()):
                     for gsi_index_name in gsi_index_names:
                         full_keyspace_name = "default:`" + bucket + "`.`" + scope + "`.`" + \
                                              collection + "`.`" + gsi_index_name + "`"
@@ -233,9 +233,9 @@ class IndexUtils:
         self.log.info("Deleting documents")
         x = 0
         query_len = len(cluster.query_nodes)
-        for bucket, bucket_data in indexMap.items():
-            for scope, collection_data in bucket_data.items():
-                for collection, gsi_index_names in collection_data.items():
+        for bucket, bucket_data in list(indexMap.items()):
+            for scope, collection_data in list(bucket_data.items()):
+                for collection, gsi_index_names in list(collection_data.items()):
                     query = "delete from `%s`.`%s`.`%s` where %s is not missing;" % (
                             bucket, scope, collection, field)
                     query_node_index = x % query_len
@@ -299,9 +299,9 @@ class IndexUtils:
         x = 0
         query_len = len(cluster.query_nodes)
         self.log.debug("Limit is {} and total Count is {}".format(limit, totalCount))
-        for bucket, bucket_data in reference_dict.items():
-            for scope, collection_data in bucket_data.items():
-                for collection, gsi_index_names in collection_data.items():
+        for bucket, bucket_data in list(reference_dict.items()):
+            for scope, collection_data in list(bucket_data.items()):
+                for collection, gsi_index_names in list(collection_data.items()):
                     for gsi_index_name in gsi_index_names:
                         offset = offSetBound
                         while True:

@@ -92,7 +92,7 @@ class SecurityTest(BaseTestCase):
         resp = self.capellaAPI.cluster_ops_apis.list_buckets(organizationId=self.tenant_id, projectId=self.project_id,
                                                              clusterId=self.cluster_id)
 
-        beer_sample = filter(lambda x: x['name'] == self.bucket_name, resp.json()['data'])
+        beer_sample = [x for x in resp.json()['data'] if x['name'] == self.bucket_name]
 
         self.api_keys_list = self.rbac_roles_generator_wrapper()
 
@@ -247,7 +247,7 @@ class SecurityTest(BaseTestCase):
 
             if resp.status_code == 200:
                 data = resp.json()['data']
-                target_backup = list(filter(lambda x: (x['bucketID'] == bucketId), data))[0]
+                target_backup = list([x for x in data if (x['bucketID'] == bucketId)])[0]
 
                 return target_backup['id']
             else:

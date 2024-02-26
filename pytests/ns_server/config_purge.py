@@ -135,13 +135,13 @@ class ConfigPurging(CollectionBase):
         deleted_keys = self.cluster_util.get_ns_config_deleted_keys_count(self.cluster)
         tbl = TableView(self.log.info)
         tbl.set_headers(["Node", "Deleted_key_count"])
-        for t_ip, k_count in deleted_keys.items():
+        for t_ip, k_count in list(deleted_keys.items()):
             tbl.add_row(["%s" % t_ip, "%s" % k_count])
         tbl.display("Tombstone count on cluster nodes:")
 
         if not check_if_zero:
             return
-        for t_ip, k_count in deleted_keys.items():
+        for t_ip, k_count in list(deleted_keys.items()):
             if k_count != 0:
                 self.fail("%s Deleted key count %s != 0" % (t_ip, k_count))
 
@@ -254,7 +254,7 @@ class ConfigPurging(CollectionBase):
         7. Validate the memory and disk space to reclaimed properly
         """
         def get_node_stats():
-            for t_ip, t_conn in shell_conn.items():
+            for t_ip, t_conn in list(shell_conn.items()):
                 self.log.info("Node: %s" % t_ip)
                 for t_cmd in commands_to_run:
                     self.log.info(
@@ -330,7 +330,7 @@ class ConfigPurging(CollectionBase):
         get_node_stats()
 
         # Close all ssh connections
-        for _, conn in shell_conn.items():
+        for _, conn in list(shell_conn.items()):
             conn.disconnect()
 
     def test_meta_kv_key_purging(self):
@@ -381,14 +381,14 @@ class ConfigPurging(CollectionBase):
                            "Wait for next purger run")
                 continue
             ts_data = self.__get_purged_tombstone_from_last_run()
-            for node_ip, purge_data in ts_data.items():
+            for node_ip, purge_data in list(ts_data.items()):
                 if node_ip not in total_keys_purged:
                     total_keys_purged[node_ip] = 0
                 total_keys_purged[node_ip] += purge_data["count"]
             self.sleep(self.default_run_interval + 15,
                        "Wait for next purger run")
 
-        for node_ip, purged_count in total_keys_purged.items():
+        for node_ip, purged_count in list(total_keys_purged.items()):
             if purged_count != i_count:
                 self.fail("%s - Expected %s to be purged. Actual %s purged"
                           % (node_ip, i_count, purged_count))
@@ -429,7 +429,7 @@ class ConfigPurging(CollectionBase):
 
         self.log.info("Validating purged keys on each node")
         purged_ts_dict = self.__get_purged_tombstone_from_last_run()
-        for node_ip, purged_data in purged_ts_dict.items():
+        for node_ip, purged_data in list(purged_ts_dict.items()):
             if purged_data["count"] != deleted_keys[node_ip]:
                 self.log_failure("%s - keys deleted %s != %s purged count"
                                  % (node_ip, deleted_keys[node_ip],
@@ -459,7 +459,7 @@ class ConfigPurging(CollectionBase):
         self.log.info("Creating %s tombstones" % self.num_index)
         for index in range(self.num_index):
             meta_kv_key = t_key % index
-            for _, rest_obj in rest_objects.items():
+            for _, rest_obj in list(rest_objects.items()):
                 rest_obj.create_metakv_key(meta_kv_key, value)
                 rest_obj.delete_metakv_key(meta_kv_key)
 
@@ -470,7 +470,7 @@ class ConfigPurging(CollectionBase):
         # Validate tombstone purging
         self.log.info("Validating purged keys on each node")
         purged_keys_dict = self.__get_purged_tombstone_from_last_run()
-        for node_ip, purged_data in purged_keys_dict.items():
+        for node_ip, purged_data in list(purged_keys_dict.items()):
             for index in range(self.num_index):
                 meta_kv_key = t_key % index
                 if meta_kv_key not in purged_data['keys']:
@@ -534,7 +534,7 @@ class ConfigPurging(CollectionBase):
             self.sleep(self.default_run_interval, "Wait for purger to run")
             self.log.info("Validating purger for key '%s'" % key)
             purged_ts = self.__get_purged_tombstone_from_last_run()
-            for node_ip, purged_data in purged_ts.items():
+            for node_ip, purged_data in list(purged_ts.items()):
                 if not purged_data['keys']:
                     self.fail("%s No tombstone purged" % node_ip)
                 elif purged_data['count'] > 1:
@@ -584,7 +584,7 @@ class ConfigPurging(CollectionBase):
             self.sleep(self.default_run_interval,
                        "Wait before validating for key %s" % key)
             purged_ts = self.__get_purged_tombstone_from_last_run()
-            for node_ip, purged_data in purged_ts.items():
+            for node_ip, purged_data in list(purged_ts.items()):
                 if index == last_key_index:
                     if purged_data['count'] == 0:
                         self.fail("%s - No tombstones purged" % node_ip)
@@ -625,7 +625,7 @@ class ConfigPurging(CollectionBase):
 
         deleted_keys = self.cluster_util.get_ns_config_deleted_keys_count(self.cluster)
         del_key_count = None
-        for node_ip, curr_count in deleted_keys.items():
+        for node_ip, curr_count in list(deleted_keys.items()):
             if del_key_count is None:
                 del_key_count = curr_count
             elif del_key_count != curr_count:
@@ -650,7 +650,7 @@ class ConfigPurging(CollectionBase):
         self.log.info("Triggering purger when a node is in failed state")
         rest.run_tombstone_purger(10)
         purged_keys_dict = self.__get_purged_tombstone_from_last_run()
-        for node_ip, purged_data in purged_keys_dict.items():
+        for node_ip, purged_data in list(purged_keys_dict.items()):
             if purged_data['count'] or purged_data['count'] != 0:
                 shell.disconnect()
                 self.fail("%s - Some keys got purged when node is failed: %s"
@@ -665,7 +665,7 @@ class ConfigPurging(CollectionBase):
         rest.run_tombstone_purger(10)
         self.sleep(10, "Wait for purger to run")
         purged_keys_dict = self.__get_purged_tombstone_from_last_run()
-        for node_ip, purged_data in purged_keys_dict.items():
+        for node_ip, purged_data in list(purged_keys_dict.items()):
             if purged_data['count'] == 0:
                 self.fail("%s - No keys purged: %s" % (node_ip, purged_data))
             if purged_data['count'] != del_key_count:
@@ -730,7 +730,7 @@ class ConfigPurging(CollectionBase):
         rest.run_tombstone_purger(10)
 
         purged_keys_dict = self.__get_purged_tombstone_from_last_run()
-        for node_ip, purged_data in purged_keys_dict.items():
+        for node_ip, purged_data in list(purged_keys_dict.items()):
             if purged_data['count'] or purged_data['count'] != 0:
                 heal_the_node(shell)
                 self.fail("%s - Some keys got purged when node is failed: %s"
@@ -742,7 +742,7 @@ class ConfigPurging(CollectionBase):
         deleted_keys = self.cluster_util.get_ns_config_deleted_keys_count(self.cluster)
         self.log.info(deleted_keys)
         del_key_count = None
-        for node_ip, curr_count in deleted_keys.items():
+        for node_ip, curr_count in list(deleted_keys.items()):
             if del_key_count is None:
                 del_key_count = curr_count
             elif del_key_count != curr_count:
@@ -756,7 +756,7 @@ class ConfigPurging(CollectionBase):
         for i in range(retry_count):
             try:
                 purged_keys_dict = self.__get_purged_tombstone_from_last_run()
-                for node_ip, purged_data in purged_keys_dict.items():
+                for node_ip, purged_data in list(purged_keys_dict.items()):
                     if purged_data['count'] == 0:
                         self.fail(
                             "%s - No keys purged: %s" % (node_ip, purged_data))
@@ -792,7 +792,7 @@ class ConfigPurging(CollectionBase):
             # Validate purger runs on targeted node
             purged_keys_dict = self.__get_purged_tombstone_from_last_run()
             self.log.info(purged_keys_dict)
-            for t_ip, purged_data in purged_keys_dict.items():
+            for t_ip, purged_data in list(purged_keys_dict.items()):
                 if check_key == "exists" \
                         and custom_meta_kv_key not in purged_data['keys']:
                     self.fail("%s - keys not present as expected: %s"
@@ -948,8 +948,8 @@ class ConfigPurging(CollectionBase):
 
         # Create required GSI indexes
         for bucket in self.cluster.buckets[:2]:
-            for _, scope in bucket.scopes.items():
-                for c_name, _ in scope.collections.items():
+            for _, scope in list(bucket.scopes.items()):
+                for c_name, _ in list(scope.collections.items()):
                     for index in range(0, self.num_gsi_index):
                         self.__gsi_index(self.op_create, bucket.name,
                                          scope.name, c_name, index)
@@ -957,8 +957,8 @@ class ConfigPurging(CollectionBase):
 
         # Create required FTS indexes
         bucket = self.cluster.buckets[0]
-        for _, scope in bucket.scopes.items():
-            for c_name, _ in scope.collections.items():
+        for _, scope in list(bucket.scopes.items()):
+            for c_name, _ in list(scope.collections.items()):
                 for index in range(0, self.num_fts_index):
                     fts_name = fts_generic_name % (bucket.name, scope.name,
                                                    c_name, index)
@@ -970,8 +970,8 @@ class ConfigPurging(CollectionBase):
         for bucket in self.cluster.buckets[:2]:
             self.log.info("Create and drop %s GSI indexes on %s"
                           % (self.gsi_indexes_to_create_drop, bucket.name))
-            for _, scope in bucket.scopes.items():
-                for c_name, _ in scope.collections.items():
+            for _, scope in list(bucket.scopes.items()):
+                for c_name, _ in list(scope.collections.items()):
                     for index in range(self.num_gsi_index,
                                        self.num_gsi_index
                                        + self.gsi_indexes_to_create_drop):
@@ -982,8 +982,8 @@ class ConfigPurging(CollectionBase):
 
         # Create FTS tombstones
         bucket = self.cluster.buckets[0]
-        for _, scope in bucket.scopes.items():
-            for c_name, _ in scope.collections.items():
+        for _, scope in list(bucket.scopes.items()):
+            for c_name, _ in list(scope.collections.items()):
                 for index in range(self.num_fts_index,
                                    self.num_fts_index
                                    + self.fts_indexes_to_create_drop):

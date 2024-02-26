@@ -77,10 +77,10 @@ class PlasmaBaseTest(StorageBase):
 
     def load_to_specific_bucket(self, bucket, load_gen):
         tasks = []
-        for scope_name, scope in bucket.scopes.items():
+        for scope_name, scope in list(bucket.scopes.items()):
             if scope_name == '_default' or scope_name == '_system':
                 continue
-            for collection in scope.collections.keys():
+            for collection in list(scope.collections.keys()):
                 tasks.append(self.task.async_load_gen_docs(
                     self.cluster, bucket, load_gen, "create",
                     batch_size=1000, process_concurrency=1,
@@ -155,9 +155,9 @@ class PlasmaBaseTest(StorageBase):
     def polling_for_All_Indexer_to_Ready(self, indexes_to_build, buckets=None, timeout=600, sleep_time=10):
         if buckets is None:
             buckets = self.buckets
-        for _, scope_data in indexes_to_build.items():
-            for _, collection_data in scope_data.items():
-                for collection, gsi_index_names in collection_data.items():
+        for _, scope_data in list(indexes_to_build.items()):
+            for _, collection_data in list(scope_data.items()):
+                for collection, gsi_index_names in list(collection_data.items()):
                     for gsi_index_name in gsi_index_names:
                         self.assertTrue(
                             self.indexUtil.wait_for_indexes_to_go_online(self.cluster, buckets, gsi_index_name,
@@ -197,7 +197,7 @@ class PlasmaBaseTest(StorageBase):
         self.log.info("{0} set".format(setting_json))
 
     def mem_used_reached(self, exp_percent, plasma_obj_dict):
-        for plasma_obj in plasma_obj_dict.values():
+        for plasma_obj in list(plasma_obj_dict.values()):
             index_stat = plasma_obj.get_all_index_stat_map()
             percent = self.find_mem_used_percent(index_stat)
             if (percent > exp_percent):
@@ -229,10 +229,10 @@ class PlasmaBaseTest(StorageBase):
 
     def get_plasma_index_stat_value(self, plasma_stat_field, plasma_obj_dict):
         field_value_map = dict()
-        for plasma_obj in plasma_obj_dict.values():
+        for plasma_obj in list(plasma_obj_dict.values()):
             index_stat = plasma_obj.get_index_storage_stats()
-            for bucket in index_stat.keys():
-                for index in index_stat[bucket].keys():
+            for bucket in list(index_stat.keys()):
+                for index in list(index_stat[bucket].keys()):
                     if index != '#primary':
                         index_stat_map = index_stat[bucket][index]
                         if plasma_stat_field in index_stat_map["MainStore"]:
@@ -246,12 +246,12 @@ class PlasmaBaseTest(StorageBase):
         return field_value_map
 
     def check_negative_plasma_stats(self, plasma_obj_dict):
-        for plasma_obj in plasma_obj_dict.values():
+        for plasma_obj in list(plasma_obj_dict.values()):
             index_stat = plasma_obj.get_index_storage_stats()
-            for bucket in index_stat.keys():
-                for index in index_stat[bucket].keys():
+            for bucket in list(index_stat.keys()):
+                for index in list(index_stat[bucket].keys()):
                     index_stat_map = index_stat[bucket][index]
-                    for key in index_stat_map["MainStore"].keys():
+                    for key in list(index_stat_map["MainStore"].keys()):
                         self.log.debug("Key considered {}".format(key))
                         if (type(index_stat_map['MainStore'].get(key)) == int or type(
                                 index_stat_map['MainStore'].get(key)) == float) and index_stat_map['MainStore'].get(
@@ -261,7 +261,7 @@ class PlasmaBaseTest(StorageBase):
                                                                                                  'BackStore'].get(
                                                                                              key))))
                             self.fail("Negative field value for key {} in MainStore".format(key))
-                    for key in index_stat_map["BackStore"].keys():
+                    for key in list(index_stat_map["BackStore"].keys()):
                         if (type(index_stat_map['BackStore'].get(key)) == int or type(
                                 index_stat_map['BackStore'].get(key)) == float) and index_stat_map['BackStore'].get(
                             key) < 0:
@@ -291,8 +291,8 @@ class PlasmaBaseTest(StorageBase):
         for count in range(timeout):
             isFound = True
             field_value_list = self.get_plasma_index_stat_value(field, stat_obj_list)
-            self.log.debug("size is:{}".format(len(field_value_list.values())))
-            for field_value in field_value_list.values():
+            self.log.debug("size is:{}".format(len(list(field_value_list.values()))))
+            for field_value in list(field_value_list.values()):
                 field_value = "{:.2f}".format(field_value)
                 self.log.debug("field value: {} and expected value: {}".format(field_value, value))
                 if ops == 'equal':
@@ -323,9 +323,9 @@ class PlasmaBaseTest(StorageBase):
 
     def get_aggregate_stat(self, stat_obj_list, field):
         field_value_list = self.get_plasma_index_stat_value(field, stat_obj_list)
-        self.log.debug("size is:{}".format(len(field_value_list.values())))
+        self.log.debug("size is:{}".format(len(list(field_value_list.values()))))
         agg_Value = 0
-        for field_value in field_value_list.values():
+        for field_value in list(field_value_list.values()):
             agg_Value += field_value
 
         return agg_Value
@@ -381,7 +381,7 @@ class PlasmaBaseTest(StorageBase):
 
     def compare_plasma_stat_field_value(self, stat_obj_list, field, value_map, ops='equal', timeout=30):
         isCompare = False
-        for key in value_map.keys():
+        for key in list(value_map.keys()):
             for count in range(timeout):
                 field_value_map = self.get_plasma_index_stat_value(field, stat_obj_list)
                 isCompare = False
@@ -421,9 +421,9 @@ class PlasmaBaseTest(StorageBase):
 
     def extract_index_list(self, indexMap):
         index_list = list()
-        for bucket, bucket_data in indexMap.items():
-            for scope, collection_data in bucket_data.items():
-                for collection, gsi_index_names in collection_data.items():
+        for bucket, bucket_data in list(indexMap.items()):
+            for scope, collection_data in list(bucket_data.items()):
+                for collection, gsi_index_names in list(collection_data.items()):
                     for gsi_index_name in gsi_index_names:
                         index_list.append(gsi_index_name)
         return index_list
@@ -433,8 +433,8 @@ class PlasmaBaseTest(StorageBase):
         for node in index_nodes_list:
             plasma_stats_obj = PlasmaStatsUtil(node, server_task=self.task)
             index_storage_stats = plasma_stats_obj.get_index_storage_stats()
-            for bucket in index_storage_stats.keys():
-                for index in index_storage_stats[bucket].keys():
+            for bucket in list(index_storage_stats.keys()):
+                for index in list(index_storage_stats[bucket].keys()):
                     index_stat_map = index_storage_stats[bucket][index]
                     self.assertTrue(index_stat_map["MainStore"]["num_rec_compressible"] <= (
                             index_stat_map["MainStore"]["num_rec_allocs"] - index_stat_map["MainStore"][
@@ -482,12 +482,12 @@ class PlasmaBaseTest(StorageBase):
                 return bucket
 
     def findScope(self, scope_name, bucket):
-        for _, scope in bucket.scopes.items():
+        for _, scope in list(bucket.scopes.items()):
             if scope.name == scope_name:
                 return scope
 
     def findCollection(self, collection_name, scope):
-        for _, collection in scope.collections.items():
+        for _, collection in list(scope.collections.items()):
             if collection.name == collection_name:
                 return collection
 
@@ -498,9 +498,9 @@ class PlasmaBaseTest(StorageBase):
         query_len = len(cluster.query_nodes)
         self.log.debug("Limit is {} and total Count is {}".format(limit, totalCount))
         avg_Scan_latency = 0
-        for bucket, bucket_data in indexMap.items():
-            for scope, collection_data in bucket_data.items():
-                for collection, gsi_index_names in collection_data.items():
+        for bucket, bucket_data in list(indexMap.items()):
+            for scope, collection_data in list(bucket_data.items()):
+                for collection, gsi_index_names in list(collection_data.items()):
                     for gsi_index_name in gsi_index_names:
                         offset = 0
                         while True:
@@ -512,10 +512,10 @@ class PlasmaBaseTest(StorageBase):
                             task = self.task.async_execute_query(cluster.query_nodes[query_node_index], query)
                             query_tasks_info.append(task)
                             x += 1
-                            for plasma_obj in stats_obj_list.values():
+                            for plasma_obj in list(stats_obj_list.values()):
                                 index_stat = plasma_obj.get_all_index_stat_map()
-                                if bucket in index_stat['bucket_index_map'].keys():
-                                    if scope in index_stat['bucket_index_map'][bucket].keys():
+                                if bucket in list(index_stat['bucket_index_map'].keys()):
+                                    if scope in list(index_stat['bucket_index_map'][bucket].keys()):
                                         bucket_index_map = index_stat['bucket_index_map'][bucket]
                                         if collection in bucket_index_map[scope]:
                                             scope_index_map = bucket_index_map[scope]
@@ -558,13 +558,13 @@ class PlasmaBaseTest(StorageBase):
         self.log.debug("total count is {}".format(totalCount))
         self.log.debug("limit is {}".format(limit))
         query_task_list = list()
-        for bucket_name, bucket_data in indexMap.items():
+        for bucket_name, bucket_data in list(indexMap.items()):
             bucket = self.findBucket(bucket_name)
             self.log.debug("bucket name is:{}".format(bucket_name))
-            for scope_name, collection_data in bucket_data.items():
+            for scope_name, collection_data in list(bucket_data.items()):
                 scope = self.findScope(scope_name, bucket)
                 self.log.debug("scope name is:{}".format(scope_name))
-                for collection_name, gsi_index_names in collection_data.items():
+                for collection_name, gsi_index_names in list(collection_data.items()):
                     collection = self.findCollection(collection_name, scope)
                     self.log.debug("Total count is: {}".format(totalCount))
                     for gsi_index_name in gsi_index_names:
@@ -644,10 +644,10 @@ class PlasmaBaseTest(StorageBase):
         query_rest = GsiHelper(self.cluster.query_nodes[0], self.log)
         indexer_rest = GsiHelper(self.cluster.index_nodes[0], self.log)
         content = None
-        for bucket, bucket_data in indexMap.items():
+        for bucket, bucket_data in list(indexMap.items()):
             indexer_rest.wait_for_indexing_to_complete(bucket)
-            for scope, collection_data in bucket_data.items():
-                for collection, gsi_index_names in collection_data.items():
+            for scope, collection_data in list(bucket_data.items()):
+                for collection, gsi_index_names in list(collection_data.items()):
                     for gsi_index_name in gsi_index_names:
                         count_query = "select count(*) from `%s`.`%s`.`%s` use index(`%s`) where %s is not missing" \
                                       % (bucket,
@@ -675,9 +675,9 @@ class PlasmaBaseTest(StorageBase):
         """
         indexer_rest = GsiHelper(self.cluster.index_nodes[0], self.log)
         index_map = indexer_rest.get_index_stats()
-        for bucket_name in index_map.keys():
+        for bucket_name in list(index_map.keys()):
             self.log.info("Bucket: {0}".format(bucket_name))
-            for index_name, index_val in index_map[bucket_name].items():
+            for index_name, index_val in list(index_map[bucket_name].items()):
                 self.log.info("Index: {0}".format(index_name))
                 self.log.info("number of docs pending: {0}".format(index_val["num_docs_pending"]))
                 self.log.info("number of docs queued: {0}".format(index_val["num_docs_queued"]))
@@ -727,11 +727,11 @@ class PlasmaBaseTest(StorageBase):
             fieldValue = "{:.2f}".format(fieldValue)
             for count in range(5):
                 field_value_map = self.get_plasma_index_stat_value(field, stats_obj_list)
-                self.log.debug("size is:{}".format(len(field_value_map.values())))
+                self.log.debug("size is:{}".format(len(list(field_value_map.values()))))
                 avgValue = 0
-                for field_value in field_value_map.values():
+                for field_value in list(field_value_map.values()):
                     avgValue = avgValue + field_value
-                avgValue = avgValue / len(field_value_map.values())
+                avgValue = avgValue / len(list(field_value_map.values()))
                 avgValue = "{:.2f}".format(avgValue)
                 if self.compareField(avgValue, fieldValue, ops):
                     return True

@@ -11,7 +11,7 @@ from Cb_constants import CbServer
 from platform_constants.os_constants import Windows
 from remote.remote_util import RemoteMachineShellConnection, RemoteUtilHelper
 from membase.api.rest_client import RestConnection
-import install_constants
+from . import install_constants
 import TestInput
 import logging.config
 
@@ -107,7 +107,7 @@ class NodeHelper:
                 '''WINDOWS UNINSTALL'''
                 self.shell.terminate_processes(self.info, [s for s in Windows.PROCESSES_KILLED])
                 self.shell.terminate_processes(self.info,
-                                               [s + "-*" for s in testconstants.CB_RELEASE_BUILDS.keys()])
+                                               [s + "-*" for s in list(testconstants.CB_RELEASE_BUILDS.keys())])
                 installed_version, _ = self.shell.execute_command(
                     "cat " + install_constants.DEFAULT_INSTALL_DIR["WINDOWS_SERVER"] + "VERSION.txt")
                 if len(installed_version) == 1:

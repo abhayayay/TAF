@@ -192,7 +192,7 @@ def execute_via_sdk(client, statement, readonly=False,
         options.clientContextId(client_context_id)
     if query_params:
         json = JsonObject.create()
-        for k, v in query_params.items():
+        for k, v in list(query_params.items()):
             json.put(k, eval(v))
         options.parameters(json)
 
@@ -239,7 +239,7 @@ class DoctorN1QL():
             for s in self.bucket_util.get_active_scopes(b, only_names=True):
                 if s == CbServer.system_scope:
                     continue
-                if b.name+s not in self.sdkClients.keys():
+                if b.name+s not in list(self.sdkClients.keys()):
                     self.sdkClients.update({b.name+s: b.clients[0].bucketObj.scope(s)})
                     time.sleep(5)
                 for collection_num, c in enumerate(sorted(self.bucket_util.get_active_collections(b, s, only_names=True))):
@@ -268,7 +268,7 @@ class DoctorN1QL():
                     while i < workload.get("2i")[0] or q < workload.get("2i")[1]:
                         if i < workload.get("2i")[0]:
                             self.idx_q = indexType[counter % len(indexType)].format(b.name.replace("-", "_") + "_idx_" + c + "_", i, c)
-                            print self.idx_q
+                            print((self.idx_q))
                             b.indexes.update({b.name.replace("-", "_") + "_idx_"+c+"_"+str(i): (self.idx_q, self.sdkClients[b.name+s], b.name, s, c)})
                             retry = 5
                             if not skip_index:
@@ -282,7 +282,7 @@ class DoctorN1QL():
                                         time.sleep(10)
                                         continue
                                     except IndexNotFoundException as e:
-                                        print "Returning from here as we get IndexNotFoundException"
+                                        print("Returning from here as we get IndexNotFoundException")
                                         print(e)
                                         return False
                                     except IndexExistsException:
@@ -291,8 +291,8 @@ class DoctorN1QL():
                         if q < workload.get("2i")[1]:
                             unformatted_q = queryType[counter % len(queryType)]
                             query = unformatted_q.format(c)
-                            print query
-                            if unformatted_q not in b.query_map.keys():
+                            print(query)
+                            if unformatted_q not in list(b.query_map.keys()):
                                 b.query_map[unformatted_q] = ["Q%s" % (counter)]
                                 if queryParams:
                                     b.query_map[unformatted_q].append(queryParams[counter % len(queryParams)])
@@ -302,7 +302,7 @@ class DoctorN1QL():
                             q += 1
                         counter += 1
 
-            print [v[0] + " == " + k for k, v in b.query_map.items()]
+            print([v[0] + " == " + k for k, v in list(b.query_map.items())])
         return True
 
     def discharge_N1QL(self):
@@ -322,7 +322,7 @@ class DoctorN1QL():
                 _buckets = buckets[k*10:(k+1)*10]
                 for bucket in _buckets:
                     d = defaultdict(list)
-                    for key, val in bucket.indexes.items():
+                    for key, val in list(bucket.indexes.items()):
                         _, _, _, _, c = val
                         d[c].append(key)
                     for collection in sorted(d.keys())[i:i+1]:
@@ -351,7 +351,7 @@ class DoctorN1QL():
                 if wait:
                     for bucket in _buckets:
                         d = defaultdict(list)
-                        for key, val in bucket.indexes.items():
+                        for key, val in list(bucket.indexes.items()):
                             _, _, _, _, c = val
                             d[c].append(key)
                         self.rest = GsiHelper(self.cluster.master, logger["test"])
@@ -361,14 +361,14 @@ class DoctorN1QL():
                                 details = bucket.indexes[index_name]
                                 status = self.rest.polling_create_index_status(
                                     bucket, index_name, timeout=timeout/10)
-                                print("index: {}, status: {}".format(index_name, status))
+                                print(("index: {}, status: {}".format(index_name, status)))
                                 if status is True:
                                     self.log.info("2i index is ready: {}".format(index_name))
                 k += 1
             i += 1
 
     def drop_indexes(self):
-        for index, details in self.indexes.items():
+        for index, details in list(self.indexes.items()):
             build_query = "DROP INDEX %s on `%s`" % (index, details[4])
             self.execute_statement_on_n1ql(details[1], build_query)
 
@@ -469,7 +469,7 @@ class QueryLoad:
             start = time.time()
             e = ""
             try:
-                self.total_query_count.next()
+                next(self.total_query_count)
                 query_tuple = random.choice(self.queries)
                 query = query_tuple[0]
                 original_query = query_tuple[2]
@@ -484,13 +484,13 @@ class QueryLoad:
                 if status == QueryStatus.SUCCESS:
                     if validate_item_count:
                         if results[0]['$1'] != expected_count:
-                            self.failed_count.next()
+                            next(self.failed_count)
                         else:
-                            self.success_count.next()
+                            next(self.success_count)
                     else:
-                        self.success_count.next()
+                        next(self.success_count)
                 else:
-                    self.failed_count.next()
+                    next(self.failed_count)
             except TimeoutException or AmbiguousTimeoutException or UnambiguousTimeoutException as e:
                 pass
             except RequestCanceledException as e:
@@ -498,19 +498,19 @@ class QueryLoad:
             except CouchbaseException as e:
                 pass
             except (Exception, PlanningFailureException) as e:
-                print e
-                self.error_count.next()
+                print(e)
+                next(self.error_count)
             if str(e).find("TimeoutException") != -1\
                 or str(e).find("AmbiguousTimeoutException") != -1\
                     or str(e).find("UnambiguousTimeoutException") != -1:
-                self.timeout_failures += self.timeout_count.next()
+                self.timeout_failures += next(self.timeout_count)
                 if self.timeout_failures % 50 == 0:
                     self.log.critical(client_context_id + ":" + query)
                     self.log.critical(e)
             elif str(e).find("RequestCanceledException") != -1:
-                self.failures += self.cancel_count.next()
+                self.failures += next(self.cancel_count)
             elif str(e).find("InternalServerFailureException") != -1 or str(e).find("CouchbaseException") != -1:
-                self.failures += self.error_count.next()
+                self.failures += next(self.error_count)
 
             if e and (str(e).find("AmbiguousTimeoutException") == -1 or str(e).find("no more information available") != -1):
                 self.log.critical(client_context_id + ":" + query)

@@ -1,7 +1,7 @@
 import random
 import threading
 
-from LMT_base import LMT
+from .LMT_base import LMT
 from error_simulation.cb_error import CouchbaseError
 from remote.remote_util import RemoteMachineShellConnection
 
@@ -17,7 +17,7 @@ class ServerlessMetering(LMT):
         remote_node = []
         error_sim = {}
         for node_i in nodes:
-            print("node_i is %s" % node_i)
+            print(("node_i is %s" % node_i))
             remote = RemoteMachineShellConnection(node_i)
             error_sim[node_i.ip] = CouchbaseError(self.log,
                                                   remote,

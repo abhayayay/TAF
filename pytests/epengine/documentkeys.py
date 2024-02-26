@@ -141,7 +141,7 @@ class DocumentKeysTests(ClusterSetup):
         self._dockey_data_ops(generic_key)
 
     def test_dockey_unicode_data_ops(self):
-        generic_key = "\u00CA"
+        generic_key = "\\u00CA"
         if self.key_size:
             self.key_size = self.key_size-len(generic_key)
             generic_key = generic_key + "é" * self.key_size

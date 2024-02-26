@@ -34,7 +34,7 @@ from cb_tools.cbstats import Cbstats
 from com.couchbase.client.core.error import DocumentUnretrievableException
 from com.couchbase.client.java.kv import GetAnyReplicaOptions
 from couchbase_helper.documentgenerator import doc_generator
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_client3 import SDKClient
 
@@ -96,7 +96,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                 durability=self.durability_level,
                 timeout_secs=self.sdk_timeout, retries=self.sdk_retries,
                 )
-        self.task.jython_task_manager.get_task_result(tasks_info.keys()[0])
+        self.task.jython_task_manager.get_task_result(list(tasks_info.keys())[0])
         self.sleep(20)
         self.client = SDKClient([self.cluster.master],
                                 self.cluster.buckets[0],
@@ -155,7 +155,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                   self.ignore_exceptions,
                                   collection=collection,
                                   _sync=False)
-                tasks_info.update(task_in.items())
+                tasks_info.update(list(task_in.items()))
             for task in tasks_info:
                 self.task_manager.get_task_result(task)
             self.bucket_util.verify_doc_op_task_exceptions(
@@ -267,7 +267,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                   _sync=False,
                                   doc_ops="create",
                                   collection=collection)
-                tasks_info.update(task_in.items())
+                tasks_info.update(list(task_in.items()))
             for task in tasks_info:
                 self.task_manager.get_task_result(task)
             self.bucket_util.verify_doc_op_task_exceptions(
@@ -293,7 +293,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                             _sync=False,
                                             doc_ops="expiry",
                                             collection=collection)
-                tasks_info.update(task_in.items())
+                tasks_info.update(list(task_in.items()))
             for task in tasks_info:
                 self.task_manager.get_task_result(task)
             self.bucket_util.verify_doc_op_task_exceptions(
@@ -418,7 +418,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                   _sync=False,
                                   doc_ops="update",
                                   collection=collection)
-                tasks_info.update(task_in.items())
+                tasks_info.update(list(task_in.items()))
             for task in tasks_info:
                 self.task_manager.get_task_result(task)
             self.bucket_util.verify_doc_op_task_exceptions(
@@ -442,7 +442,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                             _sync=False,
                                             doc_ops="expiry",
                                             collection=collection)
-                tasks_info.update(task_in.items())
+                tasks_info.update(list(task_in.items()))
             for task in tasks_info:
                 self.task_manager.get_task_result(task)
             self.bucket_util.verify_doc_op_task_exceptions(
@@ -649,7 +649,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                         self.ignore_exceptions,
                                         _sync=False,
                                         collection=collection)
-            tasks_info.update(task_in.items())
+            tasks_info.update(list(task_in.items()))
         for task in tasks_info:
             self.task_manager.get_task_result(task)
         self.bucket_util.verify_doc_op_task_exceptions(
@@ -738,7 +738,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                         self.ignore_exceptions,
                                         _sync=False,
                                         collection=collection)
-            tasks_info.update(task_in.items())
+            tasks_info.update(list(task_in.items()))
         for task in tasks_info:
             self.task_manager.get_task_result(task)
         self.bucket_util.verify_doc_op_task_exceptions(
@@ -766,7 +766,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                   suppress_error_table=True,
                                   track_failures=False,
                                   collection=collection)
-            tasks_info.update(task_in.items())
+            tasks_info.update(list(task_in.items()))
         for task in tasks_info:
             self.task_manager.get_task_result(task)
         self.sleep(600, "wait after get ops")
@@ -833,7 +833,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                               self.ignore_exceptions,
                               _sync=False,
                               collection=collection)
-            tasks_info.update(task_in.items())
+            tasks_info.update(list(task_in.items()))
         for task in tasks_info:
             self.task_manager.get_task_result(task)
         self.bucket_util.verify_doc_op_task_exceptions(
@@ -901,7 +901,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                      collection=collection,
                                      _sync=False,
                                      doc_ops="expiry")
-            tasks.update(task.items())
+            tasks.update(list(task.items()))
         for task in tasks:
             self.task_manager.get_task_result(task)
 
@@ -919,7 +919,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                   suppress_error_table=True,
                                   track_failures=False,
                                   collection=collection)
-            tasks_info.update(task_in.items())
+            tasks_info.update(list(task_in.items()))
         for task in tasks_info:
             self.task_manager.get_task_result(task)
 
@@ -952,7 +952,7 @@ class MagmaExpiryTests(MagmaBaseTest):
                                      collection=collection,
                                      _sync=False,
                                      doc_ops="expiry")
-            tasks.update(task.items())
+            tasks.update(list(task.items()))
         self.sleep(self.maxttl, "Wait for docs to expire")
         # exp_pager_stime
         self.bucket_util._expiry_pager(self.cluster, self.exp_pager_stime)

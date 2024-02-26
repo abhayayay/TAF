@@ -18,7 +18,7 @@ class MetadataReplication(CBASBaseTest):
         super(MetadataReplication, self).setUp()
 
         # Since all the test cases are being run on 1 cluster only
-        self.cluster = self.cb_clusters.values()[0]
+        self.cluster = list(self.cb_clusters.values())[0]
 
         self.rebalance_util = CBASRebalanceUtil(
             self.cluster_util, self.bucket_util, self.task,
@@ -123,7 +123,7 @@ class MetadataReplication(CBASBaseTest):
                 for j in x:
                     if (j.ip in y) and (j.ip in z) and (j.ip not in c):
                         c[j.ip] = j
-                rebalanced_out_nodes = c.values()
+                rebalanced_out_nodes = list(c.values())
 
                 if self.rebalance_type == 'in':
                     rebalance_task, self.available_servers = self.rebalance_util.rebalance(
@@ -333,7 +333,7 @@ class MetadataReplication(CBASBaseTest):
                 for j in x:
                     if (j.ip in y) and (j.ip in z) and (j.ip not in c):
                         c[j.ip] = j
-                rebalanced_out_nodes = c.values()
+                rebalanced_out_nodes = list(c.values())
 
                 rebalance_task = self.task.async_rebalance(
                     self.cluster, [], rebalanced_out_nodes,

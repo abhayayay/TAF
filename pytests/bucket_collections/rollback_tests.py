@@ -40,20 +40,20 @@ class RollbackTests(CollectionBase):
 
     def tearDown(self):
         # Close all shell_connections before cluster tearDown
-        for node in self.node_shells.keys():
+        for node in list(self.node_shells.keys()):
             self.node_shells[node]["shell"].disconnect()
 
         super(RollbackTests, self).tearDown()
 
     def get_vb_details_cbstats_for_all_nodes(self, stat_key):
-        for _, node_dict in self.node_shells.items():
+        for _, node_dict in list(self.node_shells.items()):
             node_dict[stat_key] = \
                 node_dict["cbstat"].vbucket_details(self.bucket.name)
 
     def validate_seq_no_post_rollback(self, init_stat_key, post_stat_key,
                                       keys_to_verify):
-        for node, n_dict in self.node_shells.items():
-            for vb, vb_stat_dict in n_dict[post_stat_key].items():
+        for node, n_dict in list(self.node_shells.items()):
+            for vb, vb_stat_dict in list(n_dict[post_stat_key].items()):
                 for stat in keys_to_verify:
                     if vb_stat_dict[stat] != n_dict[init_stat_key][vb][stat]:
                         self.log_failure("vBucket %s - %s stat mismatch. "
@@ -63,13 +63,13 @@ class RollbackTests(CollectionBase):
                                             n_dict[init_stat_key][vb][stat]))
 
     def __rewind_doc_index(self, doc_loading_task):
-        for bucket, s_dict in doc_loading_task.loader_spec.items():
-            for s_name, c_dict in s_dict["scopes"].items():
-                for c_name, _ in c_dict["collections"].items():
+        for bucket, s_dict in list(doc_loading_task.loader_spec.items()):
+            for s_name, c_dict in list(s_dict["scopes"].items()):
+                for c_name, _ in list(c_dict["collections"].items()):
                     c_crud_data = doc_loading_task.loader_spec[
                         bucket]["scopes"][
                         s_name]["collections"][c_name]
-                    for op_type in c_crud_data.keys():
+                    for op_type in list(c_crud_data.keys()):
                         self.bucket_util.rewind_doc_index(
                             bucket.scopes[s_name].collections[c_name],
                             op_type,
@@ -128,13 +128,13 @@ class RollbackTests(CollectionBase):
             self.log_failure("Doc operation failed for '%s'" % doc_ops)
 
         # Fetch total affected mutation count
-        for bucket, s_dict in doc_loading_task.loader_spec.items():
-            for s_name, c_dict in s_dict["scopes"].items():
-                for c_name, _ in c_dict["collections"].items():
+        for bucket, s_dict in list(doc_loading_task.loader_spec.items()):
+            for s_name, c_dict in list(s_dict["scopes"].items()):
+                for c_name, _ in list(c_dict["collections"].items()):
                     c_crud_data = doc_loading_task.loader_spec[
                         bucket]["scopes"][
                         s_name]["collections"][c_name]
-                    for op_type in c_crud_data.keys():
+                    for op_type in list(c_crud_data.keys()):
                         self.total_rollback_items += \
                             c_crud_data[op_type]["doc_gen"].end \
                             - c_crud_data[op_type]["doc_gen"].start
@@ -166,7 +166,7 @@ class RollbackTests(CollectionBase):
         cb_stats = self.node_shells[target_node]["cbstat"]
         self.target_vbuckets = cb_stats.vbucket_list(self.bucket.name)
 
-        for _ in xrange(1, self.num_rollbacks + 1):
+        for _ in range(1, self.num_rollbacks + 1):
             self.total_rollback_items = 0
             error_sim.create(CouchbaseError.STOP_PERSISTENCE, self.bucket.name)
             doc_loading_task_1 = self.load_docs(self.doc_ops)
@@ -227,8 +227,8 @@ class RollbackTests(CollectionBase):
         # Set values to num_items to support loading through
         # collection loading task
         for bucket in self.cluster.buckets:
-            for _, scope in bucket.scopes.items():
-                for _, collection in scope.collections.items():
+            for _, scope in list(bucket.scopes.items()):
+                for _, collection in list(scope.collections.items()):
                     collection.num_items = self.num_items
 
         # Fetch vbucket stats for validation
@@ -239,7 +239,7 @@ class RollbackTests(CollectionBase):
         cbstats = self.node_shells[target_node]["cbstat"]
         self.target_vbuckets = cbstats.vbucket_list(self.bucket.name)
 
-        for i in xrange(1, self.num_rollbacks + 1):
+        for i in range(1, self.num_rollbacks + 1):
             self.total_rollback_items = 0
             self.log.info("Stopping persistence on %s" % target_node.ip)
             Cbepctl(shell).persistence(self.bucket.name, "stop")
@@ -279,8 +279,8 @@ class RollbackTests(CollectionBase):
 
         # Reset expected values to '0' for validation
         for bucket in self.cluster.buckets:
-            for _, scope in bucket.scopes.items():
-                for _, collection in scope.collections.items():
+            for _, scope in list(bucket.scopes.items()):
+                for _, collection in list(scope.collections.items()):
                     collection.num_items = 0
         self.bucket_util.validate_docs_per_collections_all_buckets(
             self.cluster)

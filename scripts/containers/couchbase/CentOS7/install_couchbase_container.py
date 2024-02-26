@@ -18,28 +18,28 @@ def build_image(ssh, branch, version, build):
           " --build-arg BUILD_NO=" + build + \
           " -t couchbase-neo ."
     ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(cmd)
-    print(ssh_stdout.read(), ssh_stderr.read())
+    print((ssh_stdout.read(), ssh_stderr.read()))
 
 
 def remove_image(ssh):
     print("Removing any image with name couchbase-neo")
     cmd = "docker image rm couchbase-neo"
     ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(cmd)
-    print(ssh_stdout.read(), ssh_stderr.read())
+    print((ssh_stdout.read(), ssh_stderr.read()))
 
 
 def stop_all_containers(ssh):
     print("Stopping all container")
     cmd = "docker stop $(docker ps -a -q)"
     ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(cmd)
-    print(ssh_stdout.read(), ssh_stderr.read())
+    print((ssh_stdout.read(), ssh_stderr.read()))
 
 
 def remove_all_containers(ssh):
     print("Removing all containers")
     cmd = "docker rm $(docker ps -a -q)"
     ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(cmd)
-    print(ssh_stdout.read(), ssh_stderr.read())
+    print((ssh_stdout.read(), ssh_stderr.read()))
 
 
 def main(argv):

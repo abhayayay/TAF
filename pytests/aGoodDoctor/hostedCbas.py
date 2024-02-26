@@ -18,7 +18,7 @@ from com.couchbase.client.core.error import RequestCanceledException,\
     IndexExistsException
 from global_vars import logger
 from Cb_constants.CBServer import CbServer
-from hostedN1QL import execute_statement_on_n1ql
+from .hostedN1QL import execute_statement_on_n1ql
 import itertools
 
 datasets = ['create dataset {} on {}.{}.{};']
@@ -163,11 +163,11 @@ class DoctorCBAS():
                             b.datasets.update({dataset: idx_q})
                             i += 1
                         if q < workload.get("cbas")[2]:
-                            if queryType[q % len(queryType)] in b.query_map.keys():
+                            if queryType[q % len(queryType)] in list(b.query_map.keys()):
                                 q += 1
                                 continue
                             query = queryType[q % len(queryType)].format(dataset)
-                            print query
+                            print(query)
                             b.query_map[queryType[q % len(queryType)]] = ["Q%s" % query_count]
                             query_count += 1
                             b.cbas_queries.append((query, queryType[q % len(queryType)]))
@@ -178,7 +178,7 @@ class DoctorCBAS():
 
     def create_indexes(self, buckets):
         for bucket in buckets:
-            for index in bucket.datasets.values():
+            for index in list(bucket.datasets.values()):
                 try:
                     execute_statement_on_cbas(bucket.clients[0].cluster, index)
                 except IndexExistsException:
@@ -187,7 +187,7 @@ class DoctorCBAS():
     def wait_for_ingestion(self, buckets, timeout=86400):
         status = False
         for bucket in buckets:
-            for dataset in bucket.datasets.keys():
+            for dataset in list(bucket.datasets.keys()):
                 status = False
                 stop_time = time.time() + timeout
                 while time.time() < stop_time:
@@ -215,12 +215,12 @@ class DoctorCBAS():
         n1ql_sdkClients = dict()
         for bucket in cluster.buckets:
             for s in self.bucket_util.get_active_scopes(bucket, only_names=True):
-                if bucket.name + s not in n1ql_sdkClients.keys():
+                if bucket.name + s not in list(n1ql_sdkClients.keys()):
                     n1ql_sdkClients.update({bucket.name + s: cluster_conn.bucket(bucket.name).scope(s)})
                     time.sleep(5)
 
         status = False
-        for dataset, ds_info in self.datasets.items():
+        for dataset, ds_info in list(self.datasets.items()):
 
             n1ql_statement = "select count(*) from {0}.{1}.{2}".format(
                 ds_info[1], ds_info[2], ds_info[3])
@@ -295,7 +295,7 @@ class CBASQueryLoad:
             start = time.time()
             e = ""
             try:
-                self.total_query_count.next()
+                next(self.total_query_count)
                 query_tuple = random.choice(self.queries)
                 query = query_tuple[0]
                 original_query = query_tuple[1]
@@ -308,13 +308,13 @@ class CBASQueryLoad:
                 if status == AnalyticsStatus.SUCCESS:
                     if validate_item_count:
                         if results[0]['$1'] != expected_count:
-                            self.failed_count.next()
+                            next(self.failed_count)
                         else:
-                            self.success_count.next()
+                            next(self.success_count)
                     else:
-                        self.success_count.next()
+                        next(self.success_count)
                 else:
-                    self.failed_count.next()
+                    next(self.failed_count)
             except TimeoutException or AmbiguousTimeoutException or UnambiguousTimeoutException as e:
                 pass
             except RequestCanceledException as e:
@@ -322,16 +322,16 @@ class CBASQueryLoad:
             except CouchbaseException as e:
                 pass
             except (Exception, PlanningFailureException) as e:
-                print e
-                self.error_count.next()
+                print(e)
+                next(self.error_count)
             if str(e).find("TimeoutException") != -1\
                 or str(e).find("AmbiguousTimeoutException") != -1\
                     or str(e).find("UnambiguousTimeoutException") != -1:
-                self.timeout_count.next()
+                next(self.timeout_count)
             elif str(e).find("RequestCanceledException") != -1:
-                self.failures += self.cancel_count.next()
+                self.failures += next(self.cancel_count)
             elif str(e).find("CouchbaseException") != -1:
-                self.failures += self.error_count.next()
+                self.failures += next(self.error_count)
             if str(e).find("no more information available") != -1:
                 self.log.critical(query)
                 self.log.critical(e)

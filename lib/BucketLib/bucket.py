@@ -1,8 +1,9 @@
-from _threading import Lock
+from threading import Lock
 
-import Jython_tasks
+import tasks
 from Cb_constants import CbServer
 from common_lib import Counter
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 
 
 class BucketStats(object):
@@ -33,7 +34,7 @@ class BucketStats(object):
     def manage_task(self, operation, task_manager,
                     cluster=None, bucket=None,
                     monitor_stats=list(), sleep=1):
-        task_pkg = Jython_tasks.task
+        task_pkg = tasks.task
         if operation == "start":
             self.stats_task["lock"].acquire()
             if self.stats_task["object"] is None:
@@ -80,7 +81,7 @@ class Collection(object):
     def __init__(self, collection_spec=dict()):
         self.name = collection_spec.get("name")
         self.num_items = collection_spec.get("num_items", 0)
-        self.maxTTL = collection_spec.get("maxTTL", 0)
+        self.maxTTL = collection_spec.get("maxTTL", -1)
         self.history = collection_spec.get("history", "false")
 
         # Meta data for test case validation
@@ -113,7 +114,7 @@ class Collection(object):
     @staticmethod
     def recreated(collection_obj, collection_spec):
         collection_obj.num_items = collection_spec.get("num_items", 0)
-        collection_obj.maxTTL = collection_spec.get("maxTTL", 0)
+        collection_obj.maxTTL = collection_spec.get("maxTTL", -1)
         collection_obj.history = collection_spec.get("history", "false")
 
         # Update meta fields
@@ -139,6 +140,7 @@ class Bucket(object):
     replicaNumber = "replicaNumber"
     evictionPolicy = "evictionPolicy"
     priority = "priority"
+    rank = "rank"
     flushEnabled = "flushEnabled"
     conflictResolutionType = "conflictResolutionType"
     storageBackend = "storageBackend"
@@ -176,6 +178,12 @@ class Bucket(object):
         TWO = 2
         THREE = 3
 
+    class DurabilityMinLevel(object):
+        NONE = "none"
+        MAJORITY = "majority"
+        MAJORITY_AND_PERSIST_ACTIVE = "majorityAndPersistActive"
+        PERSIST_TO_MAJORITY = "persistToMajority"
+
     class EvictionPolicy(object):
         FULL_EVICTION = "fullEviction"
         NO_EVICTION = "noEviction"
@@ -210,12 +218,6 @@ class Bucket(object):
             self.replica = []
             self.id = -1
 
-    class DurabilityLevel(object):
-        NONE = "NONE"
-        MAJORITY = "MAJORITY"
-        MAJORITY_AND_PERSIST_TO_ACTIVE = "MAJORITY_AND_PERSIST_TO_ACTIVE"
-        PERSIST_TO_MAJORITY = "PERSIST_TO_MAJORITY"
-
     class StorageBackend(object):
         magma = "magma"
         couchstore = "couchstore"
@@ -233,6 +235,7 @@ class Bucket(object):
         self.replicaIndex = new_params.get(Bucket.replicaIndex, 1)
         self.storageBackend = new_params.get(Bucket.storageBackend,
                                              Bucket.StorageBackend.magma)
+        self.rank = new_params.get(Bucket.rank, 0)
         self.priority = new_params.get(Bucket.priority, Bucket.Priority.LOW)
         self.uuid = None
         self.conflictResolutionType = \
@@ -244,9 +247,9 @@ class Bucket(object):
         self.compressionMode = new_params.get(
             Bucket.compressionMode,
             Bucket.CompressionMode.PASSIVE)
-        self.durability_level = new_params.get(
+        self.durabilityMinLevel = new_params.get(
             Bucket.durabilityMinLevel,
-            Bucket.DurabilityLevel.NONE.lower())
+            Bucket.DurabilityMinLevel.NONE)
         self.purge_interval = new_params.get(Bucket.purge_interval, 1)
         self.autoCompactionDefined = new_params.get(
             Bucket.autoCompactionDefined, "false")
@@ -308,14 +311,14 @@ class Bucket(object):
         self.scopes[CbServer.system_scope] = scope
         for c_name in [CbServer.query_collection,
                        CbServer.mobile_collection]:
-            collection = Collection({"name": c_name})
+            collection = Collection({"name": c_name, "maxTTL": 0})
             scope.collections[c_name] = collection
 
         # Only if Serverless profile is enabled on the cluster
         if CbServer.cluster_profile == "serverless":
             for c_name in [CbServer.eventing_collection,
                            CbServer.transaction_collection]:
-                collection = Collection({"name": c_name})
+                collection = Collection({"name": c_name, "maxTTL": 0})
                 scope.collections[c_name] = collection
 
     def __str__(self):
@@ -324,7 +327,7 @@ class Bucket(object):
     @staticmethod
     def get_params():
         param_list = list()
-        for param in vars(Bucket).keys():
+        for param in list(vars(Bucket).keys()):
             if not (param.startswith("_")
                     or callable(getattr(Bucket, param))):
                 param_list.append(param)

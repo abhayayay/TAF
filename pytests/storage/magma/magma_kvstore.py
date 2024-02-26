@@ -1,7 +1,7 @@
 import threading
 
 from Cb_constants.CBServer import CbServer
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_exceptions import SDKException
 
@@ -29,7 +29,7 @@ class KVStoreTests(MagmaBaseTest):
         while not self.stop_crash:
             loop_itr += 1
             self.log.info("Iteration:{} to kill memcached on all nodes".format(loop_itr))
-            for node, shell in connections.items():
+            for node, shell in list(connections.items()):
                 if "kv" in node.services:
                     if graceful:
                         shell.restart_couchbase()
@@ -40,7 +40,7 @@ class KVStoreTests(MagmaBaseTest):
                             count -= 1
                         count = kill_itr
 
-            for _, shell in connections.items():
+            for _, shell in list(connections.items()):
                 shell.disconnect()
 
     def loadgen_docs_per_bucket(self, bucket,
@@ -88,7 +88,7 @@ class KVStoreTests(MagmaBaseTest):
                 timeout=self.sdk_timeout, time_unit="seconds",
                 ignore_exceptions=ignore_exceptions,
                 retry_exceptions=retry_exceptions)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
         if "create" in doc_ops and self.gen_create is not None:
             task = self.bucket_util.async_load_bucket(
                 self.cluster, bucket, self.gen_create, "create", 0,
@@ -114,7 +114,7 @@ class KVStoreTests(MagmaBaseTest):
                 timeout=self.sdk_timeout, time_unit="seconds",
                 ignore_exceptions=ignore_exceptions,
                 retry_exceptions=retry_exceptions)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items += (self.gen_create.end - self.gen_create.start)
         if "expiry" in doc_ops and self.gen_expiry is not None and self.maxttl:
             task = self.bucket_util.async_load_bucket(
@@ -141,7 +141,7 @@ class KVStoreTests(MagmaBaseTest):
                 timeout=self.sdk_timeout, time_unit="seconds",
                 ignore_exceptions=ignore_exceptions,
                 retry_exceptions=retry_exceptions)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items -= (self.gen_expiry.end - self.gen_expiry.start)
         if "read" in doc_ops and self.gen_read is not None:
             read_tasks_info = self.bucket_util.async_validate_docs(
@@ -180,7 +180,7 @@ class KVStoreTests(MagmaBaseTest):
                 timeout=self.sdk_timeout, time_unit="seconds",
                 ignore_exceptions=ignore_exceptions,
                 retry_exceptions=retry_exceptions)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items -= (self.gen_delete.end - self.gen_delete.start)
 
         if _sync:
@@ -195,7 +195,7 @@ class KVStoreTests(MagmaBaseTest):
         if read_task:
             # TODO: Need to converge read_tasks_info into tasks_info before
             #       itself to avoid confusions during _sync=False case
-            tasks_info.update(read_tasks_info.items())
+            tasks_info.update(list(read_tasks_info.items()))
             if _sync:
                 for task in read_tasks_info:
                     self.task_manager.get_task_result(task)
@@ -256,7 +256,7 @@ class KVStoreTests(MagmaBaseTest):
                                                                       collection=collection,
                                                                       _sync=False,
                                                                       doc_ops=self.doc_ops)
-                        tasks_info.update(tem_tasks_info.items())
+                        tasks_info.update(list(tem_tasks_info.items()))
             '''
             Step 2
              -- Deletion of buckets
@@ -309,7 +309,7 @@ class KVStoreTests(MagmaBaseTest):
                                                                       collection=collection,
                                                                       _sync=False,
                                                                       doc_ops="create:update")
-                    tasks_in.update(tem_tasks_in.items())
+                    tasks_in.update(list(tem_tasks_in.items()))
                 for task in tasks_in:
                     self.task_manager.get_task_result(task)
 
@@ -385,7 +385,7 @@ class KVStoreTests(MagmaBaseTest):
                                                                  collection=collection,
                                                                  _sync=False,
                                                                  doc_ops="create")
-                    task_info.update(tem_task_info.items())
+                    task_info.update(list(tem_task_info.items()))
 
             for task in task_info:
                 self.task_manager.get_task_result(task)

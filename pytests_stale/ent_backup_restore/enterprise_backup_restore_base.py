@@ -1,7 +1,7 @@
 import copy
 import os, shutil, re, subprocess
 import json
-import urllib
+import urllib.request, urllib.parse, urllib.error
 
 from BucketLib.bucket import Bucket
 from Cb_constants import CbServer
@@ -261,7 +261,7 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                 output, error = remote_client.execute_command(command)
                 remote_client.log_command_output(output, error)
             if self.input.clusters:
-                for key in self.input.clusters.keys():
+                for key in list(self.input.clusters.keys()):
                     servers = self.input.clusters[key]
                     try:
                         self.backup_reset_clusters(servers)
@@ -701,8 +701,8 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
             if expected_error:
                 for line in output:
                     if self.debug_logs:
-                        print "output from cmd: ", line
-                        print "expect error   : ", expected_error
+                        print(("output from cmd: ", line))
+                        print(("expect error   : ", expected_error))
                     if line.find(expected_error) != -1:
                         error_found = True
                         break
@@ -934,31 +934,31 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                 self.log.info("Extract keys with regex pattern '%s' either in key or body"
                                                                           % regex_pattern)
                 for key in restore_file_data[bucket.name]:
-                    if self.debug_logs: print "key in backup file of bucket %s:  %s" \
-                                                               % (bucket.name, key)
+                    if self.debug_logs: print(("key in backup file of bucket %s:  %s" \
+                                                               % (bucket.name, key)))
                     if validate_keys:
                         if pattern.search(key):
                             regex_backup_data[bucket.name][key] = \
                                      restore_file_data[bucket.name][key]
                         if self.debug_logs:
-                            print "\nKeys in backup file of bucket %s that matches "\
-                                        "pattern '%s'" % (bucket.name, regex_pattern)
+                            print(("\nKeys in backup file of bucket %s that matches "\
+                                        "pattern '%s'" % (bucket.name, regex_pattern)))
                             for x in regex_backup_data[bucket.name]:
-                                print x
+                                print(x)
                     else:
                         if self.debug_logs:
-                            print "value of key in backup file  ",\
-                                                      restore_file_data[bucket.name][key]
+                            print(("value of key in backup file  ",\
+                                                      restore_file_data[bucket.name][key]))
                         if pattern.search(restore_file_data[bucket.name][key]["Value"]):
                             regex_backup_data[bucket.name][key] = \
                                          restore_file_data[bucket.name][key]
                         if self.debug_logs:
-                            print "\nKeys and value in backup file of bucket %s "\
+                            print(("\nKeys and value in backup file of bucket %s "\
                                   " that matches pattern '%s'" \
-                                    % (bucket.name, regex_pattern)
+                                    % (bucket.name, regex_pattern)))
                             for x in regex_backup_data[bucket.name]:
-                                print "key: ", x
-                                print "value: ", regex_backup_data[bucket.name][x]["Value"]
+                                print(("key: ", x))
+                                print(("value: ", regex_backup_data[bucket.name][x]["Value"]))
                 restore_file_data = regex_backup_data
 
         buckets_data = {}
@@ -1012,15 +1012,15 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                                   % (restore_file_data[bucket.name], key_count))
             self.log.info("******** Data macth in backup file and bucket %s ******** "
                                                                         % bucket.name)
-            print "Bucket: ", bucket.name
-            print "Total items in backup file:   ", len(bk_file_data[bucket.name])
+            print(("Bucket: ", bucket.name))
+            print(("Total items in backup file:   ", len(bk_file_data[bucket.name])))
             if regex_pattern is not None:
-                print "Total items to be restored with regex pattern '%s' is %s "\
-                                         % (regex_pattern,len(restore_file_data[bucket.name]))
-            print "Total items in bucket should be:   ", key_count
+                print(("Total items to be restored with regex pattern '%s' is %s "\
+                                         % (regex_pattern,len(restore_file_data[bucket.name]))))
+            print(("Total items in bucket should be:   ", key_count))
             rest = RestConnection(server_bucket[0])
             actual_keys = rest.get_active_key_count(bucket.name)
-            print "Total items actual in bucket:      ", actual_keys
+            print(("Total items actual in bucket:      ", actual_keys))
             if actual_keys != key_count:
                 self.fail("Total keys matched: %s != Total keys in bucket %s: %s" \
                           "at node %s " % (key_count, bucket.name, actual_keys,
@@ -1071,8 +1071,8 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
             if not isinstance(output[x], str):
                 continue
             if self.debug_logs:
-                print "\noutput:  ", repr(output[x])
-                print "source:  ", repr(source[x])
+                print(("\noutput:  ", repr(output[x])))
+                print(("source:  ", repr(source[x])))
             if output[x] != source[x]:
                 self.log.error("Element %s in output did not match " % x)
                 self.log.error("Output => %s != %s <= Source" % (output[x], source[x]))
@@ -1142,10 +1142,10 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                                       int(x.strip().split()[0][:-2].split(".")[0])
 
                             file_info["items"] = int(x.strip().split()[1])
-                        print "output content   ", file_info
+                        print(("output content   ", file_info))
             return file_info
         else:
-            print message
+            print(message)
 
     def validate_backup_compressed_file(self, no_compression, with_compression):
         """
@@ -1325,8 +1325,8 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                 logs_path = self.backupset.ex_logs_path
         output, _ = shell.execute_command("ls {0}".format(logs_path))
         if self.debug_logs:
-            print "\nlog path: ", logs_path
-            print "output : ", output
+            print(("\nlog path: ", logs_path))
+            print(("output : ", output))
         if output:
             for x in output:
                 if "collectinfo" in x:
@@ -1381,7 +1381,7 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                         filter_vbucket_keys[vb] = dump_output
                         total_filter_keys += len(dump_output)
                         if self.debug_logs:
-                            print("dump output: ", dump_output)
+                            print(("dump output: ", dump_output))
                 if filter_vbucket_keys:
                     if int(restore_buckets_items[bucket.name]) != total_filter_keys:
                         mesg = "** Failed to restore keys from vbucket-filter. "
@@ -1401,7 +1401,7 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                         for key in bucket_data[bucket.name]:
                             vBucketId = client._get_vBucket_id(key)
                             if self.debug_logs:
-                                print("This key {0} in vbucket {1}".format(key, vBucketId))
+                                print(("This key {0} in vbucket {1}".format(key, vBucketId)))
                             if str(vBucketId) not in vbucket_filter:
                                 self.fail("vbucketId {0} of key {1} not from vbucket filters {2}"\
                                                .format(vBucketId, key, vbucket_filter))
@@ -1424,13 +1424,13 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
         keys_fail = {}
         for bucket in buckets:
             keys_fail[bucket.name] = {}
-            if len(bk_file_data[bucket.name].keys()) != \
+            if len(list(bk_file_data[bucket.name].keys())) != \
                                     int(restore_buckets_items[bucket.name]):
                 self.fail("Total keys do not match")
-            items_info = rest.get_items_info(bk_file_data[bucket.name].keys(),
+            items_info = rest.get_items_info(list(bk_file_data[bucket.name].keys()),
                                                                     bucket.name)
             ttl_matched = True
-            for key in bk_file_data[bucket.name].keys():
+            for key in list(bk_file_data[bucket.name].keys()):
                 if items_info[key]['meta']['expiration'] != int(ttl_set):
                     if self.replace_ttl == "all":
                         ttl_matched = False
@@ -1440,16 +1440,16 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                     keys_fail[bucket.name][key].append(items_info[key]['meta']['expiration'])
                     keys_fail[bucket.name][key].append(int(ttl_set))
                     if self.debug_logs:
-                        print("ttl time set: ", ttl_set)
-                        print("key {0} failed to set ttl with {1}".format(key,
-                                   items_info[key]['meta']['expiration']))
+                        print(("ttl time set: ", ttl_set))
+                        print(("key {0} failed to set ttl with {1}".format(key,
+                                   items_info[key]['meta']['expiration'])))
 
             if not ttl_matched:
                 self.fail("ttl value did not set correctly")
             else:
                 self.log.info("all ttl value set matched")
             if int(self.replace_ttl_with) == 0:
-                if len(bk_file_data[bucket.name].keys()) != \
+                if len(list(bk_file_data[bucket.name].keys())) != \
                                 int(restore_buckets_items[bucket.name]):
                     self.fail("Keys do not restore with ttl set to 0")
             elif int(self.replace_ttl_with) > 0:
@@ -1466,7 +1466,7 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                     self.log.info("time expired.  No need to wait")
 
                 BucketOperationHelper.verify_data(self.backupset.restore_cluster_host,
-                                                  bk_file_data[bucket.name].keys(),
+                                                  list(bk_file_data[bucket.name].keys()),
                                                   False, False, self, bucket=bucket.name)
                 self.sleep(10, "wait for bucket update new stats")
                 restore_buckets_items = rest.get_buckets_itemCount()
@@ -1561,7 +1561,7 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
                                         bk_file_events_path)
         local_bk_def = open(bk_file_events_path)
         bk_file_fxn = json.loads(local_bk_def.read())
-        for k, v in bk_file_fxn[0]["settings"].iteritems():
+        for k, v in list(bk_file_fxn[0]["settings"].items()):
             if v != bk_fxn[0]["settings"][k]:
                 self.log.info("key {0} has value not match".format(k))
                 self.log.info("{0} : {1}".format(v, bk_fxn[0]["settings"][k]))
@@ -1583,7 +1583,7 @@ class EnterpriseBackupRestoreBase(BaseTestCase):
 
     def ordered(self, obj):
         if isinstance(obj, dict):
-            return sorted((k, self.ordered(v)) for k, v in obj.items())
+            return sorted((k, self.ordered(v)) for k, v in list(obj.items()))
         if isinstance(obj, list):
             return sorted(self.ordered(x) for x in obj)
         else:
@@ -1672,7 +1672,7 @@ class EnterpriseBackupMergeBase(EnterpriseBackupRestoreBase):
                                             start=self.num_items / 10,
                                             end=self.num_items)
         elif self.document_type == "json":
-            age = range(5)
+            age = list(range(5))
             first = ['james', 'sharon']
             template = '{{ "age": {0}, "first_name": "{1}" }}'
             gen = DocumentGenerator('test_docs', template, age, first, start=0,
@@ -1715,7 +1715,7 @@ class EnterpriseBackupMergeBase(EnterpriseBackupRestoreBase):
         try:
             role_del = [bucket.name]
             RbacBase().remove_user_role(role_del, RestConnection(cluster_host))
-        except Exception, ex:
+        except Exception as ex:
             self.log.info(str(ex))
             self.assertTrue(str(ex) == '"User was not found."', str(ex))
 
@@ -1734,7 +1734,7 @@ class EnterpriseBackupMergeBase(EnterpriseBackupRestoreBase):
             else:
                 self.fail("Failed to connect to bucket " + bucket.name + " on " + ip + " using python SDK")
             return cb
-        except Exception, ex:
+        except Exception as ex:
             self.fail(str(ex))
 
     def async_ops_on_buckets(self):
@@ -1824,7 +1824,7 @@ class EnterpriseBackupMergeBase(EnterpriseBackupRestoreBase):
         output = backup_result.result(timeout=200)
         if self.debug_logs:
             if output:
-                print "\nOutput from backup cluster: %s " % output
+                print(("\nOutput from backup cluster: %s " % output))
             else:
                 self.fail("No output printout.")
         self.assertTrue(self._check_output("Backup successfully completed", output),
@@ -2544,7 +2544,7 @@ class EnterpriseBackupMergeBase(EnterpriseBackupRestoreBase):
         try:
             self.log.info("Create fts index")
             rest_fts.create_fts_index(index_name, index_definition)
-        except Exception, ex:
+        except Exception as ex:
             self.fail(ex)
 
         if not self.skip_restore_indexes:
@@ -2595,7 +2595,7 @@ class EnterpriseBackupMergeBase(EnterpriseBackupRestoreBase):
                 try:
                     self.log.info("Create fts index")
                     rest_fts.create_fts_index(index_name, index_definition)
-                except Exception, ex:
+                except Exception as ex:
                     self.fail(ex)
         remote_client.disconnect()
 
@@ -2606,7 +2606,7 @@ class EnterpriseBackupMergeBase(EnterpriseBackupRestoreBase):
         try:
             self.log.info("Update fts index")
             rest_fts.update_fts_index("age1", index_definition)
-        except Exception, ex:
+        except Exception as ex:
             self.fail(ex)
 
     def do_backup_merge_actions(self):
@@ -2688,7 +2688,7 @@ class EnterpriseBackupMergeBase(EnterpriseBackupRestoreBase):
         params = {}
         api = rest.baseUrl + "controller/setAutoCompaction"
         params["purgeInterval"] = 0.003
-        params = urllib.urlencode(params)
+        params = urllib.parse.urlencode(params)
         return rest._http_request(api, "POST", params)
 
     backup_merge_actions = {

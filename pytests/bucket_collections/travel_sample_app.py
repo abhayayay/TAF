@@ -32,8 +32,8 @@ class TravelSampleApp(AppBase):
                                           sleep=1)
         # Fetch all tenants from the bucket (Scope will collection "meta_data")
         self.tenants = list()
-        for scope_name, scope in self.bucket.scopes.items():
-            for c_name, _ in scope.collections.items():
+        for scope_name, scope in list(self.bucket.scopes.items()):
+            for c_name, _ in list(scope.collections.items()):
                 if c_name == "meta_data":
                     self.tenants.append(scope_name)
                     break
@@ -186,7 +186,7 @@ class TravelSampleApp(AppBase):
             self.assertFalse(result, "CRASH | CRITICAL | WARN messages "
                                      "found in cb_logs")
 
-            if choice(range(0, 9)) == 10:
+            if choice(list(range(0, 9))) == 10:
                 query_util.CommonUtil.incr_date(self.tenants)
 
             itr_index += 1

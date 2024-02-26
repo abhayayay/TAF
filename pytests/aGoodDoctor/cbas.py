@@ -73,13 +73,13 @@ class DoctorCBAS():
         self.stop_run = True
 
     def create_datasets(self):
-        for index in self.datasets.values():
+        for index in list(self.datasets.values()):
             time.sleep(1)
             self.execute_statement_on_cbas(index[0])
 
     def wait_for_ingestion(self, item_count, timeout=86400):
         status = False
-        for dataset in self.datasets.keys():
+        for dataset in list(self.datasets.keys()):
             status = False
             stop_time = time.time() + timeout
             while time.time() < stop_time:
@@ -262,22 +262,22 @@ class DoctorCBAS():
         if duration == 0:
             while True:
                 if st_time + print_duration < time.time():
-                    print("%s CBAS queries submitted, %s failed, \
+                    print(("%s CBAS queries submitted, %s failed, \
                         %s passed, %s rejected, \
                         %s cancelled, %s timeout %s errored" % (
                         self.total_query_count, self.failed_count,
                         self.success_count, self.rejected_count,
                         self.cancel_count, self.timeout_count,
-                        self.error_count))
+                        self.error_count)))
                     st_time = time.time()
         else:
             while st_time + duration > time.time():
                 if update_time + print_duration < time.time():
-                    print("%s CBAS queries submitted, %s failed, \
+                    print(("%s CBAS queries submitted, %s failed, \
                         %s passed, %s rejected, \
                         %s cancelled, %s timeout %s errored" % (
                         self.total_query_count, self.failed_count,
                         self.success_count, self.rejected_count,
                         self.cancel_count, self.timeout_count,
-                        self.error_count))
+                        self.error_count)))
                     update_time = time.time()

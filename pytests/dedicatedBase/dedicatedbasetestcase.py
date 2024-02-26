@@ -16,7 +16,7 @@ from cb_basetest import CouchbaseBaseTest
 from cluster_utils.cluster_ready_functions import ClusterUtils, CBCluster
 from constants.cloud_constants.capella_constants import AWS, Cluster
 from security_config import trust_all_certs
-from Jython_tasks.task import DeployCloud
+from tasks.task import DeployCloud
 import uuid
 from table_view import TableView
 
@@ -208,7 +208,7 @@ class OnCloudBaseTest(CouchbaseBaseTest):
                                                      % default_xdcr_cluster_index]
             self.cluster_util = ClusterUtils(self.task_manager)
             self.bucket_util = BucketUtils(self.cluster_util, self.task)
-            for _, cluster in self.cb_clusters.items():
+            for _, cluster in list(self.cb_clusters.items()):
                 self.cluster_util.print_cluster_stats(cluster)
 
             self.sleep(10)
@@ -219,9 +219,9 @@ class OnCloudBaseTest(CouchbaseBaseTest):
 
     def tearDown(self):
         if self.is_test_failed() and self.get_cbcollect_info:
-            for _, cluster in self.cb_clusters.items():
+            for _, cluster in list(self.cb_clusters.items()):
                 CapellaUtils.trigger_log_collection(self.pod, self.tenant, cluster.id)
-            for _, cluster in self.cb_clusters.items():
+            for _, cluster in list(self.cb_clusters.items()):
                 table = TableView(self.log.info)
                 table.add_row(["URL"])
                 task = CapellaUtils.check_logs_collect_status(self.pod, self.tenant, cluster.id)
@@ -237,7 +237,7 @@ class OnCloudBaseTest(CouchbaseBaseTest):
             return
 
         if not TestInputSingleton.input.capella.get("clusters", None):
-            for name, cluster in self.cb_clusters.items():
+            for name, cluster in list(self.cb_clusters.items()):
                 self.log.info("Destroying cluster: {}".format(name))
                 CapellaUtils.destroy_cluster(cluster)
         if not TestInputSingleton.input.capella.get("project", None):

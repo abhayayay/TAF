@@ -108,7 +108,7 @@ class CbCli(CbCmdBase):
                  self.username, self.password)
         if wait:
             cmd += " --wait"
-        for key, value in bucket_dict.items():
+        for key, value in list(bucket_dict.items()):
             option = None
             if key == Bucket.name:
                 option = "--bucket"
@@ -166,7 +166,7 @@ class CbCli(CbCmdBase):
               .format(self.cbstatCmd, "localhost", self.port,
                  self.username, self.password, bucket_name)
 
-        for key, value in params.items():
+        for key, value in list(params.items()):
             if key == Bucket.ramQuotaMB:
                 cmd += " --bucket-ramsize " + str(value)
             if key == Bucket.evictionPolicy:

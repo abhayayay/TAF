@@ -12,13 +12,10 @@ from Cb_constants.CBServer import CbServer
 from TestInput import TestInputSingleton
 from couchbase_helper.documentgenerator import doc_generator
 import json as Json
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_client3 import SDKClient
-from sdk_constants.java_client import SDKConstants
-from com.couchbase.test.docgen import DocRange
-from couchbase.test.docgen import DRConstants
-from java.util import HashMap
+from sdk_constants.sdk_client_constants import SDKConstants
 
 
 class MagmaCrashTests(MagmaBaseTest):
@@ -233,7 +230,7 @@ class MagmaCrashTests(MagmaBaseTest):
                     track_failures=False,
                     sdk_retry_strategy=self.sdk_retry_strategy,
                     iterations=self.dedupe_iterations)
-                tasks_info.update(tem_tasks_info.items())
+                tasks_info.update(list(tem_tasks_info.items()))
 
         self.crash_th = threading.Thread(target=self.crash,
                                          kwargs=dict(graceful=self.graceful,
@@ -257,7 +254,7 @@ class MagmaCrashTests(MagmaBaseTest):
         for node in self.cluster.nodes_in_cluster:
             if "kv" in node.services:
                 self.assertTrue(self.bucket_util._wait_warmup_completed(
-                    [node], self.cluster.buckets[0],
+                    self.cluster.buckets[0], [node],
                     wait_time=self.wait_timeout * 5))
 
     def test_crash_during_ops_new(self):
@@ -356,7 +353,7 @@ class MagmaCrashTests(MagmaBaseTest):
                 doc_ops=self.doc_ops,
                 track_failures=False,
                 sdk_retry_strategy=self.sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         self.crash_th = threading.Thread(target=self.crash,
                                          kwargs=dict(graceful=self.graceful,
@@ -393,7 +390,7 @@ class MagmaCrashTests(MagmaBaseTest):
                 doc_ops=self.doc_ops,
                 track_failures=False,
                 sdk_retry_strategy=self.sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         self.crash_th = threading.Thread(target=self.crash, kwargs={"kill_itr": 2})
         self.crash_th.start()
@@ -433,7 +430,7 @@ class MagmaCrashTests(MagmaBaseTest):
                                                _sync=False,
                                                doc_ops=self.doc_ops,
                                                track_failures=False)
-                tasks_info.update(tem_tasks_info.items())
+                tasks_info.update(list(tem_tasks_info.items()))
                 for task in tasks_info:
                     self.task_manager.get_task_result(task)
                 self.bucket_util._wait_for_stats_all_buckets(
@@ -590,7 +587,7 @@ class MagmaCrashTests(MagmaBaseTest):
             #    self.retry_exceptions,
             #    self.ignore_exceptions,
             #    _sync=False)
-            tasks_info.update(update_task_info.items())
+            tasks_info.update(list(update_task_info.items()))
 
         self.doc_ops = "read"
         self.generate_docs(doc_ops="read")
@@ -605,7 +602,7 @@ class MagmaCrashTests(MagmaBaseTest):
                                                suppress_error_table=True,
                                                _sync=False)
 
-            tasks_info.update(read_task_info.items())
+            tasks_info.update(list(read_task_info.items()))
             count += 1
             if count < self.read_thread_count:
                 read_task_info = self.bucket_util._async_validate_docs(
@@ -616,7 +613,7 @@ class MagmaCrashTests(MagmaBaseTest):
                     retry_exceptions=self.retry_exceptions,
                     ignore_exceptions=self.ignore_exceptions,
                     suppress_error_table=False)
-                tasks_info.update(read_task_info.items())
+                tasks_info.update(list(read_task_info.items()))
                 count += 1
 
         self.crash_th = threading.Thread(target=self.crash,
@@ -656,7 +653,7 @@ class MagmaCrashTests(MagmaBaseTest):
                 _sync=False,
                 track_failures=False,
                 sdk_retry_strategy=self.sdk_retry_strategy)
-            tasks_info.update(update_task_info.items())
+            tasks_info.update(list(update_task_info.items()))
             count += 1
             self.sleep(5)
 
@@ -690,7 +687,7 @@ class MagmaCrashTests(MagmaBaseTest):
 
         self.doc_ops = "update"
         self.gen_update = self.genrate_docs_basic(start=0, end=1)
-        key, val = self.gen_update.next()
+        key, val = next(self.gen_update)
 
         def upsert_doc(start_num, end_num, key_obj, val_obj):
             for i in range(start_num, end_num):

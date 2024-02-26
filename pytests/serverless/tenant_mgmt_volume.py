@@ -57,7 +57,7 @@ class TenantMgmtVolumeTest(TenantMgmtOnCloud):
 
     def tearDown(self):
         self.log.info("Stopping doc_ops for all buckets")
-        for bucket_name in self.doc_ops_bucket_map.keys():
+        for bucket_name in list(self.doc_ops_bucket_map.keys()):
             self.__stop_doc_ops_for_bucket(
                 self.__get_bucket_obj_with_name(bucket_name))
 
@@ -159,7 +159,7 @@ class TenantMgmtVolumeTest(TenantMgmtOnCloud):
 
     def __add_task_to_bucket_map(self, work_load_generate_task):
         b_name = work_load_generate_task.bucket_name
-        if b_name not in self.doc_ops_bucket_map.keys():
+        if b_name not in list(self.doc_ops_bucket_map.keys()):
             self.doc_ops_bucket_map[b_name] = list()
         self.doc_ops_bucket_map[b_name].append(work_load_generate_task)
 
@@ -231,7 +231,7 @@ class TenantMgmtVolumeTest(TenantMgmtOnCloud):
         self.cluster.buckets.remove(bucket)
 
     def __stop_doc_ops_for_bucket(self, bucket):
-        if bucket.name not in self.doc_ops_bucket_map.keys():
+        if bucket.name not in list(self.doc_ops_bucket_map.keys()):
             return
         self.log.info("Stopping doc-ops for bucket '%s'" % bucket.name)
         for task in self.doc_ops_bucket_map[bucket.name]:

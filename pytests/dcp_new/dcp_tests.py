@@ -1,4 +1,4 @@
-from dcp_base import DCPBase
+from .dcp_base import DCPBase
 from dcp_new.constants import *
 from dcp_bin_client import *
 from mc_bin_client import MemcachedClient as McdClient
@@ -38,17 +38,17 @@ class DcpTestCase(DCPBase):
 
     def test_open_consumer_connection_command(self):
         response = self.dcp_client.open_consumer("mystream")
-        print("response: {0}".format(response))
+        print(("response: {0}".format(response)))
         assert response['status'] == SUCCESS
 
         response = self.mcd_client.stats('dcp')
-        print("response: {0}".format(response))
+        print(("response: {0}".format(response)))
         assert response['eq_dcpq:mystream:type'] == 'consumer'
 
         self.dcp_client.close()
         self.sleep(1)
         response = self.mcd_client.stats('dcp')
-        print("response: {0}".format(response))
+        print(("response: {0}".format(response)))
 
         assert 'eq_dcpq:mystream:type' not in response
 
@@ -61,17 +61,17 @@ class DcpTestCase(DCPBase):
     def test_open_producer_connection_command(self):
 
         response = self.dcp_client.open_producer("mystream")
-        print("response: {0}".format(response))
+        print(("response: {0}".format(response)))
         assert response['status'] == SUCCESS
 
         response = self.mcd_client.stats('dcp')
-        print("response: {0}".format(response))
+        print(("response: {0}".format(response)))
         assert response['eq_dcpq:mystream:type'] == 'producer'
 
         self.dcp_client.close()
         self.sleep(1)
         response = self.mcd_client.stats('dcp')
-        print("response: {0}".format(response))
+        print(("response: {0}".format(response)))
 
         assert 'eq_dcpq:mystream:type' not in response
 
@@ -83,18 +83,18 @@ class DcpTestCase(DCPBase):
         tcp connection is closed the connection is remove from the server"""
 
         response = self.dcp_client.open_notifier("notifier")
-        print("response: {0}".format(response))
+        print(("response: {0}".format(response)))
         assert response['status'] == SUCCESS
 
         response = self.mcd_client.stats('dcp')
-        print("response: {0}".format(response))
+        print(("response: {0}".format(response)))
         assert response['eq_dcpq:notifier:type'] == 'notifier'
 
         self.dcp_client.close()
         self.sleep(1)
 
         response = self.mcd_client.stats('dcp')
-        print("response: {0}".format(response))
+        print(("response: {0}".format(response)))
         assert 'eq_dcpq:mystream:type' not in response
 
     """Open consumer connection same key
@@ -189,9 +189,9 @@ class DcpTestCase(DCPBase):
 
     def test_open_n_consumer_producers(self):
         n = 16
-        conns = [DcpClient(self.cluster.master.ip,  self.cluster.master.port) for i in xrange(2 * n)]
+        conns = [DcpClient(self.cluster.master.ip,  self.cluster.master.port) for i in range(2 * n)]
         ops = []
-        for i in xrange(n):
+        for i in range(n):
             op = conns[i].open_consumer("consumer{0}".format(i))
             ops.append(op)
             op = conns[n + i].open_producer("producer{0}".format(n + i))
@@ -340,8 +340,8 @@ class DcpTestCase(DCPBase):
         n = 16
         self.verification_seqno = n
 
-        conns = [DcpClient(self.cluster.master.ip,  self.cluster.master.port) for i in xrange(n)]
-        for i in xrange(n):
+        conns = [DcpClient(self.cluster.master.ip,  self.cluster.master.port) for i in range(n)]
+        for i in range(n):
             response = self.mcd_client.set('key' + str(i), 0, 0, 'value', 0)
 
             stream = "mystream{0}".format(i)
@@ -367,8 +367,8 @@ class DcpTestCase(DCPBase):
         self.verification_seqno = n
 
         vb_ids = self.all_vbucket_ids()
-        conns = [DcpClient(self.cluster.master.ip,  self.cluster.master.port) for i in xrange(n)]
-        for i in xrange(n):
+        conns = [DcpClient(self.cluster.master.ip,  self.cluster.master.port) for i in range(n)]
+        for i in range(n):
             self.mcd_client.set('key' + str(i), 0, 0, 'value', 0)
 
             stream = "mystream{0}".format(i)
@@ -436,7 +436,7 @@ class DcpTestCase(DCPBase):
 
         # get vb uuid
         response = self.mcd_client.stats('failovers')
-        vb_uuid = long(response['vb_0:0:id'])
+        vb_uuid = int(response['vb_0:0:id'])
 
         self.mcd_client.set('snap1', 0, 0, 'value1', 0)
         self.mcd_client.set('snap1', 0, 0, 'value2', 0)
@@ -488,7 +488,7 @@ class DcpTestCase(DCPBase):
 
         # get vb uuid
         resp = self.mcd_client.stats('failovers')
-        vb_uuid = long(resp['vb_0:0:id'])
+        vb_uuid = int(resp['vb_0:0:id'])
 
         # load stream snapshot 1
         load('a')
@@ -673,7 +673,7 @@ class DcpTestCase(DCPBase):
     def test_close_stream_n_consumers(self):
 
         n = 16
-        for i in xrange(100):
+        for i in range(100):
             self.mcd_client.set('key' + str(i), 0, 0, 'value', 0)
         self.wait_for_persistence(self.mcd_client)
 
@@ -683,9 +683,9 @@ class DcpTestCase(DCPBase):
         client2.open_consumer(closestream)
         client2.add_stream(0, 0)
 
-        conns = [DcpClient(self.cluster.master.ip,  self.cluster.master.port) for i in xrange(n)]
+        conns = [DcpClient(self.cluster.master.ip,  self.cluster.master.port) for i in range(n)]
 
-        for i in xrange(n):
+        for i in range(n):
 
             stream = "mystream{0}".format(i)
             conns[i].open_consumer(stream)
@@ -700,7 +700,7 @@ class DcpTestCase(DCPBase):
         key = "eq_dcpq:{0}:stream_0_state".format(closestream)
         assert stats[key] == 'dead'
 
-        for i in xrange(n):
+        for i in range(n):
             key = "eq_dcpq:mystream{0}:stream_0_state".format(i)
             assert stats[key] in ('reading', 'pending')
 
@@ -992,8 +992,8 @@ class DcpTestCase(DCPBase):
         assert response['status'] == SUCCESS
 
         resp = self.mcd_client.stats('failovers')
-        vb_uuid = long(resp['vb_0:0:id'])
-        high_seqno = long(resp['vb_0:0:seq'])
+        vb_uuid = int(resp['vb_0:0:id'])
+        high_seqno = int(resp['vb_0:0:seq'])
 
         start_seqno = 7
         stream = self.dcp_client.stream_req(
@@ -1003,7 +1003,7 @@ class DcpTestCase(DCPBase):
 
         responses = stream.run()
         mutations = \
-            len(filter(lambda r: r['opcode'] == CMD_MUTATION, responses))
+            len([r for r in responses if r['opcode'] == CMD_MUTATION])
 
         assert stream.last_by_seqno == 10
         assert mutations == 3
@@ -1059,7 +1059,7 @@ class DcpTestCase(DCPBase):
                     print(i)
             else:
                 for i in range(20):
-                    print(pauses[i])
+                    print((pauses[i]))
 
             assert False, 'There were pauses greater than 10 seconds in receiving stream contents'
 
@@ -1093,9 +1093,9 @@ class DcpTestCase(DCPBase):
         responses = stream.run()
 
         mutations = \
-            len(filter(lambda r: r['opcode'] == CMD_MUTATION, responses))
+            len([r for r in responses if r['opcode'] == CMD_MUTATION])
         deletions = \
-            len(filter(lambda r: r['opcode'] == CMD_DELETION, responses))
+            len([r for r in responses if r['opcode'] == CMD_DELETION])
 
         assert mutations == 5
         assert deletions == 5
@@ -1142,12 +1142,12 @@ class DcpTestCase(DCPBase):
         assert stream.status == SUCCESS
         responses = stream.run()
 
-        print('responses', responses)
+        print(('responses', responses))
 
         mutations = \
-            len(filter(lambda r: r['opcode'] == CMD_MUTATION, responses))
+            len([r for r in responses if r['opcode'] == CMD_MUTATION])
         deletions = \
-            len(filter(lambda r: r['opcode'] == CMD_DELETION, responses))
+            len([r for r in responses if r['opcode'] == CMD_DELETION])
 
         assert deletions == 1, 'Deletion mismatch, expect {0}, actual {1}'.format(2, deletions)
         assert mutations == 1, 'Mutation mismatch, expect {0}, actual {1}'.format(1, mutations)
@@ -1211,7 +1211,7 @@ class DcpTestCase(DCPBase):
         assert response['status'] == SUCCESS
 
         resp = self.mcd_client.stats('failovers')
-        vb_uuid = long(resp['vb_0:0:id'])
+        vb_uuid = int(resp['vb_0:0:id'])
 
         # set 3 items and delete delete first 2
         self.mcd_client.set('key1', 0, 0, 'value', 0)
@@ -1298,7 +1298,7 @@ class DcpTestCase(DCPBase):
                            'last_seqno': 0}
 
         while len(streams) > 0:
-            for vb in streams.keys():
+            for vb in list(streams.keys()):
                 if streams[vb]['stream'].has_response():
                     response = streams[vb]['stream'].next_response()
                     if response['opcode'] == 87:
@@ -1325,9 +1325,9 @@ class DcpTestCase(DCPBase):
         vb_id = 'vb_0'
         vb_stats = self.mcd_client.stats('vbucket-seqno')
         fl_stats = self.mcd_client.stats('failovers')
-        fail_seqno = long(fl_stats[vb_id + ':0:seq'])
-        vb_uuid = long(vb_stats[vb_id + ':uuid'])
-        rollback = long(vb_stats[vb_id + ':high_seqno'])
+        fail_seqno = int(fl_stats[vb_id + ':0:seq'])
+        vb_uuid = int(vb_stats[vb_id + ':uuid'])
+        rollback = int(vb_stats[vb_id + ':high_seqno'])
 
         start_seqno = end_seqno = 3
         stream = self.dcp_client.stream_req(0, 0, start_seqno, end_seqno, vb_uuid)
@@ -1356,7 +1356,7 @@ class DcpTestCase(DCPBase):
         assert response['status'] == SUCCESS
 
         vb_stats = self.mcd_client.stats('vbucket-seqno')
-        vb_uuid = long(vb_stats['vb_0:uuid'])
+        vb_uuid = int(vb_stats['vb_0:uuid'])
 
         for n in range(1000):
             self.mcd_client.set('key1', 0, 0, 'value', 0)
@@ -1407,7 +1407,7 @@ class DcpTestCase(DCPBase):
 
         # failover uuid
         resp = self.mcd_client.stats('failovers')
-        vb_uuid = long(resp['vb_0:0:id'])
+        vb_uuid = int(resp['vb_0:0:id'])
 
         # vb_uuid does not exist
         self.dcp_client.open_producer("rollback")
@@ -1437,13 +1437,13 @@ class DcpTestCase(DCPBase):
         doc_count = 100
         self.dcp_client.open_producer("mystream")
 
-        for i in xrange(doc_count):
+        for i in range(doc_count):
             self.mcd_client.set('key' + str(i), 0, 0, 'value', 0)
         self.sleep(2)
         self.wait_for_persistence(self.mcd_client)
 
         resp = self.mcd_client.stats('failovers')
-        vb_uuid = long(resp['vb_0:0:id'])
+        vb_uuid = int(resp['vb_0:0:id'])
 
         stream = self.dcp_client.stream_req(0, 0, 0, doc_count,
                                             vb_uuid)
@@ -1471,7 +1471,7 @@ class DcpTestCase(DCPBase):
         assert response['status'] == SUCCESS
 
         resp = self.mcd_client.stats('failovers')
-        vb_uuid = long(resp['vb_0:0:id'])
+        vb_uuid = int(resp['vb_0:0:id'])
 
         notifier_stream = \
             self.dcp_client.stream_req(0, 0, doc_count - 1, 0, vb_uuid)
@@ -1673,12 +1673,12 @@ class DcpTestCase(DCPBase):
     def test_stream_request_client_per_vb(self):
         """ stream request muataions from each vbucket with a new client """
 
-        for vb in xrange(8):
+        for vb in range(8):
             for i in range(1000):
                 self.mcd_client.set('key' + str(i), 0, 0, 'value', vb)
 
         num_vbs = len(self.all_vbucket_ids())
-        for vb in xrange(8):
+        for vb in range(8):
 
             dcp_client = DcpClient(self.cluster.master.ip,  self.cluster.master.port)
             dcp_client.open_producer("producerstream")
@@ -1775,7 +1775,7 @@ class DcpTestCase(DCPBase):
             return int(acked), int(sent), int(unacked)
 
         # all stats 0
-        assert all(map(lambda x: x == 0, info()))
+        assert all([x == 0 for x in info()])
 
         stream = self.dcp_client.stream_req(0, 0, 0, 3, 0)
         self.sleep(10)  # give time for the stats to settle
@@ -1783,7 +1783,7 @@ class DcpTestCase(DCPBase):
         assert acked == 0
 
         if unacked != sent:
-            print("test_flow_control_stats unacked %d sent %d" % (unacked, sent))
+            print(("test_flow_control_stats unacked %d sent %d" % (unacked, sent)))
             self.log.info("test_flow_control_stats unacked %d sent %d" % (unacked, sent))
 
         assert unacked == sent
@@ -1817,7 +1817,7 @@ class DcpTestCase(DCPBase):
             self.mcd_client.set('key' + str(i), 0, 0, 'value', 0)
 
         resp = self.mcd_client.stats('failovers')
-        vb_uuid = long(resp['vb_0:0:id'])
+        vb_uuid = int(resp['vb_0:0:id'])
 
         stream = self.dcp_client.stream_req(0, 0, 0, end_seqno, vb_uuid)
         max_timeouts = 10
@@ -1907,7 +1907,7 @@ class DcpTestCase(DCPBase):
 
         # vb uuid
         resp = self.mcd_client.stats('failovers')
-        vb_uuid = long(resp['vb_0:0:id'])
+        vb_uuid = int(resp['vb_0:0:id'])
 
         # set to notify when seqno endseqno reached
         notifier_stream = self.dcp_client.stream_req(0, 0, mutations + 1, 0, vb_uuid)
@@ -1944,7 +1944,7 @@ class DcpTestCase(DCPBase):
 
         # request mutations
         resp = self.mcd_client.stats('failovers')
-        vb_uuid = long(resp['vb_0:0:id'])
+        vb_uuid = int(resp['vb_0:0:id'])
         for vb in range(num_vbs):
             self.dcp_client.stream_req(vb, 0, 0, mutations, vb_uuid)
 
@@ -1987,7 +1987,7 @@ class DcpTestCase(DCPBase):
         # response = dcp_client2.add_stream(0, 0)
         # assert response['status'] == SUCCESS
 
-        for i in xrange(1000):
+        for i in range(1000):
             self.mcd_client.set('key%s' % i, 0, 0, 'value', 0)
 
         stream.run()
@@ -2000,7 +2000,7 @@ class DcpTestCase(DCPBase):
 
         n = 5
         response = self.dcp_client.open_producer("producer")
-        for i in xrange(n):
+        for i in range(n):
             self.mcd_client.set('key' + str(i), 0, 0, 'value', 0)
 
         for i in range(n):
@@ -2013,7 +2013,7 @@ class DcpTestCase(DCPBase):
         stream = self.dcp_client.stream_req(0, 0, 0, n, 0)
         responses = stream.run()
         mutations = \
-            filter(lambda r: r['opcode'] == CMD_MUTATION, responses)
+            [r for r in responses if r['opcode'] == CMD_MUTATION]
         assert len(mutations) == n
         assert stream.last_by_seqno == 2 * n
 
@@ -2040,7 +2040,7 @@ class DcpTestCase(DCPBase):
         response = self.dcp_client.general_control('enable_ext_metadata', 'true')
         assert response['status'] == SUCCESS
 
-        for i in xrange(n):
+        for i in range(n):
             self.mcd_client.set('key' + str(i), 0, 0, 'value', 0)
 
         stream = self.dcp_client.stream_req(0, 0, 0, n, 0)
@@ -2067,7 +2067,7 @@ class DcpTestCase(DCPBase):
         # set time synchronization
         self.mcd_client.set_time_drift_counter_state(0, 0, 1)
 
-        for i in xrange(n):
+        for i in range(n):
             self.mcd_client.set('key' + str(i), 0, 0, 'value', 0)
 
         stream = self.dcp_client.stream_req(0, 0, 0, n, 0)
@@ -2113,7 +2113,7 @@ class DcpTestCase(DCPBase):
                 self._execute_command('killall -9 memcached')
 
         response = self.mcd_client.stats('failovers')
-        vb_uuid = long(response['vb_0:0:id'])
+        vb_uuid = int(response['vb_0:0:id'])
 
         start = 0
         end = doc_count
@@ -2135,7 +2135,7 @@ class DcpTestCase(DCPBase):
         self.mcd_client = McdClient(self.cluster.master.ip,  self.cluster.master.port)
 
         response = self.mcd_client.stats('failovers')
-        vb_uuid = long(response['vb_0:0:id'])
+        vb_uuid = int(response['vb_0:0:id'])
 
         assert len(by_seqno_list)
         start = by_seqno_list[0]
@@ -2166,7 +2166,7 @@ class DcpTestCase(DCPBase):
         snap_start = snap_end = start
 
         response = self.mcd_client.stats('failovers')
-        vb_uuid = long(response['vb_0:0:id'])
+        vb_uuid = int(response['vb_0:0:id'])
 
         for i in range(0, 500):
             stream = self.dcp_client.stream_req(0, 0, start, end, vb_uuid,

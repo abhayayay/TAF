@@ -42,7 +42,7 @@ class AutoCompactionTests(CollectionBase):
     def insert_key(node, bucket_name, count, size):
         rest = RestConnection(node)
         smart = VBucketAwareMemcached(rest, bucket_name)
-        for i in xrange(count * 1000):
+        for i in range(count * 1000):
             key = "key_" + str(i)
             value = {"value": MemcachedClientHelper.create_value("*", size)}
             smart.memcached(key).set(key, 0, 0, json.dumps(value))
@@ -65,8 +65,8 @@ class AutoCompactionTests(CollectionBase):
             # update docs to create fragmentation
             try:
                 for bucket in self.cluster.buckets:
-                    for _, scope in bucket.scopes.items():
-                        for _, collection in scope.collections.items():
+                    for _, scope in list(bucket.scopes.items()):
+                        for _, collection in list(scope.collections.items()):
                             task = self.task.async_load_gen_docs(
                                 self.cluster, bucket, gen, "update", 0,
                                 durability=self.durability_level,
@@ -85,7 +85,7 @@ class AutoCompactionTests(CollectionBase):
                     else:
                         continue
                     break
-            except Exception, ex:
+            except Exception as ex:
                 self.is_crashed.set()
                 self.log.error("Load cannot be performed: %s" % str(ex))
         if monitor_fragm.result is False and self.autocompaction_value==0: #fragmentation level will never reach the expected value as auto-compaction kicks in before that threshold is achieved if opted
@@ -94,8 +94,8 @@ class AutoCompactionTests(CollectionBase):
     def _load_all_buckets(self, generator, op_type, batch_size=10,
                           process_concurrency=8, items=0):
         for bucket in self.cluster.buckets:
-            for _, scope in bucket.scopes.items():
-                for _, collection in scope.collections.items():
+            for _, scope in list(bucket.scopes.items()):
+                for _, collection in list(scope.collections.items()):
                     task = self.task.async_load_gen_docs(
                         self.cluster, bucket, generator, op_type, 0,
                         durability=self.durability_level,
@@ -278,8 +278,8 @@ class AutoCompactionTests(CollectionBase):
         collections = self.bucket_util.get_random_collections(
             [bucket_obj], 1, 1, 1)
         scope_dict = collections[self.bucket.name]["scopes"]
-        scope_name = scope_dict.keys()[0]
-        collection_name = scope_dict[scope_name]["collections"].keys()[0]
+        scope_name = list(scope_dict.keys())[0]
+        collection_name = list(scope_dict[scope_name]["collections"].keys())[0]
         doc_update_task = self.task.async_continuous_doc_ops(
             self.cluster, self.bucket, self.gen_update,
             op_type=DocLoading.Bucket.DocOps.UPDATE,
@@ -421,8 +421,8 @@ class AutoCompactionTests(CollectionBase):
         collections = self.bucket_util.get_random_collections(
             [bucket_obj], 1, 1, 1)
         scope_dict = collections[self.bucket.name]["scopes"]
-        scope_name = scope_dict.keys()[0]
-        collection_name = scope_dict[scope_name]["collections"].keys()[0]
+        scope_name = list(scope_dict.keys())[0]
+        collection_name = list(scope_dict[scope_name]["collections"].keys())[0]
         doc_update_task = self.task.async_continuous_doc_ops(
             self.cluster, self.bucket, self.gen_update,
             op_type=DocLoading.Bucket.DocOps.UPDATE,
@@ -466,7 +466,7 @@ class AutoCompactionTests(CollectionBase):
             allowedTimePeriodAbort="false")
         self._load_all_buckets(self.gen_load, "create", items=self.num_items)
         self._monitor_DB_fragmentation(self.bucket)
-        for i in xrange(10):
+        for i in range(10):
             active_tasks = self.cluster.async_monitor_active_task(
                 self.cluster.master,
                 "bucket_compaction",
@@ -513,7 +513,7 @@ class AutoCompactionTests(CollectionBase):
             allowedTimePeriodAbort="false")
         self._load_all_buckets(self.gen_load, "create", items=self.num_items)
         self._monitor_DB_fragmentation(self.bucket)
-        for i in xrange(10):
+        for i in range(10):
             active_tasks = self.cluster.async_monitor_active_task(
                 self.cluster.master,
                 "bucket_compaction",
@@ -754,8 +754,8 @@ class AutoCompactionTests(CollectionBase):
         collections = self.bucket_util.get_random_collections(
                                 [bucket_obj], 1, 1, 1)
         scope_dict = collections[self.bucket.name]["scopes"]
-        scope_name = scope_dict.keys()[0]
-        collection_name = scope_dict[scope_name]["collections"].keys()[0]
+        scope_name = list(scope_dict.keys())[0]
+        collection_name = list(scope_dict[scope_name]["collections"].keys())[0]
 
         doc_update_task = self.task.async_continuous_doc_ops(
             self.cluster, bucket, self.gen_update,

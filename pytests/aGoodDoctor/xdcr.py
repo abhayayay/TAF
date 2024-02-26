@@ -79,11 +79,11 @@ class DoctorXDCR():
                     for current_repl in self.src_rest.get_replications():
                         for repl in self.replications:
                             if current_repl['id'] == repl.repl_id:
-                                print("Source bucket {0} doc count = {1}\nDest bucket {2} doc count = {3}".format(
+                                print(("Source bucket {0} doc count = {1}\nDest bucket {2} doc count = {3}".format(
                                     repl.src_bkt,
                                     self.bucket_util.get_bucket_current_item_count(repl.src_cluster, repl.src_bkt),
                                     repl.dest_bkt,
-                                    self.bucket_util.get_bucket_current_item_count(repl.dest_cluster, repl.src_bkt)))
+                                    self.bucket_util.get_bucket_current_item_count(repl.dest_cluster, repl.src_bkt))))
         else:
             while st_time + duration > time.time():
                 if update_time + print_duration < time.time():

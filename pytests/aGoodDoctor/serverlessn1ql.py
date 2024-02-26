@@ -199,7 +199,7 @@ class DoctorN1QL():
             for s in self.bucket_util.get_active_scopes(b, only_names=True):
                 if s == CbServer.system_scope:
                     continue
-                if b.name+s not in self.sdkClients.keys():
+                if b.name+s not in list(self.sdkClients.keys()):
                     self.sdkClients.update({b.name+s: b.clients[0].bucketObj.scope(s)})
                     time.sleep(1)
                 for collection_num, c in enumerate(sorted(self.bucket_util.get_active_collections(b, s, only_names=True))):
@@ -228,7 +228,7 @@ class DoctorN1QL():
                                 time.sleep(10)
                                 continue
                             except IndexNotFoundException as e:
-                                print "Returning from here as we get IndexNotFoundException"
+                                print("Returning from here as we get IndexNotFoundException")
                                 print(e)
                                 return False
                         i += 1
@@ -236,7 +236,7 @@ class DoctorN1QL():
                         if q < workload.get("2i")[1]:
                             unformatted_q = queryType[counter % len(queryType)]
                             query = unformatted_q.format(c)
-                            if unformatted_q not in b.query_map.keys():
+                            if unformatted_q not in list(b.query_map.keys()):
                                 b.query_map[unformatted_q] = "Q%s" % (counter % len(queryType))
                                 b.queries.append((query, self.sdkClients[b.name+s], unformatted_q))
                             q += 1
@@ -254,7 +254,7 @@ class DoctorN1QL():
                 _buckets = buckets[k*10:(k+1)*10]
                 for bucket in _buckets:
                     d = defaultdict(list)
-                    for key, val in bucket.indexes.items():
+                    for key, val in list(bucket.indexes.items()):
                         _, _, _, _, c = val
                         d[c].append(key)
                     for collection in sorted(d.keys())[i:i+1]:
@@ -283,7 +283,7 @@ class DoctorN1QL():
                 if wait:
                     for bucket in _buckets:
                         d = defaultdict(list)
-                        for key, val in bucket.indexes.items():
+                        for key, val in list(bucket.indexes.items()):
                             _, _, _, _, c = val
                             d[c].append(key)
                         self.rest = GsiHelper(dataplane_objs[bucket.serverless.dataplane_id].master, logger["test"])
@@ -293,7 +293,7 @@ class DoctorN1QL():
                                 details = bucket.indexes[index_name]
                                 status = self.rest.polling_create_index_status(
                                     bucket, index_name, timeout=timeout/10)
-                                print("index: {}, status: {}".format(index_name, status))
+                                print(("index: {}, status: {}".format(index_name, status)))
                                 if status is True:
                                     self.log.info("2i index is ready: {}".format(index_name))
                 k += 1
@@ -305,21 +305,21 @@ class DoctorN1QL():
             execute_statement_on_n1ql(details[1], build_query)
 
     def index_stats(self, dataplanes):
-        for dataplane in dataplanes.values():
+        for dataplane in list(dataplanes.values()):
             stat_monitor = threading.Thread(target=self.log_index_stats_new,
                                             kwargs=dict(dataplane=dataplane,
                                                         print_duration=60))
             stat_monitor.start()
 
     def index_ru_wu_stats(self, dataplanes):
-        for dataplane in dataplanes.values():
+        for dataplane in list(dataplanes.values()):
             stat_monitor = threading.Thread(target=self.log_index_ru_wu_stats,
                                             kwargs=dict(dataplane=dataplane,
                                                         print_duration=60))
             stat_monitor.start()
 
     def query_stats(self, dataplanes):
-        for dataplane in dataplanes.values():
+        for dataplane in list(dataplanes.values()):
             stat_monitor = threading.Thread(target=self.log_query_stats,
                                             kwargs=dict(dataplane=dataplane,
                                                         print_duration=60))
@@ -334,7 +334,7 @@ class DoctorN1QL():
                     try:
                         rest = RestConnection(node)
                         resp = rest.urllib_request(rest.indexUrl + "_metering")
-                        print("################## Index Node RU/WU Stats for node {} , Dataplane: {} ##################".format(node, dataplane.id))
+                        print(("################## Index Node RU/WU Stats for node {} , Dataplane: {} ##################".format(node, dataplane.id)))
                         content = resp.text
                         print(content)
                     except Exception as e:
@@ -452,7 +452,7 @@ class DoctorN1QL():
                                                "num_index_repaired",
                                                "memory_used_actual",
                                                "units_used_actual"])
-                for node, gsi_stat in self.defrag.items():
+                for node, gsi_stat in list(self.defrag.items()):
                     self.defrag_table.add_row([node,
                                                gsi_stat["num_tenants"],
                                                gsi_stat["num_index_repaired"],
@@ -471,7 +471,7 @@ class DoctorN1QL():
                 num_tenant_0 = 0
                 nodes_below_15_tenants = 0
                 nodes_below_LWM_defrag = 0
-                for node, gsi_stat in self.defrag.items():
+                for node, gsi_stat in list(self.defrag.items()):
                     if gsi_stat["num_tenants"] == 0:
                         num_tenant_0 += 1
                     elif gsi_stat["num_tenants"] <= 15\
@@ -546,7 +546,7 @@ class QueryLoad:
         for thread in threads:
             thread.join()
 
-        if self.failed_count.next()-1 > 0 or self.error_count.next()-1 > 0:
+        if next(self.failed_count)-1 > 0 or next(self.error_count)-1 > 0:
             raise Exception("Queries Failed:%s , Queries Error Out:%s" %
                             (self.failed_count, self.error_count))
 
@@ -568,13 +568,13 @@ class QueryLoad:
                     self.query_stats[orig_query][1] += 1
                     if validate_item_count:
                         if results[0]['$1'] != expected_count:
-                            self.failed_count.next()
+                            next(self.failed_count)
                         else:
-                            self.success_count.next()
+                            next(self.success_count)
                     else:
-                        self.success_count.next()
+                        next(self.success_count)
                 else:
-                    self.failed_count.next()
+                    next(self.failed_count)
             except TimeoutException or AmbiguousTimeoutException or UnambiguousTimeoutException as e:
                 pass
             except RequestCanceledException as e:
@@ -586,11 +586,11 @@ class QueryLoad:
             if str(e).find("TimeoutException") != -1\
                 or str(e).find("AmbiguousTimeoutException") != -1\
                     or str(e).find("UnambiguousTimeoutException") != -1:
-                self.timeout_count.next()
+                next(self.timeout_count)
             elif str(e).find("RequestCanceledException") != -1:
-                self.cancel_count.next()
+                next(self.cancel_count)
             elif str(e).find("CouchbaseException") != -1:
-                self.rejected_count.next()
+                next(self.rejected_count)
 
             if str(e).find("no more information available") != -1:
                 self.log.critical(query)

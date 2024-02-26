@@ -4,7 +4,7 @@ import time
 from BucketLib.BucketOperations import BucketHelper
 from Cb_constants.CBServer import CbServer
 from collections_helper.collections_spec_constants import MetaCrudParams
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from membase.api.rest_client import RestConnection
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_exceptions import SDKException
@@ -673,7 +673,7 @@ class MagmaRebalance(MagmaBaseTest):
         self.update_perc = self.input.param("update_perc", 0)
         self.delete_perc = self.input.param("delete_perc", 0)
         self.expiry_perc = self.input.param("expiry_perc", 0)
-        collections = self.buckets[0].scopes[CbServer.default_scope].collections.keys()
+        collections = list(self.buckets[0].scopes[CbServer.default_scope].collections.keys())
         self.log.info("collections list is {}".format(collections))
         if self.num_collections_to_drop > 0:
             self.collections.remove(CbServer.default_collection)

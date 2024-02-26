@@ -6,7 +6,7 @@ Created on 30-August-2020
 
 import json
 import random
-from Queue import Queue
+from queue import Queue
 from threading import Thread
 import time
 
@@ -17,7 +17,7 @@ from bucket_utils.bucket_ready_functions import DocLoaderUtils
 from cbas.cbas_base import CBASBaseTest
 from collections_helper.collections_spec_constants import MetaCrudParams
 from security.rbac_base import RbacBase
-from Jython_tasks.task import RunQueriesTask, CreateDatasetsTask, DropDatasetsTask
+from tasks.task import RunQueriesTask, CreateDatasetsTask, DropDatasetsTask
 
 
 class CBASCapellaSanity(CBASBaseTest):
@@ -26,7 +26,7 @@ class CBASCapellaSanity(CBASBaseTest):
         super(CBASCapellaSanity, self).setUp()
 
         # Since all the test cases are being run on 1 cluster only
-        self.cluster = self.cb_clusters.values()[0]
+        self.cluster = list(self.cb_clusters.values())[0]
         self.run_concurrent_query = self.input.param("run_query", False)
         self.parallel_load_percent = int(self.input.param(
             "parallel_load_percent", 0))

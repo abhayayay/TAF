@@ -336,40 +336,40 @@ def main():
 
     if args.new_bucket:
         result = {"result": s3_obj.create_bucket(args.new_bucket, args.region)}
-        print(json.dumps(result))
+        print((json.dumps(result)))
     elif args.existing_bucket:
         if args.get_objects_in_bucket:
             result = {"result": s3_obj.get_object_in_a_bucket(args.existing_bucket)}
             print(json.dumps(result))
         if args.upload_file:
             result = {"result": s3_obj.upload_file(args.existing_bucket, args.upload_file[0], args.upload_file[1])}
-            print(json.dumps(result))
+            print((json.dumps(result)))
         elif args.upload_large_file:
             result = {"result": s3_obj.upload_large_file(args.existing_bucket,
                                                          args.upload_large_file[0], args.upload_large_file[1])}
-            print(json.dumps(result))
+            print((json.dumps(result)))
         elif args.delete_bucket:
             result = {"result": s3_obj.delete_bucket(args.existing_bucket)}
-            print(json.dumps(result))
+            print((json.dumps(result)))
         elif args.download_file:
             result = {"result": s3_obj.download_file(args.existing_bucket,
                                                      args.download_file[0], args.download_file[1])}
-            print(json.dumps(result))
+            print((json.dumps(result)))
         elif args.delete_file:
             result = {"result": s3_obj.delete_file(args.existing_bucket, args.delete_file)}
-            print(json.dumps(result))
+            print((json.dumps(result)))
         elif args.empty_bucket:
             result = {"result": s3_obj.empty_bucket(args.existing_bucket)}
-            print(json.dumps(result))
+            print((json.dumps(result)))
     elif args.get_regions:
         result = {"result": s3_obj.get_region_list()}
-        print(json.dumps(result))
+        print((json.dumps(result)))
     elif args.list_bucket:
         result = {"result": s3_obj.list_existing_buckets()}
-        print(json.dumps(result))
+        print((json.dumps(result)))
     elif args.list_regionwise_bucket:
         result = {"result": s3_obj.get_region_wise_buckets()}
-        print(json.dumps(result))
+        print((json.dumps(result)))
 
 
 if __name__ == "__main__":

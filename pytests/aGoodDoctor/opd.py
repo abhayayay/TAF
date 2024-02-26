@@ -111,7 +111,7 @@ class OPD:
             self.num_scopes += 1
         for bucket in cluster.buckets:
             node = cluster.master or bucket.serverless.nebula_endpoint
-            for scope in bucket.scopes.keys():
+            for scope in list(bucket.scopes.keys()):
                 if scope == CbServer.system_scope:
                     continue
                 if num_collections > 0:
@@ -126,7 +126,7 @@ class OPD:
                                                            {"name": collection_name})
                         self.sleep(0.5)
 
-        self.collections = cluster.buckets[0].scopes[self.scope_name].collections.keys()
+        self.collections = list(cluster.buckets[0].scopes[self.scope_name].collections.keys())
         self.log.debug("Collections list == {}".format(self.collections))
 
     def stop_purger(self, tombstone_purge_age=60):
@@ -192,13 +192,13 @@ class OPD:
         self.nodes_cluster.remove(self.cluster.master)
         self.servs_out = list()
         services = services or ["kv"]
-        print "KV nodes in cluster: %s" % [server.ip for server in self.cluster.kv_nodes]
-        print "CBAS nodes in cluster: %s" % [server.ip for server in self.cluster.cbas_nodes]
-        print "INDEX nodes in cluster: %s" % [server.ip for server in self.cluster.index_nodes]
-        print "FTS nodes in cluster: %s" % [server.ip for server in self.cluster.fts_nodes]
-        print "QUERY nodes in cluster: %s" % [server.ip for server in self.cluster.query_nodes]
-        print "EVENTING nodes in cluster: %s" % [server.ip for server in self.cluster.eventing_nodes]
-        print "AVAILABLE nodes for cluster: %s" % [server.ip for server in self.available_servers]
+        print(("KV nodes in cluster: %s" % [server.ip for server in self.cluster.kv_nodes]))
+        print(("CBAS nodes in cluster: %s" % [server.ip for server in self.cluster.cbas_nodes]))
+        print(("INDEX nodes in cluster: %s" % [server.ip for server in self.cluster.index_nodes]))
+        print(("FTS nodes in cluster: %s" % [server.ip for server in self.cluster.fts_nodes]))
+        print(("QUERY nodes in cluster: %s" % [server.ip for server in self.cluster.query_nodes]))
+        print(("EVENTING nodes in cluster: %s" % [server.ip for server in self.cluster.eventing_nodes]))
+        print(("AVAILABLE nodes for cluster: %s" % [server.ip for server in self.available_servers]))
         if nodes_out:
             if "cbas" in services:
                 servers = random.sample(self.cluster.cbas_nodes, nodes_out)
@@ -254,10 +254,10 @@ class OPD:
         if "index" in services:
             services=["index,n1ql"]
 
-        print "Servers coming in : %s with services: %s" % ([server.ip for server in self.servs_in], services)
-        print "Servers going out : %s" % ([server.ip for server in self.servs_out])
+        print(("Servers coming in : %s with services: %s" % ([server.ip for server in self.servs_in], services)))
+        print(("Servers going out : %s" % ([server.ip for server in self.servs_out])))
         self.available_servers.extend(self.servs_out)
-        print "NEW AVAILABLE nodes for cluster: %s" % ([server.ip for server in self.available_servers])
+        print(("NEW AVAILABLE nodes for cluster: %s" % ([server.ip for server in self.available_servers])))
         if nodes_in == nodes_out:
             self.vbucket_check = False
 
@@ -350,24 +350,24 @@ class OPD:
 
             self.final_items += (abs(self.create_end - self.create_start)) * self.num_collections * self.num_scopes
 
-        print "Read Start: %s" % self.read_start
-        print "Read End: %s" % self.read_end
-        print "Update Start: %s" % self.update_start
-        print "Update End: %s" % self.update_end
-        print "Expiry Start: %s" % self.expire_start
-        print "Expiry End: %s" % self.expire_end
-        print "Delete Start: %s" % self.delete_start
-        print "Delete End: %s" % self.delete_end
-        print "Create Start: %s" % self.create_start
-        print "Create End: %s" % self.create_end
-        print "Final Start: %s" % self.start
-        print "Final End: %s" % self.end
+        print(("Read Start: %s" % self.read_start))
+        print(("Read End: %s" % self.read_end))
+        print(("Update Start: %s" % self.update_start))
+        print(("Update End: %s" % self.update_end))
+        print(("Expiry Start: %s" % self.expire_start))
+        print(("Expiry End: %s" % self.expire_end))
+        print(("Delete Start: %s" % self.delete_start))
+        print(("Delete End: %s" % self.delete_end))
+        print(("Create Start: %s" % self.create_start))
+        print(("Create End: %s" % self.create_end))
+        print(("Final Start: %s" % self.start))
+        print(("Final End: %s" % self.end))
 
     def _loader_dict(self, cmd={}):
         self.loader_map = dict()
         for bucket in self.cluster.buckets:
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     if collection == "_default" and scope == "_default":
@@ -411,10 +411,10 @@ class OPD:
         for task in tasks:
             task.result = True
             unique_str = "{}:{}:{}:".format(task.sdk.bucket, task.sdk.scope, task.sdk.collection)
-            for optype, failures in task.failedMutations.items():
+            for optype, failures in list(task.failedMutations.items()):
                 for failure in failures:
                     if failure is not None:
-                        print("Test Retrying {}: {}{} -> {}".format(optype, unique_str, failure.id(), failure.err().getClass().getSimpleName()))
+                        print(("Test Retrying {}: {}{} -> {}".format(optype, unique_str, failure.id(), failure.err().getClass().getSimpleName())))
                         try:
                             if optype == "create":
                                 task.docops.insert(failure.id(), failure.document(), task.sdk.connection, task.setOptions)
@@ -423,7 +423,7 @@ class OPD:
                             if optype == "delete":
                                 task.docops.delete(failure.id(), task.sdk.connection, task.removeOptions)
                         except (ServerOutOfMemoryException, TimeoutException) as e:
-                            print("Retry {} failed for key: {} - {}".format(optype, failure.id(), e))
+                            print(("Retry {} failed for key: {} - {}".format(optype, failure.id(), e)))
                             task.result = False
                         except (DocumentNotFoundException, DocumentExistsException) as e:
                             pass
@@ -448,8 +448,8 @@ class OPD:
         for node in self.cluster.nodes_in_cluster:
             gdb_shell = RemoteMachineShellConnection(node)
             gdb_out = gdb_shell.execute_command('gdb -p `(pidof memcached)` -ex "thread apply all bt" -ex detach -ex quit')[0]
-            print node.ip
-            print gdb_out
+            print((node.ip))
+            print(gdb_out)
             gdb_shell.disconnect()
 
     def data_validation(self):
@@ -465,10 +465,10 @@ class OPD:
                                 str(self.cluster.master.memcached_port))
             self.loader_map = dict()
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     if scope == CbServer.system_scope:
                             continue
-                    for collection in bucket.scopes[scope].collections.keys():
+                    for collection in list(bucket.scopes[scope].collections.keys()):
                         if collection == "_default" and scope == "_default":
                             continue
                         for op_type in doc_ops:
@@ -514,15 +514,15 @@ class OPD:
                 for bucket in self.cluster.buckets:
                     if bucket.serverless is not None and bucket.serverless.nebula_endpoint:
                         nebula = bucket.serverless.nebula_endpoint
-                        print "Serverless Mode, Nebula will be used for SDK operations: %s" % nebula.srv
+                        print(("Serverless Mode, Nebula will be used for SDK operations: %s" % nebula.srv))
                         master = Server(nebula.srv, nebula.port,
                                         nebula.rest_username,
                                         nebula.rest_password,
                                         str(nebula.memcached_port))
-                    for scope in bucket.scopes.keys():
+                    for scope in list(bucket.scopes.keys()):
                         if scope == CbServer.system_scope:
                             continue
-                        for collection in bucket.scopes[scope].collections.keys():
+                        for collection in list(bucket.scopes[scope].collections.keys()):
                             if collection == "_default" and scope == "_default":
                                 continue
                             for op_type in doc_ops:
@@ -580,15 +580,15 @@ class OPD:
             for bucket in self.cluster.buckets:
                 if bucket.serverless is not None and bucket.serverless.nebula_endpoint:
                     nebula = bucket.serverless.nebula_endpoint
-                    print "Serverless Mode, Nebula will be used for SDK operations: %s" % nebula.srv
+                    print(("Serverless Mode, Nebula will be used for SDK operations: %s" % nebula.srv))
                     master = Server(nebula.srv, nebula.port,
                                     nebula.rest_username,
                                     nebula.rest_password,
                                     str(nebula.memcached_port))
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     if scope == CbServer.system_scope:
                         continue
-                    for collection in bucket.scopes[scope].collections.keys():
+                    for collection in list(bucket.scopes[scope].collections.keys()):
                         if scope == CbServer.system_scope:
                             continue
                         if collection == "_default" and scope == "_default":
@@ -682,13 +682,13 @@ class OPD:
                     self.check_fragmentation_using_kv_stats(bucket)
 
     def PrintStep(self, msg=None):
-        print "\n"
-        print "\t", "#"*60
-        print "\t", "#"
-        print "\t", "#  %s" % msg
-        print "\t", "#"
-        print "\t", "#"*60
-        print "\n"
+        print("\n")
+        print(("\t", "#"*60))
+        print(("\t", "#"))
+        print(("\t", "#  %s" % msg))
+        print(("\t", "#"))
+        print(("\t", "#"*60))
+        print("\n")
 
     def check_fragmentation_using_kv_stats(self, bucket, servers=None):
         result = dict()
@@ -748,7 +748,7 @@ class OPD:
                 stats.append(_res)
             result.update({server.ip: fragmentation_values})
         res = list()
-        for value in result.values():
+        for value in list(result.values()):
             res.append(max(value))
         if max(res) < float(self.fragmentation)/100:
             self.log.info("magma stats fragmentation result {} \
@@ -864,7 +864,7 @@ class OPD:
             servers = self.cluster.kv_nodes + [self.cluster.master]
 
         for server in servers:
-            for _ in xrange(num_kills):
+            for _ in range(num_kills):
                 if num_kills > 1:
                     self.sleep(2, "Sleep for 2 seconds b/w cont memc kill on same node.")
                 shell = RemoteMachineShellConnection(server)

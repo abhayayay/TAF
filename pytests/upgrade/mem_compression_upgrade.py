@@ -282,8 +282,8 @@ class MemCompressionUpgradeTests(UpgradeBase):
         for node in index_nodes_list:
             plasma_stats_obj = PlasmaStatsUtil(node, server_task=self.task)
             index_storage_stats = plasma_stats_obj.get_index_storage_stats()
-            for bucket in index_storage_stats.keys():
-                for index in index_storage_stats[bucket].keys():
+            for bucket in list(index_storage_stats.keys()):
+                for index in list(index_storage_stats[bucket].keys()):
                     index_stat_map = index_storage_stats[bucket][index]
                     self.assertTrue(index_stat_map["MainStore"]["num_rec_compressible"] <= (
                                 index_stat_map["MainStore"]["num_rec_allocs"] - index_stat_map["MainStore"]["num_rec_frees"] + index_stat_map["MainStore"][

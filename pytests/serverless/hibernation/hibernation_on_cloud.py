@@ -1,6 +1,6 @@
 from BucketLib.bucket import Bucket
 from Cb_constants.CBServer import CbServer
-from Jython_tasks.task import CloudHibernationTask
+from tasks.task import CloudHibernationTask
 from bucket_utils.bucket_ready_functions import DocLoaderUtils
 from collections_helper.collections_spec_constants import MetaConstants
 from pytests.bucket_collections.collections_base import CollectionBase
@@ -40,8 +40,8 @@ class HibernationOnCloud(TenantMgmtOnCloud):
                                     req_clients_per_bucket=1)
 
         for bucket in self.cluster.buckets:
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     work_load_settings = DocLoaderUtils.get_workload_settings(
@@ -324,8 +324,8 @@ class HibernationOnCloud(TenantMgmtOnCloud):
                                     req_clients_per_bucket=1)
 
         for bucket in self.cluster.buckets:
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     work_load_settings = DocLoaderUtils.get_workload_settings(

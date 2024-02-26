@@ -72,7 +72,7 @@ class DoctorN1QL():
             while i < self.num_query:
                 for b in self.cluster.buckets:
                     for s in self.bucket_util.get_active_scopes(b, only_names=True):
-                        if b.name+s not in self.sdkClients.keys():
+                        if b.name+s not in list(self.sdkClients.keys()):
                             self.sdkClients.update({b.name+s: self.cluster_conn.bucket(b.name).scope(s)})
                         for c in sorted(self.bucket_util.get_active_collections(b, s, only_names=True)):
                             if c == "_default":
@@ -89,7 +89,7 @@ class DoctorN1QL():
         while i < self.num_indexes:
             for b in self.cluster.buckets:
                 for s in self.bucket_util.get_active_scopes(b, only_names=True):
-                    if b.name+s not in self.sdkClients.keys():
+                    if b.name+s not in list(self.sdkClients.keys()):
                         self.sdkClients.update({b.name+s: self.cluster_conn.bucket(b.name).scope(s)})
                     for c in sorted(self.bucket_util.get_active_collections(b, s, only_names=True)):
                         self.idx_q = indexes[i % len(indexes)].format("idx", i, c)
@@ -109,19 +109,19 @@ class DoctorN1QL():
         return self.query_failure
 
     def create_indexes(self):
-        for details in self.indexes.values():
+        for details in list(self.indexes.values()):
             time.sleep(1)
             self.execute_statement_on_n1ql(details[1], details[0])
 
     def wait_for_indexes_online(self, logger, indexes, timeout=86400):
         self.rest = GsiHelper(self.cluster.master, logger)
         status = False
-        for index_name, details in indexes.items():
+        for index_name, details in list(indexes.items()):
             stop_time = time.time() + timeout
             while time.time() < stop_time:
                 bucket = [bucket for bucket in self.cluster.buckets if bucket.name == details[2]]
                 status = self.rest.polling_create_index_status(bucket[0], index_name)
-                print("index: {}, status: {}".format(index_name, status))
+                print(("index: {}, status: {}".format(index_name, status)))
                 if status is True:
                     self.log.info("2i index is ready: {}".format(index_name))
                     break
@@ -131,17 +131,17 @@ class DoctorN1QL():
         return status
 
     def build_indexes(self):
-        for index_name, details in self.indexes.items():
+        for index_name, details in list(self.indexes.items()):
             build_query = "BUILD INDEX on `%s`(%s) USING GSI" % (details[4], index_name)
             time.sleep(1)
             try:
                 self.execute_statement_on_n1ql(details[1], build_query)
             except Exception as e:
                 print(e)
-                print("Failed %s" % build_query)
+                print(("Failed %s" % build_query))
 
     def drop_indexes(self):
-        for index, details in self.indexes.items():
+        for index, details in list(self.indexes.items()):
             build_query = "DROP INDEX %s on `%s`" % (index, details[4])
             self.execute_statement_on_n1ql(details[1], build_query)
 
@@ -347,24 +347,24 @@ class DoctorN1QL():
         if duration == 0:
             while not self.stop_run:
                 if st_time + print_duration < time.time():
-                    print("%s N1QL queries submitted, %s failed, \
+                    print(("%s N1QL queries submitted, %s failed, \
                         %s passed, %s rejected, \
                         %s cancelled, %s timeout, %s errored" % (
                         self.total_query_count, self.failed_count,
                         self.success_count, self.rejected_count,
                         self.cancel_count, self.timeout_count,
-                        self.error_count))
+                        self.error_count)))
                     st_time = time.time()
         else:
             while st_time + duration > time.time():
                 if update_time + print_duration < time.time():
-                    print("%s N1QL queries submitted, %s failed, \
+                    print(("%s N1QL queries submitted, %s failed, \
                         %s passed, %s rejected, \
                         %s cancelled, %s timeout, %s errored" % (
                         self.total_query_count, self.failed_count,
                         self.success_count, self.rejected_count,
                         self.cancel_count, self.timeout_count,
-                        self.error_count))
+                        self.error_count)))
                     update_time = time.time()
 
     def crash_index_plasma(self, nodes=None):

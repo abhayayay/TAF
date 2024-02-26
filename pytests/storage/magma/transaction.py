@@ -3,7 +3,7 @@ import time
 from Cb_constants import CbServer
 from sdk_client3 import SDKClient
 from storage.magma.magma_base import MagmaBaseTest
-from Jython_tasks.task import TimerTask
+from tasks.task import TimerTask
 
 from java.util import HashMap
 from reactor.util.function import Tuples
@@ -114,7 +114,7 @@ class TransactionTests(MagmaBaseTest):
         tasks = list()
         while num_workers > 0:
             for bucket in self.buckets:
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     for collection in self.collections:
                         client = NewSDKClient(master, bucket.name,
                                               scope, collection)

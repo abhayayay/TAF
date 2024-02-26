@@ -19,7 +19,7 @@ class CBASBucketOperations(CBASBaseTest):
         super(CBASBucketOperations, self).setUp()
 
         # Since all the test cases are being run on 1 cluster only
-        self.cluster = self.cb_clusters.values()[0]
+        self.cluster = list(self.cb_clusters.values())[0]
         self.disconnect_link = self.input.param('disconnect_link', False)
 
         self.setup_cbas_for_test()
@@ -403,7 +403,7 @@ class CBASBucketOperations(CBASBaseTest):
             doc_gen = DocumentGenerator(
                 "test_docs", template_obj, start=0, end=1000,
                 randomize=False, first_name=first, profession=profession,
-                number=range(70))
+                number=list(range(70)))
 
             try:
                 self.bucket_util.sync_load_all_buckets(
@@ -581,7 +581,7 @@ class CBASEphemeralBucketOperations(CBASBucketOperations):
             doc_gen = DocumentGenerator(
                 "test_docs", template_obj, start=self.start, end=self.end,
                 randomize=False, first_name=first, profession=profession,
-                number=range(70))
+                number=list(range(70)))
 
             try:
                 self.bucket_util.sync_load_all_buckets(

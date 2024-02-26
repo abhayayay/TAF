@@ -2,7 +2,7 @@ import json
 import random
 
 from bucket_collections.collections_base import CollectionBase
-from rebalance_base import RebalanceBaseTest
+from .rebalance_base import RebalanceBaseTest
 
 from collections_helper.collections_spec_constants import MetaCrudParams
 from membase.api.rest_client import RestConnection

@@ -10,9 +10,8 @@ from crash_test.constants import signum
 from error_simulation.cb_error import CouchbaseError
 from membase.api.rest_client import RestConnection
 from remote.remote_util import RemoteMachineShellConnection
-from sdk_client3 import SDKClient
-
-from sdk_exceptions import SDKException
+from sirius_client import SiriusClient
+from sdk_exceptions import SDKException, check_if_exception_exists
 
 
 class CrashTest(ClusterSetup):
@@ -199,10 +198,10 @@ class CrashTest(ClusterSetup):
         # Wait for doc loading task to complete
         self.task.jython_task_manager.get_task_result(task)
         if not self.atomicity:
-            if len(task.fail.keys()) != 0:
+            if len(list(task.fail.keys())) != 0:
                 if self.target_node == "active" or self.num_replicas in [2, 3]:
                     self.log_failure("Unwanted failures for keys: %s"
-                                     % task.fail.keys())
+                                     % list(task.fail.keys()))
 
             validate_passed = \
                 self.durability_helper.validate_durability_exception(
@@ -212,21 +211,22 @@ class CrashTest(ClusterSetup):
                 self.log_failure("Unwanted exception seen during validation")
 
             # Create SDK connection for CRUD retries
-            sdk_client = SDKClient([self.cluster.master],
-                                   def_bucket)
-            for doc_key, crud_result in task.fail.items():
-                result = sdk_client.crud("create",
-                                         doc_key,
-                                         crud_result["value"],
-                                         replicate_to=self.replicate_to,
-                                         persist_to=self.persist_to,
-                                         durability=self.durability_level,
-                                         timeout=self.sdk_timeout)
-                if result["status"] is False:
+            client = SiriusClient([self.cluster.master],
+                                  def_bucket)
+            for doc_key, crud_result in list(task.fail.items()):
+                result = client.crud("create",
+                                     doc_key,
+                                     crud_result["value"],
+                                     replicate_to=self.replicate_to,
+                                     persist_to=self.persist_to,
+                                     durability=self.durability_level,
+                                     timeout=self.sdk_timeout)
+                if (result["status"] is False) and \
+                        (not check_if_exception_exists(result['error'], SDKException.DocumentExistsException)):
                     self.log_failure("Retry of doc_key %s failed: %s"
                                      % (doc_key, result["error"]))
             # Close the SDK connection
-            sdk_client.close()
+            client.close()
 
         # Update self.num_items
         self.num_items += self.new_docs_to_add
@@ -251,7 +251,7 @@ class CrashTest(ClusterSetup):
         def_bucket = self.cluster.buckets[0]
         target_node = self.getTargetNode()
         remote = RemoteMachineShellConnection(target_node)
-        target_vbuckets = range(0, self.cluster.vbuckets)
+        target_vbuckets = list(range(0, self.cluster.vbuckets))
         retry_exceptions = list()
 
         # If Memcached is killed, we should not perform KV ops on
@@ -260,7 +260,7 @@ class CrashTest(ClusterSetup):
             target_vbuckets = Cbstats(target_node).vbucket_list(
                 def_bucket.name, self.target_node)
             if self.target_node == "active":
-                retry_exceptions = [SDKException.TimeoutException]
+                retry_exceptions = SDKException.TimeoutException
         if len(target_vbuckets) == 0:
             self.log.error("No target vbucket list generated to load data")
             return
@@ -507,20 +507,22 @@ class CrashTest(ClusterSetup):
             for node in self.cluster.nodes_in_cluster:
                 cbstats_obj = Cbstats(node)
                 vbucket_stats = cbstats_obj.vbucket_details(bucket_name=bucket.name)
-                ht_mem_used_replica_stat = cbstats_obj.get_stats_memc(
-                    bucket_name=bucket.name, stat_name="memory", key="ht_mem_used_replica")
+                mem_stats = cbstats_obj.all_stats(bucket.name, "memory")
+                ht_mem_used_replica_stat = mem_stats["ht_mem_used_replica"]
                 vbucket_mem_used = 0
                 for vbucket in vbucket_stats:
                     if vbucket_stats[vbucket]["type"] == "replica":
                         vbucket_mem_used += vbucket_stats[vbucket]["ht_cache_size"]
 
-                self.assertEqual(int(vbucket_mem_used),int(ht_mem_used_replica_stat),
-                                 "Sum ht_cache_size stat for all replica vBuckets "
-                                 "(cbstats vbucket-details) and "
-                                 "ht_mem_used_replica (cbstats memory) "
-                                 "are not the same {}!={} on node {}"
-                                 .format(vbucket_mem_used, ht_mem_used_replica_stat, node.ip))
-                self.log.info("Sum ht_cache_size stat for all replica vBuckets "
-                              "(cbstats vbucket-details) = {} and "
-                              "ht_mem_used_replica (cbstats memory) = {} are equal on node {}"
-                              .format(vbucket_mem_used, ht_mem_used_replica_stat, node.ip))
+                self.assertEqual(
+                    int(vbucket_mem_used), int(ht_mem_used_replica_stat),
+                    "Sum ht_cache_size stat for all replica vBuckets "
+                    "(cbstats vbucket-details) and "
+                    "ht_mem_used_replica (cbstats memory) "
+                    "are not the same {}!={} on node {}"
+                    .format(vbucket_mem_used, ht_mem_used_replica_stat, node.ip))
+                self.log.info(
+                    "Sum ht_cache_size stat for all replica vBuckets "
+                    "(cbstats vbucket-details) = {} and ht_mem_used_replica "
+                    "(cbstats memory) = {} are equal on node {}"
+                    .format(vbucket_mem_used, ht_mem_used_replica_stat, node.ip))

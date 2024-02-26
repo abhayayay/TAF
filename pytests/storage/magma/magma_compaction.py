@@ -4,9 +4,9 @@ import threading
 from Cb_constants.CBServer import CbServer
 from cb_tools.cbepctl import Cbepctl
 from cb_tools.cbstats import Cbstats
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from remote.remote_util import RemoteMachineShellConnection
-from sdk_constants.java_client import SDKConstants
+from sdk_constants.sdk_client_constants import SDKConstants
 
 
 class MagmaCompactionTests(MagmaBaseTest):
@@ -91,7 +91,7 @@ class MagmaCompactionTests(MagmaBaseTest):
                 doc_ops=self.doc_ops,
                 track_failures=False,
                 sdk_retry_strategy=self.sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         self.crash_th = threading.Thread(target=self.crash,
                                          kwargs=dict(kill_itr=kill_itr,

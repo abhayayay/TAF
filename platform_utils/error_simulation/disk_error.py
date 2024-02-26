@@ -1,4 +1,4 @@
-from Jython_tasks.task import AutoFailoverNodesFailureTask
+from tasks.task import AutoFailoverNodesFailureTask
 
 
 class DiskError:

@@ -181,7 +181,7 @@ class FailoverBaseTest(BaseTestCase):
                 retry_exceptions=retry_exceptions,
                 ignore_exceptions=ignore_exceptions,
                 sdk_client_pool=self.sdk_client_pool)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
         if "create" in self.doc_ops:
             tem_tasks_info = self.bucket_util._async_load_all_buckets(
                 self.cluster, self.gen_create, "create", 0, batch_size=20,
@@ -191,7 +191,7 @@ class FailoverBaseTest(BaseTestCase):
                 retry_exceptions=retry_exceptions,
                 ignore_exceptions=ignore_exceptions,
                 sdk_client_pool=self.sdk_client_pool)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items += (self.gen_create.end - self.gen_create.start)
         if "delete" in self.doc_ops:
             tem_tasks_info = self.bucket_util._async_load_all_buckets(
@@ -202,7 +202,7 @@ class FailoverBaseTest(BaseTestCase):
                 retry_exceptions=retry_exceptions,
                 ignore_exceptions=ignore_exceptions,
                 sdk_client_pool=self.sdk_client_pool)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items -= (self.gen_delete.end - self.gen_delete.start)
 
         if task_verification:

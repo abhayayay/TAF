@@ -4,7 +4,7 @@ Created on Sep 25, 2017
 @author: riteshagarwal
 """
 
-from BucketOperations_Rest import BucketHelper as BucketHelperRest
+from .BucketOperations_Rest import BucketHelper as BucketHelperRest
 from sdk_client3 import SDKClient
 from com.couchbase.client.core.endpoint.kv import AuthenticationException
 from com.couchbase.client.java.bucket import BucketType

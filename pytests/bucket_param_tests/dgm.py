@@ -157,7 +157,7 @@ class Bucket_DGM_Tests(ClusterSetup):
                              "A_rr", "R_rr"])
             while self.test_failure is None and run_eviction_check:
                 tbl.rows = []
-                for kv_node in node_data.keys():
+                for kv_node in list(node_data.keys()):
                     all_stats = \
                         node_data[kv_node]["cbstat"].all_stats(bucket.name)
                     bucket_mem = int(all_stats["ep_max_size"])

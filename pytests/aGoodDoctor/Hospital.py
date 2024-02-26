@@ -230,7 +230,7 @@ class Murphy(BaseTestCase, OPD):
             self.drFTS = DoctorFTS(self.cluster, self.bucket_util,
                                    self.num_indexes)
 
-        print self.available_servers
+        print((self.available_servers))
         self.writer_threads = self.input.param("writer_threads", "disk_io_optimized")
         self.reader_threads = self.input.param("reader_threads", "disk_io_optimized")
         self.storage_threads = self.input.param("storage_threads", 40)
@@ -902,8 +902,8 @@ class Murphy(BaseTestCase, OPD):
 
     def set_num_items_for_collection(self):
         for bucket in self.cluster.buckets:
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if collection == "_default" and scope == "_default":
                         continue
                     bucket.scopes[scope].collections[collection].num_items = self.dedupe_items
@@ -1189,13 +1189,13 @@ class Murphy(BaseTestCase, OPD):
                               if node.ip == failed_over.ip]
                 self.cluster.kv_nodes.remove(failed_over)
             self.available_servers += servs_out
-            print "KV nodes in cluster: %s" % [server.ip for server in self.cluster.kv_nodes]
-            print "CBAS nodes in cluster: %s" % [server.ip for server in self.cluster.cbas_nodes]
-            print "INDEX nodes in cluster: %s" % [server.ip for server in self.cluster.index_nodes]
-            print "FTS nodes in cluster: %s" % [server.ip for server in self.cluster.fts_nodes]
-            print "QUERY nodes in cluster: %s" % [server.ip for server in self.cluster.query_nodes]
-            print "EVENTING nodes in cluster: %s" % [server.ip for server in self.cluster.eventing_nodes]
-            print "AVAILABLE nodes for cluster: %s" % [server.ip for server in self.available_servers]
+            print(("KV nodes in cluster: %s" % [server.ip for server in self.cluster.kv_nodes]))
+            print(("CBAS nodes in cluster: %s" % [server.ip for server in self.cluster.cbas_nodes]))
+            print(("INDEX nodes in cluster: %s" % [server.ip for server in self.cluster.index_nodes]))
+            print(("FTS nodes in cluster: %s" % [server.ip for server in self.cluster.fts_nodes]))
+            print(("QUERY nodes in cluster: %s" % [server.ip for server in self.cluster.query_nodes]))
+            print(("EVENTING nodes in cluster: %s" % [server.ip for server in self.cluster.eventing_nodes]))
+            print(("AVAILABLE nodes for cluster: %s" % [server.ip for server in self.available_servers]))
             end_step_checks()
 
             self.bucket_util.compare_failovers_logs(

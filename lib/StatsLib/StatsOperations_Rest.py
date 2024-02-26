@@ -1,5 +1,5 @@
 import json
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import re
 import base64
 
@@ -139,7 +139,7 @@ class StatsHelper(RestConnection):
         :optional_params: optional params like start,end,step,nodes,time_window,nodesAggregation
         :return json.loads(content): dictionary of returned metrics
         """
-        api = '%s%s%s' % (self.base_url, '/pools/default/stats/range/', urllib.quote_plus("%s" % metric_name))
+        api = '%s%s%s' % (self.base_url, '/pools/default/stats/range/', urllib.parse.quote_plus("%s" % metric_name))
         if function:
             api = api + "/" + function
         if label_values:
@@ -174,7 +174,7 @@ class StatsHelper(RestConnection):
         :optional_params: optional params like ,nodes,nodesAggregation
         :return json.loads(content): dictionary of returned metrics
         """
-        api = '%s%s%s' % (self.base_url, '/pools/default/stats/instant/', urllib.quote_plus("%s" % metric_name))
+        api = '%s%s%s' % (self.base_url, '/pools/default/stats/instant/', urllib.parse.quote_plus("%s" % metric_name))
         if label_values:
             api = api + "?" + self._build_params_for_get_request(label_values)
         if optional_params:
@@ -216,7 +216,7 @@ class StatsHelper(RestConnection):
                 raise Exception(content)
         else:
             # Reset all
-            for key, value in default_config_dict.items():
+            for key, value in list(default_config_dict.items()):
                 key_value = '{%s, %s}' % (key, str(value))
                 status, content = self.rest.diag_eval('ns_config:set_sub(stats_settings, [%s])' % key_value)
                 if not status:
@@ -282,8 +282,8 @@ class StatsHelper(RestConnection):
         :return return_string: "key1=value1?key2=value2?..." that gets appended to GET API request
         """
         return_string = ""
-        for key, value in params_dict.items():
-            return_string = return_string + key + "=" + urllib.quote_plus("%s" % value) + "&"
+        for key, value in list(params_dict.items()):
+            return_string = return_string + key + "=" + urllib.parse.quote_plus("%s" % value) + "&"
         return_string = return_string[:-1]  # To remove the last '&" character
         return return_string
 

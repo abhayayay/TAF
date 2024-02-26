@@ -47,13 +47,13 @@ class RestConnection(object):
         if not port:
             port = constants.port
 
-        if int(port) in xrange(9091, 9100):
+        if int(port) in range(9091, 9100):
             # return elastic search rest connection
             from membase.api.esrest_client import EsRestConnection
             obj = object.__new__(EsRestConnection, serverInfo)
         else:
             # default
-            obj = object.__new__(self, serverInfo)
+            obj = object.__new__(self)
         return obj
 
     def __init__(self, serverInfo, timeout=300):
@@ -68,12 +68,12 @@ class RestConnection(object):
             self.username = serverInfo["username"]
             self.password = serverInfo["password"]
             self.port = serverInfo["port"]
-            if "index_port" in serverInfo.keys():
+            if "index_port" in list(serverInfo.keys()):
                 index_port = serverInfo["index_port"]
-            if "fts_port" in serverInfo.keys():
+            if "fts_port" in list(serverInfo.keys()):
                 if serverInfo['fts_port']:
                     fts_port = serverInfo["fts_port"]
-            if "eventing_port" in serverInfo.keys():
+            if "eventing_port" in list(serverInfo.keys()):
                 if serverInfo['eventing_port']:
                     self.eventing_port = serverInfo["eventing_port"]
             self.hostname = ''
@@ -106,22 +106,19 @@ class RestConnection(object):
             if hasattr(serverInfo, 'hostname') and serverInfo.hostname \
                     and serverInfo.hostname.find(self.ip) == -1:
                 self.hostname = serverInfo.hostname
-        try:
-            self.type = serverInfo.type
-        except:
-            self.type = "default"
+            if hasattr(serverInfo, 'services'):
+                self.services = serverInfo.services
         if CbServer.use_https:
             if ClusterRun.is_enabled:
                 if int(self.port) < ClusterRun.ssl_port:
                     self.port = int(self.port) + 10000
             else:
-                if self.type != "goldfish":
-                    self.port = CbServer.ssl_port
-                    index_port = CbServer.ssl_index_port
-                    query_port = CbServer.ssl_n1ql_port
-                    fts_port = CbServer.ssl_fts_port
-                    eventing_port = CbServer.ssl_eventing_port
-                    backup_port = CbServer.ssl_backup_port
+                self.port = CbServer.ssl_port
+                index_port = CbServer.ssl_index_port
+                query_port = CbServer.ssl_n1ql_port
+                fts_port = CbServer.ssl_fts_port
+                eventing_port = CbServer.ssl_eventing_port
+                backup_port = CbServer.ssl_backup_port
         self.input = TestInputSingleton.input
         if self.input is not None:
             """ from watson, services param order and format:
@@ -143,30 +140,36 @@ class RestConnection(object):
         self.ftsUrl = generic_url.format(url_host, fts_port)
         self.eventing_baseUrl = generic_url.format(url_host, eventing_port)
         self.backup_url = generic_url.format(url_host, backup_port)
-        if self.type != "goldfish":
-            if self.type != "default" or self.type == "nebula":
-                nodes_self_url = self.baseUrl + "pools/default"
+        try:
+            self.type = serverInfo.type
+        except:
+            self.type = "default"
+
+        if self.type == "columnar":
+            return
+        if self.type != "default" or self.type == "nebula":
+            nodes_self_url = self.baseUrl + "pools/default"
+        else:
+            nodes_self_url = self.baseUrl + 'nodes/self'
+        # for Node is unknown to this cluster error
+        node_unknown_msg = "Node is unknown to this cluster"
+        unexpected_server_err_msg = "Unexpected server error, request logged"
+        for iteration in range(5):
+            http_res, success = \
+                self.init_http_request(nodes_self_url, timeout)
+            if not success and type(http_res) == str \
+                    and (http_res.find(node_unknown_msg) > -1
+                         or http_res.find(unexpected_server_err_msg) > -1):
+                self.log.error("Error {0}, 5 seconds sleep before retry"
+                               .format(http_res))
+                sleep(5, log_type="infra")
+                if iteration == 2:
+                    self.log.error("Node {0}:{1} is in a broken state!"
+                                   .format(self.ip, self.port))
+                    raise ServerUnavailableException(self.ip)
+                continue
             else:
-                nodes_self_url = self.baseUrl + 'nodes/self'
-            # for Node is unknown to this cluster error
-            node_unknown_msg = "Node is unknown to this cluster"
-            unexpected_server_err_msg = "Unexpected server error, request logged"
-            for iteration in xrange(5):
-                http_res, success = \
-                    self.init_http_request(nodes_self_url, timeout)
-                if not success and type(http_res) == unicode \
-                        and (http_res.find(node_unknown_msg) > -1
-                             or http_res.find(unexpected_server_err_msg) > -1):
-                    self.log.error("Error {0}, 5 seconds sleep before retry"
-                                   .format(http_res))
-                    sleep(5, log_type="infra")
-                    if iteration == 2:
-                        self.log.error("Node {0}:{1} is in a broken state!"
-                                       .format(self.ip, self.port))
-                        raise ServerUnavailableException(self.ip)
-                    continue
-                else:
-                    break
+                break
 
     def init_http_request(self, api, timeout=300):
         content = None
@@ -181,7 +184,7 @@ class RestConnection(object):
                 return json_parsed, False
         except ValueError as e:
             if content is not None:
-                print("{0}: {1}".format(api, content))
+                print(("{0}: {1}".format(api, content)))
             else:
                 print(e)
             return content, False
@@ -203,7 +206,7 @@ class RestConnection(object):
         if key in headers:
             val = headers[key]
             if val.startswith("Basic "):
-                return "auth: " + base64.decodestring(val[6:])
+                return "auth: " + val[6:]
         return ""
 
     def urllib_request(self, api, method='GET', headers=None,
@@ -281,14 +284,14 @@ class RestConnection(object):
                             format(method, api,
                                    "Body is being redacted because it contains sensitive info",
                                    headers, response.status_code, reason,
-                                   content.rstrip('\n'),
+                                   str(content).rstrip('\n'),
                                    RestConnection.get_auth(headers))
                     else:
                         message = '{0} {1} body: {2} headers: {3} ' \
                                   'error: {4} reason: {5} {6} {7}'. \
                             format(method, api, params, headers,
                                    response.status_code, reason,
-                                   content.rstrip('\n'),
+                                   str(content).rstrip('\n'),
                                    RestConnection.get_auth(headers))
                     self.log.debug(message)
                     self.log.debug(''.join(traceback.format_stack()))
@@ -327,6 +330,7 @@ class RestConnection(object):
             try:
                 response, content = httplib2.Http(timeout=timeout).request(
                     api, method, params, headers)
+                content = content.decode("utf-8")
                 if response.status in [200, 201, 202, 204]:
                     return True, content, response
                 else:
@@ -345,14 +349,14 @@ class RestConnection(object):
                                   'error: {4} reason: {5} {6} {7}'. \
                             format(method, api, "Body is being redacted because it contains sensitive info", headers,
                                    response['status'], reason,
-                                   content.rstrip('\n'),
+                                   str(content).rstrip('\n'),
                                    RestConnection.get_auth(headers))
                     else:
                         message = '{0} {1} body: {2} headers: {3} ' \
                                   'error: {4} reason: {5} {6} {7}'. \
                             format(method, api, params, headers,
                                    response['status'], reason,
-                                   content.rstrip('\n'),
+                                   str(content).rstrip('\n'),
                                    RestConnection.get_auth(headers))
                     self.log.debug(message)
                     self.log.debug(''.join(traceback.format_stack()))

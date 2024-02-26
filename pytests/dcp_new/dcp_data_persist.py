@@ -37,7 +37,7 @@ class LogData(object):
     def setup_log_preset(self, vb_list):
         """ Used when --keep-logs is triggered, to move external data to dictstore """
         external_data = self.get_all_external(vb_list)
-        for key in external_data.keys():
+        for key in list(external_data.keys()):
             self.dictstore[str(key)] = external_data[key]
 
     def get_path(self, vb):
@@ -69,7 +69,7 @@ class LogData(object):
 
     def upsert_failover(self, vb, failover_log):
         """ Insert / update failover log """
-        if str(vb) in self.dictstore.keys():
+        if str(vb) in list(self.dictstore.keys()):
             self.dictstore[str(vb)]['failover_log'] = failover_log
         else:
             self.dictstore[str(vb)] = {'failover_log': failover_log}
@@ -87,9 +87,9 @@ class LogData(object):
 
     def upsert_sequence_no(self, vb, seq_no):
         """ Insert / update sequence number, and move old sequence number to appropriate list """
-        if str(vb) in self.dictstore.keys():
-            if 'seq_no' in self.dictstore[str(vb)].keys():
-                if 'old_seq_no' in self.dictstore[str(vb)].keys():
+        if str(vb) in list(self.dictstore.keys()):
+            if 'seq_no' in list(self.dictstore[str(vb)].keys()):
+                if 'old_seq_no' in list(self.dictstore[str(vb)].keys()):
                     old_seq_no = self.dictstore[str(vb)]['old_seq_no']
                 else:
                     old_seq_no = []
@@ -118,7 +118,7 @@ class LogData(object):
         """ Return a dictionary where keys are vbuckets and the data is the total JSON for that vbucket """
         read_dict = {}
         for vb in vb_list:
-            if str(vb) in self.dictstore.keys():
+            if str(vb) in list(self.dictstore.keys()):
                 read_dict[str(vb)] = self.dictstore[str(vb)]
 
         return read_dict

@@ -1,5 +1,5 @@
 import json
-import urllib
+import urllib.request, urllib.parse, urllib.error
 from copy import deepcopy
 from random import choice, sample, randint
 
@@ -49,7 +49,7 @@ class DocHistoryRetention(ClusterSetup):
 
     def tearDown(self):
         self.log.info("Closing shell connections")
-        for _, shell in self.shells.items():
+        for _, shell in list(self.shells.items()):
             shell.disconnect()
 
         super(DocHistoryRetention, self).tearDown()
@@ -75,12 +75,12 @@ class DocHistoryRetention(ClusterSetup):
         bucket_helper = BucketHelper(self.cluster.master)
         api = bucket_helper.baseUrl + "pools/default/buckets"
         self.log.info("Create bucket with params: %s" % params)
-        params = urllib.urlencode(params)
+        params = urllib.parse.urlencode(params)
         status, content, _ = bucket_helper._http_request(api, "POST", params)
         return status, content
 
     def __set_history_retention_for_scope(self, bucket, scope, history):
-        for c_name, col in scope.collections.items():
+        for c_name, col in list(scope.collections.items()):
             self.bucket_util.set_history_retention_for_collection(
                 self.cluster.master, bucket, scope.name, c_name, history)
 
@@ -296,12 +296,12 @@ class DocHistoryRetention(ClusterSetup):
         }
 
     def run_data_ops_on_individual_collection(self, bucket):
-        for s_name, scope in bucket.scopes.items():
-            for c_name, _, in scope.collections.items():
+        for s_name, scope in list(bucket.scopes.items()):
+            for c_name, _, in list(scope.collections.items()):
                 self.__validate_dedupe_with_data_load(bucket, s_name, c_name)
 
     def __get_collection_samples(self, bucket, req_num=1):
-        scope_list = bucket.scopes.keys()
+        scope_list = list(bucket.scopes.keys())
         collection_list = list()
         for s_name in scope_list:
             active_cols = self.bucket_util.get_active_collections(
@@ -353,8 +353,8 @@ class DocHistoryRetention(ClusterSetup):
             Bucket.historyRetentionBytes: str(self.bucket_dedup_retention_bytes)}
 
         # Create bucket step
-        for b_type, storage_data in expected_result.items():
-            for storage_type, exp_outcome in storage_data.items():
+        for b_type, storage_data in list(expected_result.items()):
+            for storage_type, exp_outcome in list(storage_data.items()):
                 params = deepcopy(bucket_params)
                 params[Bucket.bucketType] = b_type
                 params[Bucket.storageBackend] = storage_type
@@ -432,8 +432,8 @@ class DocHistoryRetention(ClusterSetup):
                 self.bucket_util.update_bucket_property(
                     self.cluster.master, bucket,
                     history_retention_seconds=0, history_retention_bytes=0)
-                for s_name, scope in bucket.scopes.items():
-                    for c_name, col in scope.collections.items():
+                for s_name, scope in list(bucket.scopes.items()):
+                    for c_name, col in list(scope.collections.items()):
                         self.bucket_util.set_history_retention_for_collection(
                             self.cluster.master, bucket, s_name, c_name,
                             "false")
@@ -447,7 +447,7 @@ class DocHistoryRetention(ClusterSetup):
                     self.cluster.master, bucket,
                     history_retention_seconds=self.bucket_dedup_retention_seconds,
                     history_retention_bytes=self.bucket_dedup_retention_bytes)
-                for _, scope in bucket.scopes.items():
+                for _, scope in list(bucket.scopes.items()):
                     self.__set_history_retention_for_scope(bucket, scope,
                                                            "true")
                 validate_hist_retention_settings()
@@ -503,7 +503,7 @@ class DocHistoryRetention(ClusterSetup):
                             self.fail("Enabled CDC for non-magma bucket")
 
             if is_history_valid:
-                for _, scope in bucket.scopes.items():
+                for _, scope in list(bucket.scopes.items()):
                     self.__set_history_retention_for_scope(bucket, scope,
                                                            "true")
         elif enable_by == "cb_cli":
@@ -569,8 +569,8 @@ class DocHistoryRetention(ClusterSetup):
                                                             collection=col)
         keys = list()
         for vb_num in range(0, self.cluster.vbuckets):
-            key, val = doc_generator("test_doc", 0, 1,
-                                     target_vbucket=[vb_num]).next()
+            key, val = next(doc_generator("test_doc", 0, 1,
+                                     target_vbucket=[vb_num]))
             keys.append(key)
             client.crud(DocLoading.Bucket.DocOps.UPDATE, key, val)
 
@@ -589,7 +589,7 @@ class DocHistoryRetention(ClusterSetup):
         # MB-55336 Validation
         seq_no_incr = 1
         fields = ["high_seqno", "history_start_seqno", "purge_seqno"]
-        for vb_num, t_stats in stats["after_ops"].items():
+        for vb_num, t_stats in list(stats["after_ops"].items()):
             before_stats = stats["before_ops"][vb_num]
             a_stat = t_stats["active"]
             exp_hist_start_seq = \
@@ -624,7 +624,7 @@ class DocHistoryRetention(ClusterSetup):
         self.bucket_util.update_bucket_property(
             self.cluster.master, bucket,
             history_retention_seconds=0, history_retention_bytes=0)
-        for _, scope in bucket.scopes.items():
+        for _, scope in list(bucket.scopes.items()):
             self.__set_history_retention_for_scope(bucket, scope, "false")
 
         self.run_data_ops_on_individual_collection(bucket)
@@ -634,7 +634,7 @@ class DocHistoryRetention(ClusterSetup):
             self.cluster.master, bucket,
             history_retention_seconds=bucket_dedup_retention_seconds,
             history_retention_bytes=bucket_dedup_retention_bytes)
-        for _, scope in bucket.scopes.items():
+        for _, scope in list(bucket.scopes.items()):
             self.__set_history_retention_for_scope(bucket, scope, "true")
 
         self.run_data_ops_on_individual_collection(bucket)
@@ -830,7 +830,7 @@ class DocHistoryRetention(ClusterSetup):
             history_retention_seconds=86400,
             history_retention_bytes=18446744073709551615)
         # Enabling history for all collections
-        for _, scope in bucket.scopes.items():
+        for _, scope in list(bucket.scopes.items()):
             self.__set_history_retention_for_scope(bucket, scope, "true")
         self.assertFalse(result, "Bucket update succeeded")
 
@@ -1050,7 +1050,7 @@ class DocHistoryRetention(ClusterSetup):
             while not load_task.completed:
                 self.log.info("Killing memcached")
                 cb_err.create(CouchbaseError.KILL_MEMCACHED)
-                self.sleep(choice(range(15, 20)), "Wait for memcached to boot")
+                self.sleep(choice(list(range(15, 20))), "Wait for memcached to boot")
                 stop_persistence_using_cbepctl()
         self.task_manager.get_task_result(load_task)
 
@@ -1395,12 +1395,12 @@ class DocHistoryRetention(ClusterSetup):
         }
         self.log.info("Creating required scopes/collections")
         col_map_rules = ''
-        for bucket, scope in bucket_spec.items():
-            for s_name, cols in scope.items():
+        for bucket, scope in list(bucket_spec.items()):
+            for s_name, cols in list(scope.items()):
                 if s_name != CbServer.default_scope:
                     self.bucket_util.create_scope(
                         self.cluster.master, bucket, {"name": s_name})
-                for c_name, history in cols.items():
+                for c_name, history in list(cols.items()):
                     if c_name != CbServer.default_collection:
                         self.bucket_util.create_collection(
                             self.cluster.master, bucket, s_name,
@@ -1420,8 +1420,8 @@ class DocHistoryRetention(ClusterSetup):
                 b3, self.cluster.nodes_in_cluster)
         }
 
-        for s_name, cols in bucket_spec[b1].items():
-            for c_name, col in cols.items():
+        for s_name, cols in list(bucket_spec[b1].items()):
+            for c_name, col in list(cols.items()):
                 col_map_rules += '"{0}.{1}":"{0}.{1}",'.format(s_name, c_name)
 
         col_map_rules = col_map_rules.strip(",")

@@ -1,5 +1,5 @@
 import json
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import time
 from random import choice, randint, sample, randrange
 
@@ -192,8 +192,8 @@ class TenantManagementOnPrem(ServerlessOnPremBaseTest):
                           % self.vbuckets)
             run_test()
 
-        self.vbuckets = choice(range(Bucket.vBucket.MIN_VALUE+1,
-                                     Bucket.vBucket.MAX_VALUE))
+        self.vbuckets = choice(list(range(Bucket.vBucket.MIN_VALUE+1,
+                                     Bucket.vBucket.MAX_VALUE)))
         run_test()
 
     def test_create_bucket_negative(self):
@@ -205,7 +205,7 @@ class TenantManagementOnPrem(ServerlessOnPremBaseTest):
         """
 
         def create_bucket():
-            params = urllib.urlencode(bucket_params)
+            params = urllib.parse.urlencode(bucket_params)
             status, cont, _ = helper._http_request(api, helper.POST, params)
             self.assertFalse(status, "Bucket created successfully")
             return json.loads(cont)
@@ -277,7 +277,7 @@ class TenantManagementOnPrem(ServerlessOnPremBaseTest):
 
         bucket_params = self.__get_bucket_params(b_name="bucket_%s" % b_index,
                                                  width=self.bucket_width)
-        params = urllib.urlencode(bucket_params)
+        params = urllib.parse.urlencode(bucket_params)
         helper = BucketHelper(self.cluster.master)
         api = helper.baseUrl + self.b_create_endpoint
         self.log.info("Attempting to create bucket")
@@ -347,7 +347,7 @@ class TenantManagementOnPrem(ServerlessOnPremBaseTest):
         bucket_params = self.__get_bucket_params(
             "extra_bucket", ram_quota=256,
             width=1, weight=self.bucket_weight)
-        params = urllib.urlencode(bucket_params)
+        params = urllib.parse.urlencode(bucket_params)
         helper = BucketHelper(self.cluster.master)
         api = helper.baseUrl + self.b_create_endpoint
 
@@ -865,7 +865,7 @@ class TenantManagementOnPrem(ServerlessOnPremBaseTest):
             self.bucket_util.create_bucket(self.cluster, bucket,
                                            wait_for_warmup=True)
             post_server_bucket_map = create_bucket_map()
-            for key in server_bucket_map.keys():
+            for key in list(server_bucket_map.keys()):
                 self.assertTrue(post_server_bucket_map[key].sort() ==
                                 server_bucket_map[key].sort(),
                                 "Recreated bucket deployed in different nodes")
@@ -908,7 +908,7 @@ class TenantManagementOnPrem(ServerlessOnPremBaseTest):
         # hitting API to create bucket in order to validate from response
         def create_bucket(bucket_params):
             api = helper.baseUrl + self.b_create_endpoint
-            params = urllib.urlencode(bucket_params)
+            params = urllib.parse.urlencode(bucket_params)
             status, cont, _ = helper._http_request(api, helper.POST, params)
             if not status:
                 return json.loads(cont)

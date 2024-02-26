@@ -432,7 +432,7 @@ class IsolationDocTest(ClusterSetup):
 
         self.keys = list()
         while load_gen.has_next():
-            key, _ = load_gen.next()
+            key, _ = next(load_gen)
             self.keys.append(key)
         load_gen.reset()
 

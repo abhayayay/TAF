@@ -1,11 +1,11 @@
 import time
 
-import Jython_tasks.task as jython_tasks
+import tasks.task as jython_tasks
 from Cb_constants import DocLoading
 from cb_tools.cbstats import Cbstats
 from couchbase_helper.documentgenerator import doc_generator
 from membase.api.rest_client import RestConnection
-from rebalance_base import RebalanceBaseTest
+from .rebalance_base import RebalanceBaseTest
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_exceptions import SDKException
 from rebalance_new import rebalance_base
@@ -43,26 +43,26 @@ class RebalanceInTests(RebalanceBaseTest):
             sdk_client_pool=self.sdk_client_pool)
 
         self.task_manager.get_task_result(rebalance_task)
-        for task in tasks_info.keys():
+        for task in list(tasks_info.keys()):
             self.task_manager.get_task_result(task)
             if task.__class__ == jython_tasks.Durability:
-                self.log.error(task.sdk_acked_curd_failed.keys())
-                self.log.error(task.sdk_exception_crud_succeed.keys())
+                self.log.error(list(task.sdk_acked_curd_failed.keys()))
+                self.log.error(list(task.sdk_exception_crud_succeed.keys()))
                 self.assertTrue(
                     len(task.sdk_acked_curd_failed) == 0,
-                    "sdk_acked_curd_failed for docs: %s" % task.sdk_acked_curd_failed.keys())
+                    "sdk_acked_curd_failed for docs: %s" % list(task.sdk_acked_curd_failed.keys()))
                 self.assertTrue(
                     len(task.sdk_exception_crud_succeed) == 0,
-                    "sdk_exception_crud_succeed for docs: %s" % task.sdk_exception_crud_succeed.keys())
+                    "sdk_exception_crud_succeed for docs: %s" % list(task.sdk_exception_crud_succeed.keys()))
                 self.assertTrue(
                     len(task.sdk_exception_crud_succeed) == 0,
-                    "create failed for docs: %s" % task.create_failed.keys())
+                    "create failed for docs: %s" % list(task.create_failed.keys()))
                 self.assertTrue(
                     len(task.sdk_exception_crud_succeed) == 0,
-                    "update failed for docs: %s" % task.update_failed.keys())
+                    "update failed for docs: %s" % list(task.update_failed.keys()))
                 self.assertTrue(
                     len(task.sdk_exception_crud_succeed) == 0,
-                    "delete failed for docs: %s" % task.delete_failed.keys())
+                    "delete failed for docs: %s" % list(task.delete_failed.keys()))
         self.assertTrue(rebalance_task.result, "Rebalance Failed")
 
     def test_rebalance_in_with_ops(self):
@@ -107,7 +107,7 @@ class RebalanceInTests(RebalanceBaseTest):
                 tasks_info, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(tasks_info)
-            for task, task_info in tasks_info.items():
+            for task, task_info in list(tasks_info.items()):
                 self.assertFalse(
                     task_info["ops_failed"],
                     "Doc ops failed for task: {}".format(task.thread_name))
@@ -128,7 +128,7 @@ class RebalanceInTests(RebalanceBaseTest):
                 tasks_info, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(tasks_info)
-            for task, task_info in tasks_info.items():
+            for task, task_info in list(tasks_info.items()):
                 self.assertFalse(
                     task_info['ops_failed'],
                     "Doc ops failed for task: {}".format(task.thread_name))
@@ -191,7 +191,7 @@ class RebalanceInTests(RebalanceBaseTest):
                 tasks_info, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(tasks_info)
-            for task, task_info in tasks_info.items():
+            for task, task_info in list(tasks_info.items()):
                 self.assertFalse(
                     task_info["ops_failed"],
                     "Doc ops failed for task: {}".format(task.thread_name))
@@ -210,7 +210,7 @@ class RebalanceInTests(RebalanceBaseTest):
                 tasks_info, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(tasks_info)
-            for task, task_info in tasks_info.items():
+            for task, task_info in list(tasks_info.items()):
                 self.assertFalse(
                     task_info['ops_failed'],
                     "Doc ops failed for task: {}".format(task.thread_name))
@@ -535,7 +535,7 @@ class RebalanceInTests(RebalanceBaseTest):
                 tasks_info, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(tasks_info)
-            for task, task_info in tasks_info.items():
+            for task, task_info in list(tasks_info.items()):
                 self.assertFalse(
                     task_info['ops_failed'],
                     "Doc ops failed for task: {}".format(task.thread_name))
@@ -605,7 +605,7 @@ class RebalanceInTests(RebalanceBaseTest):
         servs_in = self.cluster.servers[self.nodes_init:self.nodes_init + self.nodes_in]
         rebalance = self.task.async_rebalance(self.cluster, servs_in, [])
         self.sleep(5)
-        rest_cons = [RestConnection(self.cluster.servers[i]) for i in xrange(self.nodes_init)]
+        rest_cons = [RestConnection(self.cluster.servers[i]) for i in range(self.nodes_init)]
         result = []
         num_iter = 0
         # get random keys for each node during rebalancing
@@ -630,7 +630,7 @@ class RebalanceInTests(RebalanceBaseTest):
             current_items = self.bucket_util.get_bucket_current_item_count(self.cluster, bucket)
             self.num_items = current_items
         # get random keys for new added nodes
-        rest_cons = [RestConnection(self.cluster.servers[i]) for i in xrange(self.nodes_init + self.nodes_in)]
+        rest_cons = [RestConnection(self.cluster.servers[i]) for i in range(self.nodes_init + self.nodes_in)]
         for rest in rest_cons:
             result = rest.get_random_key('default')
         self.bucket_util.verify_cluster_stats(self.cluster, self.num_items,
@@ -782,7 +782,7 @@ class RebalanceInTests(RebalanceBaseTest):
                     tasks_info, self.cluster,
                     sdk_client_pool=self.sdk_client_pool)
                 self.bucket_util.log_doc_ops_task_failures(tasks_info)
-                for task, task_info in tasks_info.items():
+                for task, task_info in list(tasks_info.items()):
                     self.assertFalse(
                         task_info["ops_failed"],
                         "Doc ops failed for task: %s" % task.thread_name)
@@ -894,7 +894,7 @@ class RebalanceInTests(RebalanceBaseTest):
                 bucket=bucket, wait_time=timeout)
             self.assertTrue(result, "Failure in view query")
 
-        for i in xrange(iterations_to_try):
+        for i in range(iterations_to_try):
             servs_in = self.cluster.servers[self.nodes_init:self.nodes_init + self.nodes_in]
             rebalance = self.task.async_rebalance(self.cluster, servs_in, [])
             self.sleep(self.wait_timeout / 5)
@@ -1136,7 +1136,7 @@ class RebalanceInTests(RebalanceBaseTest):
                         "unable to reach compaction value {0} after {1} sec"
                         .format(fragmentation_value, time.time()-end_time))
 
-        for _ in xrange(3):
+        for _ in range(3):
             active_tasks = self.cluster_util.async_monitor_active_task(
                 self.cluster.master, "indexer",
                 "_design/" + prefix + ddoc_name, wait_task=False)

@@ -1,5 +1,5 @@
 import json
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import copy
 
 from BucketLib.BucketOperations import BucketHelper
@@ -60,7 +60,7 @@ class CreateBucketTests(ClusterSetup):
         ]
         self.log.info("Creating required buckets")
         for bucket_dict in bucket_specs:
-            name, spec = bucket_dict.keys()[0], bucket_dict.values()[0]
+            name, spec = list(bucket_dict.keys())[0], list(bucket_dict.values())[0]
             self.bucket_util.create_default_bucket(
                 self.cluster, bucket_name=name,
                 bucket_type=spec[Bucket.bucketType],
@@ -222,9 +222,9 @@ class CreateBucketTests(ClusterSetup):
         for bucket_type in [Bucket.Type.MEMBASE, Bucket.Type.EPHEMERAL,
                             Bucket.Type.MEMCACHED]:
             init_params[Bucket.bucketType] = bucket_type
-            for name, error in invalid_names.items():
+            for name, error in list(invalid_names.items()):
                 init_params[Bucket.name] = name
-                params = urllib.urlencode(init_params)
+                params = urllib.parse.urlencode(init_params)
                 status, content, _ = bucket_helper._http_request(
                     api, params=params, method=bucket_helper.POST)
                 self.assertFalse(status, "Bucket created with name=%s" % name)
@@ -248,7 +248,7 @@ class CreateBucketTests(ClusterSetup):
                 init_params[Bucket.numVBuckets] = num_vb
 
             status, content, _ = bucket_helper._http_request(
-                api, params=urllib.urlencode(init_params),
+                api, params=urllib.parse.urlencode(init_params),
                 method=bucket_helper.POST)
             self.assertFalse(status, "Bucket created successfully")
             self.log.critical("%s" % content)

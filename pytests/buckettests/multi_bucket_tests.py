@@ -79,7 +79,7 @@ class MultiBucketTests(ClusterSetup):
         update_dict(bucket_4, "read", self.load_gen)
 
         self.log.info("Starting doc_ops on buckets")
-        for bucket_obj, bucket_op_dict in doc_ops_dict.items():
+        for bucket_obj, bucket_op_dict in list(doc_ops_dict.items()):
             tasks.append(self.task.async_load_gen_docs(
                 self.cluster, bucket_obj,
                 bucket_op_dict["doc_gen"],
@@ -134,7 +134,7 @@ class MultiBucketTests(ClusterSetup):
             durability=self.durability_level,
             timeout_secs=self.sdk_timeout)
 
-        for bucket_obj, bucket_op_dict in doc_ops_dict.items():
+        for bucket_obj, bucket_op_dict in list(doc_ops_dict.items()):
             bucket_op_dict["num_items"] = \
                 self.task.load_bucket_into_dgm(
                     self.cluster, bucket_1, self.key,
@@ -166,7 +166,7 @@ class MultiBucketTests(ClusterSetup):
         update_dict(bucket_3, "delete", gen_3)
 
         # Start ASYNC tasks to bucket ops on multi-buckets
-        for bucket_obj, bucket_op_dict in doc_ops_dict.items():
+        for bucket_obj, bucket_op_dict in list(doc_ops_dict.items()):
             tasks.append(self.task.async_load_gen_docs(
                 self.cluster, bucket_obj,
                 bucket_op_dict[bucket_obj]["doc_gen"],

@@ -50,7 +50,7 @@ class StatsBasicOps(CollectionBase):
                 idx2 = bucket_state_str.index(sub_str2)
                 state_name = bucket_state_str[idx1 + len(sub_str1) + 2: idx2-1]
 
-                if not warmup_stat_dict.has_key(bucket_name):
+                if bucket_name not in warmup_stat_dict:
                     warmup_stat_dict[bucket_name] = dict()
                 warmup_stat_dict[bucket_name][state_name] = warmup_value
         return warmup_stat_dict
@@ -85,9 +85,9 @@ class StatsBasicOps(CollectionBase):
                 idx2 = bucket_state_str.index(sub_str2)
                 result_name = bucket_state_str[idx1 + len(sub_str1) + 2: idx2-1]
 
-                if not conflict_stat_dict.has_key(bucket_name):
+                if bucket_name not in conflict_stat_dict:
                     conflict_stat_dict[bucket_name] = dict()
-                if not conflict_stat_dict[bucket_name].has_key(result_name):
+                if result_name not in conflict_stat_dict[bucket_name]:
                     conflict_stat_dict[bucket_name][result_name] = dict()
                 conflict_stat_dict[bucket_name][result_name][op_name] = stat_value
 
@@ -98,10 +98,10 @@ class StatsBasicOps(CollectionBase):
         results_to_validate = ['accepted','rejected_identical','rejected_behind']
 
         for bucket in self.cluster.buckets:
-            if not conflict_stat_dict.has_key(bucket.name):
+            if bucket.name not in conflict_stat_dict:
                 self.fail("KV conflicts resolution stat not returned \
                           for bucket {0}".format(bucket.name))
-            bucket_conflict_result_states = conflict_stat_dict[bucket.name].keys()
+            bucket_conflict_result_states = list(conflict_stat_dict[bucket.name].keys())
             for state in results_to_validate:
                 if state not in bucket_conflict_result_states:
                     self.fail("Conflict resolution result state {0} not \
@@ -124,10 +124,10 @@ class StatsBasicOps(CollectionBase):
                             'KeyDump','LoadingAccessLog','CheckForAccessLog',
                             'LoadingKVPairs','LoadingData','Done']
         for bucket in self.cluster.buckets:
-            if not warmup_stat_dict.has_key(bucket.name):
+            if bucket.name not in warmup_stat_dict:
                 self.fail("Warmup stats for {0} bucket not returned"
                     .format(bucket.name))
-            bucket_states = warmup_stat_dict[bucket.name].keys()
+            bucket_states = list(warmup_stat_dict[bucket.name].keys())
             for state in states_to_validate:
                 if not (state in bucket_states):
                     self.fail("Warmup state {0} not present for bucket {1}"
@@ -157,7 +157,7 @@ class StatsBasicOps(CollectionBase):
                 StatsHelper(server)._validate_metrics(content)
         self.log.info("Content : ")
         for line in content:
-            print(line.strip("\n"))
+            print((line.strip("\n")))
         self.validate_warmup_stat(content)
         self.validate_kv_coflicts_resolution_stat(content)
 
@@ -178,7 +178,7 @@ class StatsBasicOps(CollectionBase):
             if not parse:
                 StatsHelper(server)._validate_metrics(content)
         for line in content:
-            print(line.strip("\n"))
+            print((line.strip("\n")))
 
     def test_check_high_cardinality_metrics(self):
         """
@@ -196,7 +196,7 @@ class StatsBasicOps(CollectionBase):
             if not parse:
                 StatsHelper(server)._validate_metrics(content)
         for line in content:
-            print(line.strip("\n"))
+            print((line.strip("\n")))
 
     def test_check_authorization_low_cardinality_metrics(self):
         """
@@ -254,7 +254,7 @@ class StatsBasicOps(CollectionBase):
             content = StatsHelper(server).get_all_metrics()
             StatsHelper(server)._validate_metrics(content)
         for line in content:
-            print(line.strip("\n"))
+            print((line.strip("\n")))
 
     def test_range_api_metrics(self):
         """

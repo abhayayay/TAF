@@ -10,7 +10,7 @@ from platform_constants.os_constants import Linux, Windows
 from remote.remote_util import RemoteMachineShellConnection
 from n1ql_exceptions import N1qlException
 from bucket_utils.bucket_ready_functions import BucketUtils
-from random_query_template import WhereClause
+from .random_query_template import WhereClause
 from collections_helper.collections_spec_constants import MetaCrudParams
 
 
@@ -198,7 +198,7 @@ class N1QLHelper:
             self.log.info("TOTAL ELAPSED TIME: %s" % result["metrics"]["elapsedTime"])
 
         if isinstance(result, str) or 'errors' in result:
-            for key, value in result["errors"][0].iteritems():
+            for key, value in list(result["errors"][0].items()):
                 if "cause" in key:
                     err = value
                 else:
@@ -228,12 +228,12 @@ class N1QLHelper:
         return query_default_bucket
 
     def get_random_number_stmt(self, num_txn):
-        self.num_insert = random.choice(range(num_txn))
+        self.num_insert = random.choice(list(range(num_txn)))
         num_range = num_txn - self.num_insert
         if num_range > 0:
-            self.num_update = random.choice(range(num_range))
+            self.num_update = random.choice(list(range(num_range)))
         num_range = num_range - self.num_update
-        self.num_delete = random.choice(range(num_range))
+        self.num_delete = random.choice(list(range(num_range)))
         self.num_merge = (num_range - self.num_delete)
         return self.num_insert, self.num_update, self.num_delete, self.num_merge
 
@@ -241,9 +241,9 @@ class N1QLHelper:
         keyspaces = []
         collections = BucketUtils.get_random_collections(
             self.buckets, self.num_collection, "all", self.num_buckets)
-        for bucket, scope_dict in collections.items():
-            for s_name, c_dict in scope_dict["scopes"].items():
-                for c_name, c_data in c_dict["collections"].items():
+        for bucket, scope_dict in list(collections.items()):
+            for s_name, c_dict in list(scope_dict["scopes"].items()):
+                for c_name, c_data in list(c_dict["collections"].items()):
                     keyspace = self.get_collection_name(bucket, s_name, c_name)
                     keyspaces.append(keyspace)
         return keyspaces
@@ -251,8 +251,8 @@ class N1QLHelper:
     def get_doc_type_collection(self):
         doc_type_list = {}
         for bucket in self.buckets:
-            for s_name, scope in bucket.scopes.items():
-                for c_name, c_dict in scope.collections.items():
+            for s_name, scope in list(bucket.scopes.items()):
+                for c_name, c_dict in list(scope.collections.items()):
                     collection = \
                         self.get_collection_name(bucket.name, s_name, c_name)
                     if isinstance(self.doc_gen_type, list):
@@ -293,7 +293,7 @@ class N1QLHelper:
         return self.run_cbq_query(query)
 
     def drop_index(self):
-        for collection in self.index_map.keys():
+        for collection in list(self.index_map.keys()):
             name = collection.split('.')
             for index in self.index_map[collection]:
                 query = "DROP INDEX default:`%s`.`%s`.`%s`.`%s` "\
@@ -317,7 +317,7 @@ class N1QLHelper:
         for i in range(self.num_savepoints):
             for _ in range(self.override_savepoint):
                 save_stmt = "SAVEPOINT:a" + str(random.choice(
-                    range(self.num_savepoints)))
+                    list(range(self.num_savepoints))))
                 stmt.append(save_stmt)
             save_stmt = "SAVEPOINT:a" + str(i)
             stmt.append(save_stmt)
@@ -387,8 +387,8 @@ class N1QLHelper:
     def get_doc_gen_list(self, collections, keys=False):
         doc_gen_list = {}
         for bucket in self.buckets:
-            for s_name, scope in bucket.scopes.items():
-                for c_name, c_dict in scope.collections.items():
+            for s_name, scope in list(bucket.scopes.items()):
+                for c_name, c_dict in list(scope.collections.items()):
                     bucket_collection = \
                         self.get_collection_name(bucket.name, s_name, c_name)
                     if isinstance(self.doc_gen_type, list):
@@ -405,7 +405,7 @@ class N1QLHelper:
                         doc_gen_list[bucket_collection] = \
                             self.gen_docs("test_collections", c_dict.doc_index[0],
                                           c_dict.doc_index[1], type=type)
-        for key, value in doc_gen_list.items():
+        for key, value in list(doc_gen_list.items()):
             if key not in collections:
                 doc_gen_list.pop(key)
         return doc_gen_list
@@ -482,8 +482,8 @@ class N1QLHelper:
                                 x['char_field1'] != y['char_field1'] or \
                                 x['int_field1'] != y['int_field1'] or \
                                 x['bool_field1'] != y['bool_field1']:
-                    print("actual_result is %s" % actual_result)
-                    print("expected result is %s" % expected_result)
+                    print(("actual_result is %s" % actual_result))
+                    print(("expected result is %s" % expected_result))
                     extra_msg = self._get_failure_message(expected_result, actual_result)
                     raise Exception(msg+"\n "+extra_msg)
         else:
@@ -539,20 +539,20 @@ class N1QLHelper:
         actual_map = {}
         for data in expected_result:
             primary=None
-            for key in data.keys():
+            for key in list(data.keys()):
                 keys = key
                 if keys.encode('ascii') == "primary_key_id":
                     primary = keys
             expected_map[data[primary]] = data
         for data in actual_result:
             primary = None
-            for key in data.keys():
+            for key in list(data.keys()):
                 keys = key
                 if keys.encode('ascii') == "primary_key_id":
                     primary = keys
             actual_map[data[primary]] = data
         check = True
-        for key in expected_map.keys():
+        for key in list(expected_map.keys()):
             if sorted(actual_map[key]) != sorted(expected_map[key]):
                 check= False
         return check
@@ -563,11 +563,11 @@ class N1QLHelper:
         if actual_result is None:
             actual_result = []
         if len(expected_result) == 1:
-            value = expected_result[0].values()[0]
+            value = list(expected_result[0].values())[0]
             if value is None or value == 0:
                 expected_result = []
         if len(actual_result) == 1:
-            value = actual_result[0].values()[0]
+            value = list(actual_result[0].values())[0]
             if value is None or value == 0:
                 actual_result = []
         return expected_result, actual_result
@@ -609,7 +609,7 @@ class N1QLHelper:
             if value == '':
                 return 0
             value = int(val.split("(")[1].split(")")[0])
-        except Exception, ex:
+        except Exception as ex:
             self.log.info(ex)
         finally:
             return value
@@ -617,8 +617,8 @@ class N1QLHelper:
     def analyze_failure(self, actual, expected):
         missing_keys = []
         different_values = []
-        for key in expected.keys():
-            if key not in actual.keys():
+        for key in list(expected.keys()):
+            if key not in list(actual.keys()):
                 missing_keys.append(key)
             if expected[key] != actual[key]:
                 different_values.append("for key {0}, expected {1} \n actual {2}".format(key, expected[key], actual[key]))
@@ -678,7 +678,7 @@ class N1QLHelper:
                 couchbase_path = Windows.COUCHBASE_BIN_PATH
             if self.input.tuq_client and "sherlock_path" in self.input.tuq_client:
                 couchbase_path = "%s/bin" % self.input.tuq_client["sherlock_path"]
-                print("PATH TO SHERLOCK: %s" % couchbase_path)
+                print(("PATH TO SHERLOCK: %s" % couchbase_path))
             if os == Windows.NAME:
                 cmd = "cd %s; " % (couchbase_path) +\
                 "./cbq-engine.exe -datastore http://%s:%s/ >/dev/null 2>&1 &" % (server.ip, server.port)
@@ -716,7 +716,7 @@ class N1QLHelper:
         actual_result = []
         for item in result:
             curr_item = {}
-            for key, value in item.iteritems():
+            for key, value in list(item.items()):
                 if isinstance(value, list) or isinstance(value, set):
                     curr_item[key] = sorted(value)
                 else:
@@ -747,7 +747,7 @@ class N1QLHelper:
                 check = self._is_index_in_list(bucket.name, "#primary", server = server)
                 if check:
                     self.run_cbq_query(query=self.query, server=server)
-            except Exception, ex:
+            except Exception as ex:
                 self.log.error('ERROR during index creation %s' % str(ex))
 
     def create_primary_index(self, using_gsi=True, server=None):
@@ -769,7 +769,7 @@ class N1QLHelper:
                             raise Exception(" Timed-out Exception while building primary index for bucket {0} !!!".format(bucket.name))
                     else:
                         raise Exception(" Primary Index Already present, This looks like a bug !!!")
-                except Exception, ex:
+                except Exception as ex:
                     self.log.error('ERROR during index creation %s' % str(ex))
                     raise ex
 
@@ -799,7 +799,7 @@ class N1QLHelper:
                     else:
                         raise Exception(
                             " Primary Index Already present, This looks like a bug !!!")
-                except Exception, ex:
+                except Exception as ex:
                     self.log.error('ERROR during index creation %s' % str(ex))
                     raise ex
 
@@ -829,7 +829,7 @@ class N1QLHelper:
                 else:
                     return "ran query with success and validated results", True
                 check = True
-            except Exception, ex:
+            except Exception as ex:
                 if next_time - init_time > timeout or try_count >= max_try:
                     return ex, False
             finally:
@@ -938,7 +938,7 @@ class N1QLHelper:
         index_map = {}
         for item in res['results']:
             bucket_name = item['indexes']['keyspace_id'].encode('ascii', 'ignore')
-            if bucket_name not in index_map.keys():
+            if bucket_name not in list(index_map.keys()):
                 index_map[bucket_name] = {}
             index_name = str(item['indexes']['name'])
             index_map[bucket_name][index_name] = {}
@@ -966,12 +966,12 @@ class N1QLHelper:
         result_set = []
         if result is not None and len(result) > 0:
             for val in result:
-                for key in val.keys():
+                for key in list(val.keys()):
                     result_set.append(val[key])
         return result_set
 
     def _gen_dict_n1ql_func_result(self, result):
-        result_set = [val[key] for val in result for key in val.keys()]
+        result_set = [val[key] for val in result for key in list(val.keys())]
         new_result_set = []
         if len(result_set) > 0:
             for value in result_set:
@@ -992,7 +992,7 @@ class N1QLHelper:
             return False
         if result is not None and len(result) > 0:
             sample = result[0]
-            for key in sample.keys():
+            for key in list(sample.keys()):
                 for sample in expected_in_key:
                     if key in sample:
                         return True
@@ -1005,15 +1005,15 @@ class N1QLHelper:
         try:
             if result is not None and len(result) > 0:
                 for val in result:
-                    for key in val.keys():
+                    for key in list(val.keys()):
                         result_set.append(val[key])
             for val in result_set:
-                if val["_id"] in map.keys():
+                if val["_id"] in list(map.keys()):
                     duplicate_keys.append(val["_id"])
                 map[val["_id"]] = val
-            keys = map.keys()
+            keys = list(map.keys())
             keys.sort()
-        except Exception, ex:
+        except Exception as ex:
             self.log.info(ex)
             raise
         if len(duplicate_keys) > 0:
@@ -1128,11 +1128,11 @@ class N1QLHelper:
         for node in host_names_after_rebalance:
             index_distribution_map_after_rebalance[node] = index_distribution_map_after_rebalance.get(node, 0) + 1
         self.log.info("Distribution of indexes before rebalance")
-        for k, v in index_distribution_map_before_rebalance.iteritems():
-            print(k, v)
+        for k, v in list(index_distribution_map_before_rebalance.items()):
+            print((k, v))
         self.log.info("Distribution of indexes after rebalance")
-        for k, v in index_distribution_map_after_rebalance.iteritems():
-            print(k, v)
+        for k, v in list(index_distribution_map_after_rebalance.items()):
+            print((k, v))
 
     def verify_replica_indexes(self, index_names, index_map, num_replicas, expected_nodes=None):
         # 1. Validate count of no_of_indexes
@@ -1151,7 +1151,7 @@ class N1QLHelper:
                 try:
                     index_replica_hostname, index_replica_id = self.get_index_details_using_index_name(
                         index_replica_name, index_map)
-                except Exception, ex:
+                except Exception as ex:
                     self.log.info(str(ex))
                     raise Exception(str(ex))
 
@@ -1194,7 +1194,7 @@ class N1QLHelper:
                 index_replica_name = index_name + " (replica {0})".format(str(i))
                 try:
                     index_replica_status, index_replica_progress = self.get_index_status_using_index_name(index_replica_name, index_map)
-                except Exception, ex:
+                except Exception as ex:
                     self.log.info(str(ex))
                     raise Exception(str(ex))
 
@@ -1208,15 +1208,15 @@ class N1QLHelper:
                     self.log.info("index_name = %s, defer_build = %s, index_replica_status = %s" % (index_replica_name, defer_build, index_status))
 
     def get_index_details_using_index_name(self, index_name, index_map):
-        for key in index_map.iterkeys():
-            if index_name in index_map[key].keys():
+        for key in list(index_map.keys()):
+            if index_name in list(index_map[key].keys()):
                 return index_map[key][index_name]['hosts'], index_map[key][index_name]['id']
             else:
                 raise Exception ("Index does not exist - {0}".format(index_name))
 
     def get_index_status_using_index_name(self, index_name, index_map):
-        for key in index_map.iterkeys():
-            if index_name in index_map[key].keys():
+        for key in list(index_map.keys()):
+            if index_name in list(index_map[key].keys()):
                 return index_map[key][index_name]['status'], \
                        index_map[key][index_name]['progress']
             else:

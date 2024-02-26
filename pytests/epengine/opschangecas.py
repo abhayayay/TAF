@@ -747,7 +747,7 @@ class OpsChangeCasTests(CasBaseTest):
         # verify the CAS is good
         mc_active = client.memcached(key)
         active_CAS = mc_active.getMeta(key)[4]
-        print('active cas {0}'.format(active_CAS))
+        print(('active cas {0}'.format(active_CAS)))
 
         self.assertTrue(replica_CAS == active_CAS, 'cas mismatch active: {0} replica {1}'.format(active_CAS,replica_CAS))
         #self.assertTrue( get_meta_resp[5] == 1, msg='Metadata indicate conflict resolution is not set')
@@ -847,7 +847,7 @@ class OpsChangeCasTests(CasBaseTest):
             self.log.info('ERROR generating empty vbucket id')
 
         vb_non_existing = vbucket_ids.pop()
-        print('nominated vb_nonexisting is %s' % vb_non_existing)
+        print(('nominated vb_nonexisting is %s' % vb_non_existing))
         mc_active = self.client.memcached(all_keys[0]) #Taking a temp connection to the mc.
         #max_cas = int( mc_active.stats('vbucket-details')['vb_' + str(vb_non_existing) + ':max_cas'] )
         max_cas = int(mc_active.stats('vbucket-details')['vb_' + str(self.client._get_vBucket_id(all_keys[0])) + ':max_cas'] )
@@ -889,7 +889,7 @@ class OpsChangeCasTests(CasBaseTest):
         load_gen = copy.deepcopy(load_gen)
         self.log.info('Verifying CAS and max-cas for the keys')
         while load_gen.has_next():
-            key, value = load_gen.next()
+            key, value = next(load_gen)
             cas = self.client.crud("read", key)["cas"]
             if docs_deleted:
                 if cas != 0:
@@ -897,11 +897,11 @@ class OpsChangeCasTests(CasBaseTest):
             else:
                 max_cas = None
                 vb_for_key = self.bucket_util.get_vbucket_num_for_key(key)
-                for _, data in self.node_data.items():
+                for _, data in list(self.node_data.items()):
                     if vb_for_key in data["active"]:
                         vb_stat = data["cb_stat"].vbucket_details(
                             self.bucket.name)
-                        max_cas = long(vb_stat[str(vb_for_key)]["max_cas"])
+                        max_cas = int(vb_stat[str(vb_for_key)]["max_cas"])
                         break
                 if cas != max_cas:
                     self.log_failure("Max CAS mismatch. %s != %s"
@@ -939,7 +939,7 @@ class OpsChangeCasTests(CasBaseTest):
                 timeout_secs=self.sdk_timeout,
                 batch_size=self.num_items,
                 sdk_client_pool=self.sdk_client_pool)
-            for task, _ in tasks_info.items():
+            for task, _ in list(tasks_info.items()):
                 if task.fail:
                     self.log_failure("Failures observed during %s" % op_type)
 
@@ -950,13 +950,13 @@ class OpsChangeCasTests(CasBaseTest):
         self.sleep(self.expire_time, "Wait for docs to expire")
 
         while load_gen.has_next():
-            key, value = load_gen.next()
+            key, value = next(load_gen)
             vb_for_key = self.bucket_util.get_vbucket_num_for_key(key)
             cas = None
-            for _, data in self.node_data.items():
+            for _, data in list(self.node_data.items()):
                 if vb_for_key in data["active"]:
                     vb_stat = data["cb_stat"].vbucket_details(self.bucket.name)
-                    cas = long(vb_stat[str(vb_for_key)]["max_cas"])
+                    cas = int(vb_stat[str(vb_for_key)]["max_cas"])
                     break
 
             replace_result = self.client.crud(

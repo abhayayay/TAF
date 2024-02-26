@@ -48,7 +48,7 @@ class RackzoneBaseTest(ClusterSetup):
                 self.task.jython_task_manager.get_task_result(task)
         else:
             tasks = []
-            age = range(5)
+            age = list(range(5))
             first = ['james', 'sharon']
             template = '{{ "mutated" : 0, "age": {0}, "first_name": "{1}" }}'
             self.gen_load = DocumentGenerator('test_docs', template, age,

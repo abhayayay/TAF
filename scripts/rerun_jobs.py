@@ -1,11 +1,11 @@
 import json
 import os as OS
 import argparse
-import find_rerun_job
-import get_jenkins_params
-import merge_reports
+from . import find_rerun_job
+from . import get_jenkins_params
+from . import merge_reports
 import shutil
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import zipfile
 
 host = '172.23.121.84'
@@ -117,8 +117,8 @@ def merge_xmls(rerun_document, run_params=""):
                 else:
                     retries -= 1
             if not xml_data:
-                print("Could not reach the URL. Skipping for now. "
-                      "Reconcile with data from %s" % (job_url))
+                print(("Could not reach the URL. Skipping for now. "
+                      "Reconcile with data from %s" % (job_url)))
                 continue
             try:
                 file_name = rel_path.split('/')[-1]
@@ -217,9 +217,9 @@ def should_rerun_tests(testsuites=None, install_failure=False,
     if retries < 1:
         return False
     should_rerun = False
-    for tskey in testsuites.keys():
+    for tskey in list(testsuites.keys()):
         tests = testsuites[tskey]['tests']
-        for testname in tests.keys():
+        for testname in list(tests.keys()):
             testcase = tests[testname]
             errors = testcase['error']
             if errors:
@@ -274,10 +274,10 @@ def run_jenkins_job(url, params):
     :return: Content of the call
     :rtype: str
     """
-    url = "{0}&{1}".format(url, urllib.urlencode(params))
+    url = "{0}&{1}".format(url, urllib.parse.urlencode(params))
     print(url)
     try:
-        f = urllib.urlopen(url)
+        f = urllib.request.urlopen(url)
         return f.read()
     except Exception as e:
         print(e)

@@ -46,29 +46,29 @@ class Getcoredumps(object):
             info = remote.extract_remote_info()
             if info.type.lower() != 'windows':
                 core_files = []
-                print("looking for crashes on %s" % info.ip)
-                print("erl_crash files under /opt/{0}/var/lib/{" \
-                      "0}/".format(server_type))
+                print(("looking for crashes on %s" % info.ip))
+                print(("erl_crash files under /opt/{0}/var/lib/{" \
+                      "0}/".format(server_type)))
                 core_files.extend(remote.file_starts_with(
                     "/opt/{0}/var/lib/{0}/".format(server_type),
                     "erl_crash"))
-                print("core* files under /opt/{0}/var/lib/{0}/".format(
-                    server_type))
+                print(("core* files under /opt/{0}/var/lib/{0}/".format(
+                    server_type)))
                 core_files.extend(remote.file_starts_with(
                     "/opt/{0}/var/lib/{0}/".format(server_type),
                     "core"))
                 print("core* files under /tmp/")
                 core_files.extend(
                     remote.file_starts_with("/tmp/", "core"))
-                print("breakpad *dmp files under /opt/{0}/var/lib/{" \
-                      "0}/".format(server_type))
+                print(("breakpad *dmp files under /opt/{0}/var/lib/{" \
+                      "0}/".format(server_type)))
                 core_files.extend(remote.file_ends_with(
                     "/opt/{0}/var/lib/{0}/".format(server_type),
                     ".dmp"))
                 if core_files:
-                    print("found crashes on %s: %s" % (info.ip, core_files))
+                    print(("found crashes on %s: %s" % (info.ip, core_files)))
                 else:
-                    print("crashes not found on %s" % info.ip)
+                    print(("crashes not found on %s" % info.ip))
                 i = 0
                 for core_file in core_files:
                     if core_file.find('erl_crash.dump') != -1:
@@ -81,7 +81,7 @@ class Getcoredumps(object):
                         if remote.get_file(remote_path, file_name,
                                            os.path.join(self.path,
                                                         erl_crash_file_name)):
-                            print('downloaded core file: %s' % core_file)
+                            print(('downloaded core file: %s' % core_file))
                             i += 1
                     elif core_file.find('.dmp') != -1:
                         breakpad_crash_file_name = "breakpad-{0}-{" \
@@ -92,8 +92,8 @@ class Getcoredumps(object):
                         if remote.get_file(remote_path, file_name,
                                            os.path.join(self.path,
                                                         breakpad_crash_file_name)):
-                            print('downloaded breakpad .dmp file: %s'
-                                  % core_file)
+                            print(('downloaded breakpad .dmp file: %s'
+                                  % core_file))
                             i += 1
                     else:
                         command = "/opt/{" \
@@ -113,8 +113,8 @@ class Getcoredumps(object):
                         if remote.get_file(remote_path, file_name,
                                            os.path.join(self.path,
                                                         core_file_name)):
-                            print('downloaded core backtrace : %s'
-                                  % core_log_output)
+                            print(('downloaded core backtrace : %s'
+                                  % core_log_output))
                             i += 1
                 if i > 0:
                     command = "mkdir -p /tmp/backup_crash/{0};" \
@@ -129,8 +129,8 @@ class Getcoredumps(object):
                               "" \
                               "/tmp/backup_crash/{0};". \
                         format(stamp, server_type)
-                    print("put all crashes on %s in backup folder: " \
-                          "/tmp/backup_crash/%s" % (self.server.ip, stamp))
+                    print(("put all crashes on %s in backup folder: " \
+                          "/tmp/backup_crash/%s" % (self.server.ip, stamp)))
                     remote.execute_command(command)
                     output, error = remote.execute_command(
                         "ls -la /tmp/backup_crash/{0}".format(stamp))
@@ -161,7 +161,7 @@ class Clearcoredumps(object):
             info = remote.extract_remote_info()
             if info.type.lower() != 'windows':
                 core_files = []
-                print("looking for Erlang/Memcached crashes on %s" % info.ip)
+                print(("looking for Erlang/Memcached crashes on %s" % info.ip))
                 core_files.extend(remote.file_starts_with(
                     "/opt/{0}/var/lib/{0}/".format(server_type),
                     "erl_crash"))
@@ -174,7 +174,7 @@ class Clearcoredumps(object):
                     "/opt/{0}/var/lib/{0}/crash".format(server_type),
                     ".dmp"))
                 if core_files:
-                    print("found dumps on %s: %s" % (info.ip, core_files))
+                    print(("found dumps on %s: %s" % (info.ip, core_files)))
                     command = "mkdir -p /tmp/backup_crash/{0};" \
                               "mv -f /tmp/core* /tmp/backup_crash/{" \
                               "0};" \
@@ -185,9 +185,9 @@ class Clearcoredumps(object):
                               "" \
                               "/tmp/backup_crash/{0};". \
                         format(stamp, server_type)
-                    print("Moved all dumps on {0} to backup folder: " \
+                    print(("Moved all dumps on {0} to backup folder: " \
                           "/tmp/backup_crash/{1}".format(
-                        self.server.ip, stamp))
+                        self.server.ip, stamp)))
                     remote.execute_command(command)
                     output, error = remote.execute_command(
                         "ls -la /tmp/backup_crash/{0}".format(stamp))
@@ -197,10 +197,10 @@ class Clearcoredumps(object):
                         remote_path, file_name = os.path.dirname(
                             core_file), os.path.basename(core_file)
                         if remote.delete_file(remote_path, file_name):
-                            print('deleted core file : {0}'.format(core_file))
+                            print(('deleted core file : {0}'.format(core_file)))
                     remote.disconnect()
                 else:
-                    print("dump files not found on %s" % info.ip)
+                    print(("dump files not found on %s" % info.ip))
                     if remote:
                         remote.disconnect()
         except Exception as ex:

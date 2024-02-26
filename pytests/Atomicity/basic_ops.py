@@ -40,7 +40,7 @@ class basic_ops(ClusterSetup):
         super(basic_ops, self).tearDown()
 
     def get_doc_generator(self, start, end):
-        age = range(5)
+        age = list(range(5))
         first = ['james', 'sharon']
         body = [''.rjust(self.doc_size - 10, 'a')]
         template = JsonObject.create()
@@ -147,7 +147,7 @@ class basic_ops(ClusterSetup):
         doc_gen = doc_generator(self.key, 0, 1)
 
         # Get key for delete op and reset the gen
-        key, v = doc_gen.next()
+        key, v = next(doc_gen)
         doc_gen.reset()
 
         # Open SDK client connection

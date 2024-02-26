@@ -3,9 +3,6 @@ import subprocess
 import json
 import random
 import copy
-import re
-import string
-from com.couchbase.client.java.json import JsonObject
 from couchbase_helper.documentgenerator import DocumentGenerator
 from threading import Thread
 import shutil
@@ -18,8 +15,8 @@ def perform_S3_operation(**kwargs):
     """
     aws_util_file_path = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "S3.py"))
-    arguements = ["python3", aws_util_file_path, kwargs.get("aws_access_key"),
-                  kwargs.get("aws_secret_key"), kwargs.get("aws_session_token", "")]
+    arguements = ["python", aws_util_file_path, kwargs.get("aws_access_key"),
+                  kwargs.get("aws_secret_key"), kwargs.get("aws_session_token")]
 
     if kwargs.get("get_regions", False):
         arguements.append("--get_regions")
@@ -44,9 +41,6 @@ def perform_S3_operation(**kwargs):
         if kwargs.get("empty_bucket", False):
             arguements.append("--empty_bucket")
 
-        if kwargs.get("get_bucket_objects", False):
-            arguements.append("--get_objects_in_bucket")
-
         if kwargs.get("upload_file", False):
             arguements.append("--upload_file")
             arguements.append(kwargs.get("src_path", ""))
@@ -62,11 +56,9 @@ def perform_S3_operation(**kwargs):
         elif kwargs.get("delete_file", False):
             arguements.append("--delete_file")
             arguements.append(kwargs.get("file_path", ""))
-
     response = subprocess.Popen(arguements, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output, error = response.communicate()
-
     if error and "import sitecustomize" not in str(error):
         raise Exception(str(error))
     else:
@@ -109,8 +101,7 @@ class S3DataHelper():
         self.n1ql_helper = n1ql_helper
 
     @staticmethod
-    def generate_folder(no_of_folder, max_depth, common_folder_pattern,
-                        folder_pattern, root_path=""):
+    def generate_folder(no_of_folder, max_depth, root_path=""):
         """
         Generates a list of folders.
         :param no_of_folder: no of folder paths to be generated.
@@ -121,25 +112,16 @@ class S3DataHelper():
         """
         folder_paths = [root_path]
 
-        if no_of_folder and common_folder_pattern:
-            for _ in range(no_of_folder):
-                path = ''
-                for directory in re.split('{|}', folder_pattern):
-                    if 'string' in directory:
-                        path +=  ''.join(random.choice(string.ascii_letters) for _ in range(10))
-                    elif 'int' in directory:
-                        path +=  ''.join(random.choice(string.digits) for _ in range(10))
-                    else:
-                        path += directory
-                folder_paths.append(path)
-        elif no_of_folder and max_depth:
-            for i in xrange(0, no_of_folder):
+        if not no_of_folder or not max_depth:
+            return folder_paths
+        else:
+            for i in range(0, no_of_folder):
                 depth = random.randint(1, max_depth)
                 path = copy.deepcopy(root_path)
-                for j in xrange(0, depth):
+                for j in range(0, depth):
                     path += "folder{0}/".format(str(random.randint(0, no_of_folder)))
                 folder_paths.append(path)
-        return folder_paths
+            return folder_paths
 
     @staticmethod
     def generate_filenames(no_of_files, formats=["json", "csv", "tsv",
@@ -151,7 +133,7 @@ class S3DataHelper():
         :return: list of file names.
         """
         filenames = list()
-        for i in xrange(0, no_of_files):
+        for i in range(0, no_of_files):
             # filenames.append("file_%03d.%s" % (i, random.choice(formats)))
             filenames.append("file_{0}.{1}".format(str(i), random.choice(formats)))
         return filenames
@@ -181,12 +163,12 @@ class S3DataHelper():
         folder = folders
         filename = filenames
         missing_field = missing_field
-        template_obj = JsonObject.create()
-        template_obj.put("filename", "")
-        template_obj.put("folder", "")
-        template_obj.put("mutated", mutation_num)
-        template_obj.put("null_key", None)
-        template_obj.put("missing_field", "")
+        template_obj = dict()
+        template_obj["filename"] = ""
+        template_obj["folder"] = ""
+        template_obj["mutated"] = mutation_num
+        template_obj["null_key"] = None
+        template_obj["missing_field"] = ""
 
         if not key:
             key = "test_docs"
@@ -204,7 +186,7 @@ class S3DataHelper():
             no_of_folders, max_folder_depth, header, null_key, operation,
             bucket, no_of_docs, batch_size=10, exp=0, durability="",
             mutation_num=0, randomize_header=False, large_file=False,
-            missing_field=[False], common_folder_pattern=False, folder_pattern=None):
+            missing_field=[False]):
         """
         Uploads S3 files based on data in CB bucket.
         :param key: string, doc key
@@ -233,11 +215,9 @@ class S3DataHelper():
         self.filenames = sorted(S3DataHelper.generate_filenames(
             no_of_files, formats=file_formats))
         self.folders = S3DataHelper.generate_folder(no_of_folders,
-                                                    max_folder_depth,
-                                                    common_folder_pattern,
-                                                    folder_pattern)
+                                                    max_folder_depth)
 
-        self.n1ql_helper.create_primary_index(server=self.cluster.query_nodes[0])
+        self.n1ql_helper.create_primary_index()
 
         tasks = self.load_data_in_bucket(
             folders=self.folders, filenames=self.filenames,
@@ -255,7 +235,7 @@ class S3DataHelper():
         files_per_thread = abs(len(item_list) / self.max_thread_count) + 1
         start = 0
         count = 0
-        for i in xrange(0, len(item_list)):
+        for i in range(0, len(item_list)):
             if count > self.max_thread_count or start >= len(item_list):
                 break
             else:
@@ -306,8 +286,7 @@ class S3DataHelper():
         retry = 0
         while retry < 5:
             try:
-                n1ql_result = self.n1ql_helper.run_cbq_query(query,
-                    server=self.cluster.query_nodes[0])["results"]
+                n1ql_result = self.n1ql_helper.run_cbq_query(query)["results"]
                 break
             except Exception:
                 retry += 1
@@ -324,12 +303,12 @@ class S3DataHelper():
             if randomize_header:
                 header = random.choice(["True", "False"])
             if ("csv" in filename) and header:
-                fh.write(",".join(str(x) for x in n1ql_result[0][
-                    self.bucket.name].keys()))
+                fh.write(",".join(str(x) for x in list(n1ql_result[0][
+                                                           self.bucket.name].keys())))
                 fh.write("\n")
             elif ("tsv" in filename) and header:
-                fh.write("\t".join(str(x) for x in n1ql_result[0][
-                    self.bucket.name].keys()))
+                fh.write("\t".join(str(x) for x in list(n1ql_result[0][
+                                                            self.bucket.name].keys())))
                 fh.write("\n")
             for result in n1ql_result:
                 result = result[self.bucket.name]
@@ -425,9 +404,9 @@ class S3DataHelper():
         with open(filepath, "a+") as fh:
             fh.write(json.dumps(sample_data))
             fh.write("\n")
-            fh.write(",".join(str(x) for x in sample_data.values()))
+            fh.write(",".join(str(x) for x in list(sample_data.values())))
             fh.write("\n")
-            fh.write("\t".join(str(x) for x in sample_data.values()))
+            fh.write("\t".join(str(x) for x in list(sample_data.values())))
             fh.write("\n")
         if upload_to_s3:
             try:
@@ -483,9 +462,9 @@ class S3DataHelper():
             if file_format in ["json", "parquet"]:
                 fh.write(json.dumps(sample_data))
             elif file_format == "csv":
-                fh.write(",".join(str(x) for x in sample_data.values()))
+                fh.write(",".join(str(x) for x in list(sample_data.values())))
             elif file_format == "tsv":
-                fh.write("\t".join(str(x) for x in sample_data.values()))
+                fh.write("\t".join(str(x) for x in list(sample_data.values())))
 
         if file_format == "parquet":
             if not convert_json_to_parquet(path=filepath):
@@ -550,9 +529,9 @@ class S3DataHelper():
         if record_type == "json":
             data_to_write = json.dumps(sample_data)
         elif record_type == "csv":
-            data_to_write = ",".join(str(x) for x in sample_data.values())
+            data_to_write = ",".join(str(x) for x in list(sample_data.values()))
         elif record_type == "tsv":
-            data_to_write = "\t".join(str(x) for x in sample_data.values())
+            data_to_write = "\t".join(str(x) for x in list(sample_data.values()))
 
         for i in range(0, no_of_files):
             filename = "file{0}_{1}KB.{2}".format(str(i), file_size_in_KB,

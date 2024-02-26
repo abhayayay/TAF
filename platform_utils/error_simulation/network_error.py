@@ -6,7 +6,7 @@ class NetworkError:
         unsupported_os = ['windows', 'mac']
         curr_os = self.shellConn.extract_remote_info().type.lower()
         if curr_os in [unsupported_os]:
-            raise("NetworkError not supported for {0}".format(curr_os))
+            raise "NetworkError not supported for {0}"
 
     def limit_bandwidth_of_network_interface(self, downlink_speed,
                                              uplink_speed):
@@ -15,9 +15,7 @@ class NetworkError:
         self.log.info("Executing: {0}".format(cmd))
         output, error = self.shellConn.execute_command(cmd)
         if "command not found" in output:
-            raise("wondershaper not installed."
-                  " Try 'yum install epel-release -y'"
-                  "     'yum install wondershaper -y' to install")
+            raise "wondershaper not installed."
         else:
             self.log.info("Output: {0}".format(output))
         return output, error

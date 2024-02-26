@@ -34,7 +34,7 @@ class CBASExternalLinks(CBASBaseTest):
                               stage=self.setUp.__name__)
 
         # Since all the test cases are being run on 1 cluster only
-        self.cluster = self.cb_clusters.values()[0]
+        self.cluster = list(self.cb_clusters.values())[0]
 
         self.aws_access_key = self.input.param("aws_access_key")
         self.aws_secret_key = self.input.param("aws_secret_key")
@@ -70,7 +70,7 @@ class CBASExternalLinks(CBASBaseTest):
             for server in self.cluster.servers:
                 RemoteUtilHelper.clear_all_speed_restrictions(server)
 
-        for aws_bucket in self.aws_buckets.keys():
+        for aws_bucket in list(self.aws_buckets.keys()):
             if aws_bucket != "cbas-regression-1" and not perform_S3_operation(
                     aws_access_key=self.aws_access_key,
                     aws_secret_key=self.aws_secret_key,
@@ -323,7 +323,7 @@ class CBASExternalLinks(CBASBaseTest):
 
                 # Copying link property values for the testcase,
                 # to link_property dict, to create a new link.
-                for key, value in testcase.iteritems():
+                for key, value in list(testcase.items()):
                     if key in link_properties:
                         link_properties[key] = value
 
@@ -585,7 +585,7 @@ class CBASExternalLinks(CBASBaseTest):
                 link_properties = copy.deepcopy(link.properties)
 
                 # Copying link property values for the testcase, to link_property dict, to create a new link.
-                for key, value in testcase.iteritems():
+                for key, value in list(testcase.items()):
                     if key in link_properties:
                         link_properties[key] = value
 
@@ -1347,9 +1347,9 @@ class CBASExternalLinks(CBASBaseTest):
 
         if self.input.param("delete_last_file", False):
             # selecting a middle file to delete, as list object from aws returns object name in sorted alpha numeric way.
-            file_to_delete = file_dict.keys()[-1]
+            file_to_delete = list(file_dict.keys())[-1]
         else:
-            file_to_delete = file_dict.keys()[0]
+            file_to_delete = list(file_dict.keys())[0]
 
         if not self.input.param("recreate", False) and \
                 self.input.param("delete_last_file", False):
@@ -1910,7 +1910,7 @@ class CBASExternalLinks(CBASBaseTest):
             if not isinstance(a, dict):
                 return a == b
             else:
-                return all(compare_json(v, b.get(k)) for k, v in a.items())
+                return all(compare_json(v, b.get(k)) for k, v in list(a.items()))
 
         for testcase in testcases:
             try:

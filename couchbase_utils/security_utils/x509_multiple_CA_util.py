@@ -9,7 +9,7 @@ from ast import literal_eval
 
 import requests
 from global_vars import logger
-import commands
+import subprocess
 from membase.api.rest_client import RestConnection
 
 from shutil import copyfile
@@ -245,7 +245,7 @@ class x509main:
         self.remove_directory(dir_name=x509main.ALL_CAs_PATH)
         self.create_directory(dir_name=x509main.ALL_CAs_PATH)
         cat_cmd = "cat "
-        for root_ca, root_ca_manifest in self.manifest.items():
+        for root_ca, root_ca_manifest in list(self.manifest.items()):
             root_ca_dir_path = root_ca_manifest["path"]
             root_ca_path = root_ca_dir_path + "ca.pem"
             cat_cmd = cat_cmd + root_ca_path + " "
@@ -418,7 +418,7 @@ class x509main:
                 fin.write("\nsubjectAltName = IP:{0}".format(node_ip))
         # print file contents for easy debugging
         with open(temp_cert_extensions_file, "r") as fout:
-            print(fout.read())
+            print((fout.read()))
 
         shell = RemoteMachineShellConnection(self.slave_host)
         # create node CA private key
@@ -496,7 +496,7 @@ class x509main:
 
         # print file contents for easy debugging
         with open(temp_cert_extensions_file, "r") as fout:
-            print(fout.read())
+            print((fout.read()))
 
         shell = RemoteMachineShellConnection(self.slave_host)
         # create private key for client
@@ -558,8 +558,8 @@ class x509main:
         copy_servers = copy.deepcopy(servers)
         node_ptr = 0
         max_ptr = len(copy_servers)
-        if "structure" in spec.keys():
-            for root_ca_name, root_CA_dict in spec["structure"].items():
+        if "structure" in list(spec.keys()):
+            for root_ca_name, root_CA_dict in list(spec["structure"].items()):
                 self.generate_root_certificate(root_ca_name=root_ca_name)
                 number_of_int_ca = root_CA_dict["i"]
                 for i in range(number_of_int_ca):
@@ -633,11 +633,11 @@ class x509main:
             self.generate_root_certificate(root_ca_name=root_ca_name,
                                            cn_name=cn_name)
             intermediate_cas_manifest = root_ca_manifest["intermediate"]
-            for int_ca_name, int_ca_manifest in intermediate_cas_manifest.items():
+            for int_ca_name, int_ca_manifest in list(intermediate_cas_manifest.items()):
                 self.generate_intermediate_certificate(root_ca_name=root_ca_name,
                                                        int_ca_name=int_ca_name)
                 nodes_cas_manifest = int_ca_manifest["nodes"]
-                nodes_ips = nodes_cas_manifest.keys()
+                nodes_ips = list(nodes_cas_manifest.keys())
                 nodes_affected_ips.extend(nodes_ips)
                 for node_ip in nodes_ips:
                     del self.node_ca_map[node_ip]
@@ -645,7 +645,7 @@ class x509main:
                                                    int_ca_name=int_ca_name,
                                                    node_ip=node_ip)
                 client_cas_manifest = int_ca_manifest["clients"]
-                if self.client_ip in client_cas_manifest.keys():
+                if self.client_ip in list(client_cas_manifest.keys()):
                     del self.client_ca_map["client_" + int_ca_name]
                     self.generate_client_certificate(root_ca_name=root_ca_name,
                                                      int_ca_name=int_ca_name)
@@ -1002,7 +1002,7 @@ class Validation:
         with open('./couchbase_utils/security_utils/https_input.py', 'w') as file:
             file.write(str(input_params))
         cmd = '/opt/jython/bin/jython ' + './couchbase_utils/security_utils/make_https_requests_script.py'
-        shell_remote_output = commands.getstatusoutput(cmd)
+        shell_remote_output = subprocess.getstatusoutput(cmd)
         self.log.debug("Shell remote output {0}".format(shell_remote_output))
 
         # Get the output dictionary

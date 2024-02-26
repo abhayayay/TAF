@@ -549,7 +549,7 @@ class RRGuardrails(GuardrailsBase):
         self.log.info("Inserting {0} docs into vbuckets on the node {1}".format(
                                                 number_of_docs, non_master_node.ip))
         for i in range(number_of_docs):
-            key_obj, val_obj = new_docs.next()
+            key_obj, val_obj = next(new_docs)
             res = self.sdk_client.insert(key_obj, val_obj)
             result.append(res)
 

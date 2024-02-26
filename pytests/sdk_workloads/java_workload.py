@@ -365,7 +365,7 @@ class JavaSDKWorkload(BaseTestCase, OPD):
                                                min(5, bucket.loadDefn.get("collections")))
                 self.create_sdk_client_pool([bucket],
                                             num_clients)
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     if bucket.loadDefn.get("collections") > 0:

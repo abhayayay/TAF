@@ -9,14 +9,6 @@ import zlib
 from random import choice
 from string import ascii_uppercase, ascii_lowercase, digits
 
-from data import FIRST_NAMES, LAST_NAMES, DEPT, LANGUAGES
-
-from com.couchbase.client.java.json import JsonObject
-from java.lang import String
-from java.nio.charset import StandardCharsets
-from reactor.util.function import Tuples
-
-
 letters = ascii_uppercase + ascii_lowercase + digits
 
 
@@ -28,37 +20,9 @@ def doc_generator(key, start, end,
                   randomize_doc_size=False, randomize_value=False,
                   randomize=False,
                   deep_copy=False):
-
-    # Defaults to JSON doc_type
-    template_obj = JsonObject.create()
-    template_obj.put("mutated", mutate)
-    _l = len('''{ "mutated": %s
-    }''' % mutate)
-    doc_size -= _l
-    _l = len('"age    ": 5,')
-    if doc_size > _l:
-        template_obj.put("age", 5)
-        doc_size -= _l
-    _l = len('"name    ": "james",')
-    if doc_size > _l:
-        template_obj.put("name", "james")
-        doc_size -= _l
-    _l = len('"mutation_type      ": {},'.format(mutation_type))
-    if doc_size > _l:
-        template_obj.put("mutation_type", mutation_type)
-        doc_size -= _l
-    _l = len('"body      ": ')
-    if doc_size > _l:
-        template_obj.put("body", "b")
-        doc_size -= _l
-
-#     if doc_type in ["string", "binary"]:
-#         template_obj = 'age:{0}, first_name: "{1}", body: "{2}", ' \
-#                    'mutated:  %s, mutation_type: "%s"' \
-#                    % (mutate, mutation_type)
     if target_vbucket:
         return DocumentGeneratorForTargetVbucket(
-            key, template_obj,
+            key,
             start=start, end=end,
             key_size=key_size, mix_key_size=mix_key_size,
             doc_size=doc_size, doc_type=doc_type,
@@ -67,8 +31,7 @@ def doc_generator(key, start, end,
             randomize_value=randomize_value,
             randomize=randomize,
             deep_copy=deep_copy)
-    return DocumentGenerator(key, template_obj,
-                             start=start, end=end,
+    return DocumentGenerator(key, start=start, end=end,
                              key_size=key_size, mix_key_size=mix_key_size,
                              doc_size=doc_size, doc_type=doc_type,
                              target_vbucket=target_vbucket, vbuckets=vbuckets,
@@ -94,7 +57,7 @@ def sub_doc_generator(key, start, end, doc_size=256,
         last_name = [''.rjust(doc_size - 10, 'a')]
         city = ["Chicago", "Dallas", "Seattle", "Aurora", "Columbia"]
         state = ["AL", "CA", "IN", "NV", "NY"]
-        pin_code = [135, 246, 396, 837, 007]
+        pin_code = [135, 246, 396, 837, 0o07]
         template = '{{ "full_name.first": "{0}", "full_name.last": "{1}", \
                        "addr.city": "{2}", "addr.state": "{3}", \
                        "addr.pincode": {4} }}'
@@ -170,7 +133,7 @@ class KVGenerator(object):
                                                     - len(self.name)
                                                     - 1))
 
-    def next(self):
+    def __next__(self):
         raise NotImplementedError
 
     def reset(self):
@@ -185,7 +148,8 @@ class KVGenerator(object):
 
 class DocumentGenerator(KVGenerator):
     """ An idempotent document generator."""
-    def __init__(self, key_prefix, template, *args, **kwargs):
+
+    def __init__(self, key_prefix, *args, **kwargs):
         """Initializes the document generator
 
         Example:
@@ -207,7 +171,6 @@ class DocumentGenerator(KVGenerator):
         """
         self.args = args
         self.kwargs = kwargs
-        self.template = template
         KVGenerator.__init__(self, key_prefix)
 
         if 'start' in kwargs:
@@ -248,7 +211,7 @@ class DocumentGenerator(KVGenerator):
                 or self.name == "random_keys":
             random.seed(key_prefix)
             self.random_string = [''.join(random.choice(letters)
-                                          for _ in range(4*1024))][0]
+                                          for _ in range(4 * 1024))][0]
             self.len_random_string = len(self.random_string)
 
     def next_key(self):
@@ -256,10 +219,10 @@ class DocumentGenerator(KVGenerator):
             seed_hash = self.name + '-' + str(abs(self.itr))
             self.random.seed(seed_hash)
             """ This will generate a random ascii key with 12 characters """
-            _slice = int(self.random.random()*(self.len_random_string
-                                               - self.key_size))
+            _slice = int(self.random.random() * (self.len_random_string
+                                                 - self.key_size))
             key_len = self.key_size - (len(str(self.itr)) + 1)
-            doc_key = self.random_string[_slice:key_len+_slice] + "-" \
+            doc_key = self.random_string[_slice:key_len + _slice] + "-" \
                       + str(self.itr)
         elif self.mix_key_size:
             seed_hash = self.name + '-' + str(abs(self.itr))
@@ -278,33 +241,12 @@ class DocumentGenerator(KVGenerator):
     Returns:
         The document generated"""
 
-    def next(self):
+    def __next__(self):
         if self.itr >= self.end:
             raise StopIteration
-        else:
-            template = self.template
-        # Assigning  self.template to template without
-        # using deep copy  will result in documents in same batch
-        # (BatchedDocumentGenerator)
-        # will have same value/template, and value of all
-        # keys in batch will have value generated for last key
-        # in batch(because of python reference concept)
-        # TO avoid above , we can use deep_copy
-        if self.deep_copy:
-            template = copy.deepcopy(self.template)
+
         seed_hash = self.name + '-' + str(abs(self.itr))
         self.random.seed(seed_hash)
-        if self.randomize:
-            for k in template.getNames():
-                if k not in self.kwargs:
-                    continue
-                if callable(self.kwargs[k]):
-                    t_val = self.kwargs[k]()
-                elif k == "key":
-                    t_val = doc_key
-                else:
-                    t_val = self.random.choice(self.kwargs[k])
-                template.put(k, t_val)
 
         doc_size = self.doc_size
         if self.randomize_doc_size:
@@ -312,20 +254,13 @@ class DocumentGenerator(KVGenerator):
             self.body = [''.rjust(doc_size, 'a')][0]
 
         if doc_size and self.randomize_value:
-            _slice = int(self.random.random()*self.len_random_string)
+            _slice = int(self.random.random() * self.len_random_string)
             self.body = (self.random_string *
-                         (doc_size//self.len_random_string+2)
+                         (doc_size // self.len_random_string + 2)
                          )[_slice:doc_size + _slice]
-        if template.containsKey("body"):
-            template.put("body", self.body)
-        if self.doc_type.lower().find("binary") != -1:
-            template = String(str(template)).getBytes(StandardCharsets.UTF_8)
-
-        if self.doc_type.lower().find("string") != -1:
-            template = String(str(template))
 
         doc_key = self.next_key()
-        return doc_key, template
+        return doc_key, None
 
 
 class SubdocDocumentGenerator(KVGenerator):
@@ -386,10 +321,10 @@ class SubdocDocumentGenerator(KVGenerator):
         while self.doc_keys_len < self.end:
             doc_key = super(SubdocDocumentGenerator,
                             self).next_key(self.key_counter)
-            tem_vb = (((zlib.crc32(doc_key)) >> 16) & 0x7fff) & \
-                     (self.vbuckets-1)
+            tem_vb = (((zlib.crc32(bytes(doc_key, 'utf-8'))) >> 16) & 0x7fff) & \
+                     (self.vbuckets - 1)
             if tem_vb in self.target_vbucket:
-                self.doc_keys.update({self.start+self.doc_keys_len: doc_key})
+                self.doc_keys.update({self.start + self.doc_keys_len: doc_key})
                 self.doc_keys_len += 1
             self.key_counter += 1
         self.end = self.start + self.doc_keys_len
@@ -402,7 +337,7 @@ class SubdocDocumentGenerator(KVGenerator):
             seed_hash = self.name + '-' + str(self.itr)
             self.random.seed(seed_hash)
             doc_key = ''.join(self.random.choice(
-                              ascii_uppercase + ascii_lowercase + digits)
+                ascii_uppercase + ascii_lowercase + digits)
                               for _ in range(12))
         else:
             doc_key = super(SubdocDocumentGenerator, self).next_key(self.itr)
@@ -413,7 +348,8 @@ class SubdocDocumentGenerator(KVGenerator):
     """Creates the next generated document and increments the iterator.
     Returns:
         The document generated"""
-    def next(self):
+
+    def __next__(self):
         if self.itr >= self.end:
             raise StopIteration
 
@@ -429,7 +365,7 @@ class SubdocDocumentGenerator(KVGenerator):
             .replace('\\', '\\\\')
         json_val = json.loads(doc)
         return_val = []
-        for path, value in json_val.items():
+        for path, value in list(json_val.items()):
             return_val.append((path, value))
 
         doc_key = self.next_key()
@@ -439,7 +375,8 @@ class SubdocDocumentGenerator(KVGenerator):
 
 class DocumentGeneratorForTargetVbucket(KVGenerator):
     """ An idempotent document generator."""
-    def __init__(self, name, template, *args, **kwargs):
+
+    def __init__(self, name, *args, **kwargs):
         """Initializes the document generator
 
         Example:
@@ -461,7 +398,6 @@ class DocumentGeneratorForTargetVbucket(KVGenerator):
         """
         self.args = args
         self.kwargs = kwargs
-        self.template = template
         self.doc_type = "json"
         self.doc_keys = dict()
         self.doc_keys_len = 0
@@ -500,7 +436,7 @@ class DocumentGeneratorForTargetVbucket(KVGenerator):
             self.randomize_value = kwargs['randomize_value']
             random.seed(name)
             self.random_string = [''.join(random.choice(letters)
-                                          for _ in range(4*1024))][0]
+                                          for _ in range(4 * 1024))][0]
             self.len_random_string = len(self.random_string)
 
         if 'randomize' in self.kwargs:
@@ -519,10 +455,10 @@ class DocumentGeneratorForTargetVbucket(KVGenerator):
         while self.doc_keys_len < self.end:
             doc_key = super(DocumentGeneratorForTargetVbucket,
                             self).next_key(self.key_counter)
-            tem_vb = (((zlib.crc32(doc_key)) >> 16) & 0x7fff) & \
-                (self.vbuckets-1)
+            tem_vb = (((zlib.crc32(bytes(doc_key, 'utf-8'))) >> 16) & 0x7fff) & \
+                     (self.vbuckets - 1)
             if tem_vb in self.target_vbucket:
-                self.doc_keys.update({self.start+self.doc_keys_len: doc_key})
+                self.doc_keys.update({self.start + self.doc_keys_len: doc_key})
                 self.doc_keys_len += 1
             self.key_counter += 1
         self.end = self.start + self.doc_keys_len
@@ -532,38 +468,31 @@ class DocumentGeneratorForTargetVbucket(KVGenerator):
     Returns:
        The document generated
     """
+
     def next_key(self):
         doc_key = self.doc_keys[self.itr]
         self.itr += 1
         return doc_key
 
-    def next(self):
+    def __next__(self):
         if self.itr > self.end:
             raise StopIteration
-        template = self.template
-        if self.deep_copy:
-            template = copy.deepcopy(self.template)
         rand_hash = self.name + '-' + str(self.itr)
         self.random.seed(rand_hash)
-        if self.randomize:
-            for k in template.getNames():
-                if k in self.kwargs:
-                    template.put(k, self.random.choice(self.kwargs[k]))
 
         if self.randomize_doc_size:
             doc_size = self.random.randint(0, self.doc_size)
             self.body = [''.rjust(doc_size, 'a')][0]
 
         if self.doc_size and self.randomize_value:
-            _slice = int(self.random.random()*self.len_random_string)
+            _slice = int(self.random.random() * self.len_random_string)
             self.body = (self.random_string *
-                         (self.doc_size/self.len_random_string+2)
+                         (self.doc_size / self.len_random_string + 2)
                          )[_slice:self.doc_size + _slice]
-        if template.get("body"):
-            template.put("body", self.body)
+
         doc_key = self.next_key()
 
-        return doc_key, template
+        return doc_key, None
 
 
 class BlobGenerator(KVGenerator):
@@ -576,17 +505,17 @@ class BlobGenerator(KVGenerator):
         self.itr = self.start
         self.doc_type = "string"
 
-    def next(self):
+    def __next__(self):
         if self.itr >= self.end:
             raise StopIteration
 
         if self.name == "random_keys":
-            key = ''.join(choice(ascii_uppercase+ascii_lowercase+digits)
+            key = ''.join(random.choice(ascii_uppercase + ascii_lowercase + digits)
                           for _ in range(12))
         else:
             key = self.name + str(self.itr)
         if self.value_size == 1:
-            value = random.choice(string.letters)
+            value = random.choice(letters)
         else:
             value = self.seed + str(self.itr)
             extra = self.value_size - len(value)
@@ -623,11 +552,11 @@ class BatchedDocumentGenerator(object):
         val = ""
         while self.count < self._batch_size and self.has_next():
             if not skip_value or self._doc_gen.deep_copy:
-                key, val = self._doc_gen.next()
+                key, val = next(self._doc_gen)
                 skip_value = True
             else:
                 key = self._doc_gen.next_key()
-            key_val.append(Tuples.of(key, val))
+            key_val.append((key, val))
             self.count += 1
         return key_val
 
@@ -636,6 +565,7 @@ class JSONNonDocGenerator(KVGenerator):
     """
     Values can be arrays, integers, strings
     """
+
     def __init__(self, name, values, start=0, end=10000):
         KVGenerator.__init__(self, name)
         self.start = start
@@ -643,7 +573,7 @@ class JSONNonDocGenerator(KVGenerator):
         self.values = values
         self.itr = self.start
 
-    def next(self):
+    def __next__(self):
         if self.itr >= self.end:
             raise StopIteration
 
@@ -651,7 +581,7 @@ class JSONNonDocGenerator(KVGenerator):
         index = self.itr
         while index > len(self.values):
             index = index - len(self.values)
-        value = json.dumps(self.values[index-1])
+        value = json.dumps(self.values[index - 1])
         self.itr += 1
         return key, value
 
@@ -664,7 +594,7 @@ class Base64Generator(KVGenerator):
         self.values = values
         self.itr = self.start
 
-    def next(self):
+    def __next__(self):
         if self.itr >= self.end:
             raise StopIteration
 
@@ -672,7 +602,7 @@ class Base64Generator(KVGenerator):
         index = self.itr
         while index > len(self.values):
             index = index - len(self.values)
-        value = self.values[index-1]
+        value = self.values[index - 1]
         self.itr += 1
         return key, value
 
@@ -741,31 +671,31 @@ class JsonDocGenerator(KVGenerator):
             self.end = int(kwargs['end'])
 
         if op_type == "create":
-            for count in xrange(self.start+1, self.end+1, 1):
+            for count in range(self.start + 1, self.end + 1, 1):
                 emp_name = self.generate_name()
                 doc_dict = {
-                            'emp_id': str(10000000+int(count)),
-                            'name': emp_name,
-                            'dept': self.generate_dept(),
-                            'email': "%s@mcdiabetes.com" %
-                                     (emp_name.split(' ')[0].lower()),
-                            'salary': self.generate_salary(),
-                            'join_date': self.generate_join_date(),
-                            'languages_known': self.generate_lang_known(),
-                            'is_manager': bool(random.getrandbits(1)),
-                            'mutated': 0,
-                            'type': 'emp'
-                           }
+                    'emp_id': str(10000000 + int(count)),
+                    'name': emp_name,
+                    'dept': self.generate_dept(),
+                    'email': "%s@mcdiabetes.com" %
+                             (emp_name.split(' ')[0].lower()),
+                    'salary': self.generate_salary(),
+                    'join_date': self.generate_join_date(),
+                    'languages_known': self.generate_lang_known(),
+                    'is_manager': bool(random.getrandbits(1)),
+                    'mutated': 0,
+                    'type': 'emp'
+                }
                 if doc_dict["is_manager"]:
                     doc_dict['manages'] = {'team_size': random.randint(5, 10)}
                     doc_dict['manages']['reports'] = []
-                    for _ in xrange(0, doc_dict['manages']['team_size']):
+                    for _ in range(0, doc_dict['manages']['team_size']):
                         doc_dict['manages']['reports'] \
                             .append(self.generate_name())
-                self.gen_docs[count-1] = doc_dict
+                self.gen_docs[count - 1] = doc_dict
         elif op_type == "delete":
             # for deletes, just keep/return empty docs with just type field
-            for count in xrange(self.start, self.end):
+            for count in range(self.start, self.end):
                 self.gen_docs[count] = {'type': 'emp'}
 
     def update(self, fields_to_update=None):
@@ -776,7 +706,7 @@ class JsonDocGenerator(KVGenerator):
                    default for this dataset, 'salary' field is regenerated.
         """
         random.seed(1)
-        for count in xrange(self.start, self.end):
+        for count in range(self.start, self.end):
             doc_dict = self.gen_docs[count]
             if fields_to_update is None:
                 doc_dict['salary'] = self.generate_salary()
@@ -790,14 +720,14 @@ class JsonDocGenerator(KVGenerator):
                     if doc_dict["is_manager"]:
                         doc_dict['manages'] = {'team_size': random.randint(5, 10)}
                         doc_dict['manages']['reports'] = []
-                        for _ in xrange(0, doc_dict['manages']['team_size']):
+                        for _ in range(0, doc_dict['manages']['team_size']):
                             doc_dict['manages']['reports'] \
                                 .append(self.generate_name())
                 if 'languages_known' in fields_to_update:
                     doc_dict['languages_known'] = self.generate_lang_known()
                 if 'email' in fields_to_update:
                     doc_dict['email'] = \
-                        "%s_%s@mcdiabetes.com"\
+                        "%s_%s@mcdiabetes.com" \
                         % (doc_dict['name'].split(' ')[0].lower(),
                            str(random.randint(0, 99)))
                 if 'manages.team_size' in fields_to_update \
@@ -805,17 +735,17 @@ class JsonDocGenerator(KVGenerator):
                     doc_dict['manages'] = {}
                     doc_dict['manages']['team_size'] = random.randint(5, 10)
                     doc_dict['manages']['reports'] = []
-                    for _ in xrange(0, doc_dict['manages']['team_size']):
+                    for _ in range(0, doc_dict['manages']['team_size']):
                         doc_dict['manages']['reports'] \
                             .append(self.generate_name())
             self.gen_docs[count] = doc_dict
 
-    def next(self):
+    def __next__(self):
         if self.itr >= self.end:
             raise StopIteration
         doc = self.gen_docs[self.itr]
         self.itr += 1
-        return self.name+str(10000000+self.itr), \
+        return self.name + str(10000000 + self.itr), \
             json.dumps(doc).encode(self.encoding, "ignore")
 
     def generate_join_date(self):
@@ -827,20 +757,20 @@ class JsonDocGenerator(KVGenerator):
         return datetime.datetime(year, month, day, hour, minutes).isoformat()
 
     def generate_dept(self):
-        return DEPT[random.randint(0, len(DEPT)-1)]
+        return DEPT[random.randint(0, len(DEPT) - 1)]
 
     def generate_salary(self):
-        return round(random.random()*100000 + 50000, 2)
+        return round(random.random() * 100000 + 50000, 2)
 
     def generate_name(self):
-        return "%s %s" % (FIRST_NAMES[random.randint(1, len(FIRST_NAMES)-1)],
-                          LAST_NAMES[random.randint(1, len(LAST_NAMES)-1)])
+        return "%s %s" % (FIRST_NAMES[random.randint(1, len(FIRST_NAMES) - 1)],
+                          LAST_NAMES[random.randint(1, len(LAST_NAMES) - 1)])
 
     def generate_lang_known(self):
         count = 0
         lang = []
         while count < 3:
-            lang.append(LANGUAGES[random.randint(0, len(LANGUAGES)-1)])
+            lang.append(LANGUAGES[random.randint(0, len(LANGUAGES) - 1)])
             count += 1
         return lang
 
@@ -868,7 +798,7 @@ class WikiJSONGenerator(KVGenerator):
 
         {
            "revision": {
-              "comment": "robot Modifying: [[bar:Apr\u00fc]]",
+              "comment": "robot Modifying: [[bar:Apr\\u00fc]]",
               "timestamp": "2010-05-13T20:42:11Z",
               "text": {
                  "@xml:space": "preserve",
@@ -919,7 +849,7 @@ class WikiJSONGenerator(KVGenerator):
             self.read_from_wiki_dump()
         elif op_type == "delete":
             # for deletes, just keep/return empty docs with just type field
-            for count in xrange(self.start, self.end):
+            for count in range(self.start, self.end):
                 self.gen_docs[count] = {'type': 'wiki'}
 
     def read_from_wiki_dump(self):
@@ -928,7 +858,7 @@ class WikiJSONGenerator(KVGenerator):
         while not done:
             try:
                 with gzip.open("lib/couchbase_helper/wiki/{0}wiki.txt.gz"
-                               .format(self.lang.lower()), "r") as f:
+                                       .format(self.lang.lower()), "r") as f:
                     for doc in f:
                         self.gen_docs[count] = doc
                         if count >= self.end:
@@ -940,16 +870,16 @@ class WikiJSONGenerator(KVGenerator):
             except IOError:
                 lang = self.lang.lower()
                 wiki = eval("{0}WIKI".format(self.lang))
-                print("Unable to find file lib/couchbase_helper/wiki/"
+                print(("Unable to find file lib/couchbase_helper/wiki/"
                       "{0}wiki.txt.gz. Downloading from {1}...".
-                      format(lang, wiki))
-                import urllib
-                urllib.URLopener().retrieve(
+                      format(lang, wiki)))
+                import urllib.request, urllib.parse, urllib.error
+                urllib.request.URLopener().retrieve(
                     wiki,
                     "lib/couchbase_helper/wiki/{0}wiki.txt.gz".format(lang))
                 print("Download complete!")
 
-    def next(self):
+    def __next__(self):
         if self.itr >= self.end:
             raise StopIteration
         doc = {}
@@ -961,5 +891,5 @@ class WikiJSONGenerator(KVGenerator):
         doc['mutated'] = 0
         doc['type'] = 'wiki'
         self.itr += 1
-        return self.name+str(10000000+self.itr), \
+        return self.name + str(10000000 + self.itr), \
             json.dumps(doc, indent=3).encode(self.encoding, "ignore")

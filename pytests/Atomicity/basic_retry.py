@@ -50,7 +50,7 @@ class basic_ops(ClusterSetup):
             self.durability = 0
 
     def get_doc_generator(self, start, end):
-        age = range(5)
+        age = list(range(5))
         name = ['james', 'sharon']
         body = [''.rjust(self.doc_size - 10, 'a')]
         template = JsonObject.create()
@@ -131,7 +131,7 @@ class basic_ops(ClusterSetup):
             key = "test_docs-" + str(i)
             result = client.read(key)
             actual_val = self.client.translate_to_json_object(result['value'])
-            self.assertEquals(self.content, actual_val)
+            self.assertEqual(self.content, actual_val)
 
     def test_MultiThreadTxnLoad(self):
         """
@@ -193,7 +193,7 @@ class basic_ops(ClusterSetup):
         if self.update_retry:
             for key in self.keys:
                 result = self.client.read(key)
-                self.assertEquals(result['status'], False)
+                self.assertEqual(result['status'], False)
 
         else:
             self.value = {'mutated': 1, 'value': 'value1'}
@@ -203,7 +203,7 @@ class basic_ops(ClusterSetup):
 
             for key in self.keys[self.num_items/2:]:
                 result = self.client.read(key)
-                self.assertEquals(result['status'], False)
+                self.assertEqual(result['status'], False)
 
     def test_basic_retry(self):
         """

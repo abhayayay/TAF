@@ -1,10 +1,11 @@
 from copy import deepcopy
 
-import Jython_tasks.task as jython_tasks
+import tasks.task as jython_tasks
 from BucketLib.bucket import Bucket
-from Cb_constants import CbServer
-from Jython_tasks.task import MutateDocsFromSpecTask
-from Jython_tasks.task import CompareIndexKVData
+from Cb_constants import CbServer, DocLoading
+from sirius_client import SiriusClient, IDENTIFIER_TOKEN
+from tasks.task import MutateDocsFromSpecTask, ContinuousRangeScan
+from tasks.task import CompareIndexKVData
 from capella_utils.dedicated import CapellaUtils
 from common_lib import sleep
 from constants.cloud_constants.capella_cluster import CloudCluster
@@ -13,6 +14,7 @@ from couchbase_helper.documentgenerator import doc_generator, \
 from global_vars import logger
 from sdk_client3 import SDKClient
 from BucketLib.BucketOperations import BucketHelper
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 
 """An API for scheduling tasks that run against Couchbase Server
 
@@ -101,6 +103,32 @@ class ServerTasks(object):
         self.jython_task_manager.schedule(_task)
         return _task
 
+    def async_range_scan(self, cluster, task_manager, sdk_client_pool,
+                         range_scan_collections,
+                         items_per_collection,
+                         include_prefix_scan=True,
+                         include_range_scan=True, include_start_term=1,
+                         include_end_term=1, key_size=8, timeout=60,
+                         expect_exceptions=[], runs_per_collection=1,
+                         expect_range_scan_failure=True):
+        self.log.debug("Continuous range scan started")
+        task = ContinuousRangeScan(cluster, task_manager,
+                                                sdk_client_pool,
+                                                items_per_collection,
+                                                range_scan_collections=
+                                                range_scan_collections,
+                                                include_prefix_scan=include_prefix_scan,
+                                                include_range_scan=include_range_scan,
+                                                include_start_term=include_start_term,
+                                                include_end_term=include_end_term,
+                                                key_size=key_size,
+                                                timeout=timeout,
+                                                expect_exceptions=expect_exceptions,
+                                                runs_per_collection=runs_per_collection,
+                                                expect_range_scan_failure=expect_range_scan_failure )
+        task_manager.add_new_task(task)
+        return task
+
     def async_load_gen_docs_from_spec(self, cluster, task_manager, loader_spec,
                                       sdk_client_pool,
                                       batch_size=200,
@@ -143,75 +171,40 @@ class ServerTasks(object):
                             track_failures=True,
                             preserve_expiry=None,
                             sdk_retry_strategy=None,
-                            iterations=1):
-        clients = list()
+                            iterations=1,
+                            ignore_exceptions=[],
+                            retry_exception=[]):
+
+        sirius_client_object = SiriusClient(servers=[cluster.master], bucket=bucket, scope=scope,
+                                            collection=collection, username=cluster.username,
+                                            password=cluster.password,
+                                            compression_settings=compression)
+        sirius_client_object.warmup_bucket(identifier_token=IDENTIFIER_TOKEN)
+
         if active_resident_threshold == 100:
-            if not task_identifier:
-                task_identifier = "%s_%s_%s" % (op_type,
-                                                generator.start,
-                                                generator.end)
-                if exp:
-                    task_identifier += "_ttl=%s" % str(exp)
-            gen_start = int(generator.start)
-            gen_end = int(generator.end)
-            gen_range = max(int((generator.end - generator.start)
-                                / process_concurrency), 1)
-            for _ in range(gen_start, gen_end, gen_range):
-                client = None
-                if sdk_client_pool is None:
-                    client = SDKClient([cluster.master], bucket,
-                                       scope, collection)
-                clients.append(client)
-            if not ryow:
-                _task = jython_tasks.LoadDocumentsGeneratorsTask(
-                    cluster, self.jython_task_manager, bucket, clients,
-                    [generator], op_type,
-                    exp, random_exp=random_exp, exp_unit="seconds", flag=flag,
-                    persist_to=persist_to, replicate_to=replicate_to,
-                    batch_size=batch_size,
-                    timeout_secs=timeout_secs, time_unit=time_unit,
-                    compression=compression,
-                    process_concurrency=process_concurrency,
-                    print_ops_rate=print_ops_rate, retries=retries,
-                    durability=durability, task_identifier=task_identifier,
-                    skip_read_on_error=skip_read_on_error,
-                    suppress_error_table=suppress_error_table,
-                    sdk_client_pool=sdk_client_pool,
-                    scope=scope, collection=collection,
-                    monitor_stats=monitor_stats,
-                    track_failures=track_failures,
-                    preserve_expiry=preserve_expiry,
-                    sdk_retry_strategy=sdk_retry_strategy,
-                    iterations=iterations)
-            else:
-                majority_value = (bucket.replicaNumber + 1) / 2 + 1
+            _task = jython_tasks.RestBasedDocLoaderAbstract(
+                cluster=cluster, task_manager=self.jython_task_manager, bucket=bucket,
+                generator=[generator], op_type=op_type,
+                exp=exp, random_exp=random_exp, exp_unit="seconds", flag=flag,
+                persist_to=persist_to, replicate_to=replicate_to,
+                batch_size=batch_size,
+                timeout_secs=timeout_secs, time_unit=time_unit,
+                compression=compression,
+                process_concurrency=process_concurrency,
+                print_ops_rate=print_ops_rate, retries=retries,
+                durability=durability, task_identifier=task_identifier,
+                skip_read_on_error=skip_read_on_error,
+                scope=scope, collection=collection,
+                monitor_stats=monitor_stats,
+                track_failures=track_failures,
+                preserve_expiry=preserve_expiry,
+                sdk_retry_strategy=sdk_retry_strategy,
+                iterations=iterations, ignore_exceptions=ignore_exceptions,
+                retry_exception=retry_exception, retry_attempts=0)
 
-                if durability.lower() == "none":
-                    check_persistence = False
-                    majority_value = 1
-                elif durability.upper() == Bucket.DurabilityLevel.MAJORITY:
-                    check_persistence = False
-
-                _task = jython_tasks.Durability(
-                    cluster, self.jython_task_manager, bucket, clients,
-                    generator, op_type, exp,
-                    flag=flag, persist_to=persist_to,
-                    replicate_to=replicate_to,
-                    batch_size=batch_size,
-                    timeout_secs=timeout_secs, compression=compression,
-                    process_concurrency=process_concurrency, retries=retries,
-                    durability=durability, majority_value=majority_value,
-                    check_persistence=check_persistence,
-                    sdk_retry_strategy=sdk_retry_strategy)
         else:
-            for _ in range(process_concurrency):
-                client = None
-                if sdk_client_pool is None:
-                    client = SDKClient([cluster.master], bucket,
-                                       scope, collection)
-                clients.append(client)
             _task = jython_tasks.LoadDocumentsForDgmTask(
-                cluster, self.jython_task_manager, bucket, clients,
+                cluster, self.jython_task_manager, bucket,
                 doc_gen=generator,
                 exp=exp,
                 batch_size=batch_size,
@@ -254,45 +247,17 @@ class ServerTasks(object):
         if not isinstance(generator, SubdocDocumentGenerator):
             raise Exception("Document generator needs to be of "
                             "type SubdocDocumentGenerator")
-        clients = []
-        gen_start = int(generator.start)
-        gen_end = int(generator.end)
-        gen_range = max(int(
-            (generator.end - generator.start) / process_concurrency), 1)
-        for _ in range(gen_start, gen_end, gen_range):
-            client = None
-            if sdk_client_pool is None:
-                client = SDKClient([cluster.master], bucket,
-                                   scope, collection)
-            clients.append(client)
-        _task = jython_tasks.LoadSubDocumentsGeneratorsTask(
-            cluster,
-            self.jython_task_manager,
-            bucket,
-            clients,
-            [generator],
-            op_type,
-            exp,
-            create_paths=path_create,
-            xattr=xattr,
-            exp_unit="seconds",
-            flag=flag,
-            persist_to=persist_to,
-            replicate_to=replicate_to,
-            sdk_client_pool=sdk_client_pool,
-            scope=scope, collection=collection,
-            batch_size=batch_size,
-            timeout_secs=timeout_secs,
-            compression=compression,
-            process_concurrency=process_concurrency,
-            print_ops_rate=print_ops_rate,
-            durability=durability,
-            task_identifier=task_identifier,
-            preserve_expiry=preserve_expiry,
-            sdk_retry_strategy=sdk_retry_strategy,
-            store_semantics=store_semantics,
-            access_deleted=access_deleted,
-            create_as_deleted=create_as_deleted)
+
+        _task = jython_tasks.RestBasedSubDocLoaderAbstract(
+            cluster=cluster, task_manager=self.jython_task_manager, bucket=bucket,
+            generators=[generator], op_type=op_type, exp=exp, create_paths=path_create, xattr=xattr,
+            exp_unit="seconds", flag=flag, persist_to=persist_to, replicate_to=replicate_to,
+            scope=scope, collection=collection, batch_size=batch_size,
+            timeout_secs=timeout_secs, compression=compression, process_concurrency=process_concurrency,
+            print_ops_rate=print_ops_rate, durability=durability, task_identifier=task_identifier,
+            preserve_expiry=preserve_expiry, sdk_retry_strategy=sdk_retry_strategy, store_semantics=store_semantics,
+            access_deleted=access_deleted, create_as_deleted=create_as_deleted)
+
         if start_task:
             self.jython_task_manager.add_new_task(_task)
         return _task
@@ -308,14 +273,9 @@ class ServerTasks(object):
                                  collection=CbServer.default_collection,
                                  sdk_client_pool=None,
                                  sdk_retry_strategy=None):
-        clients = list()
-        for _ in range(process_concurrency):
-            if sdk_client_pool is None:
-                clients.append(SDKClient([cluster.master], bucket))
-            else:
-                clients.append(None)
+
         _task = jython_tasks.ContinuousDocOpsTask(
-            cluster, self.jython_task_manager, bucket, clients, generator,
+            cluster, self.jython_task_manager, bucket, generator,
             scope=scope,
             collection=collection,
             op_type=op_type, exp=exp,
@@ -324,13 +284,12 @@ class ServerTasks(object):
             batch_size=batch_size,
             timeout_secs=timeout_secs,
             process_concurrency=process_concurrency,
-            sdk_client_pool=sdk_client_pool,
             sdk_retry_strategy=sdk_retry_strategy)
         self.jython_task_manager.add_new_task(_task)
         return _task
 
     def async_load_gen_docs_atomicity(self, cluster, buckets, generator,
-                                      op_type, exp=0, flag=0,
+                                      op_type, exp=0,
                                       persist_to=0, replicate_to=0,
                                       batch_size=1,
                                       timeout_secs=5,
@@ -339,10 +298,10 @@ class ServerTasks(object):
                                       update_count=1, transaction_timeout=5,
                                       commit=True, durability=0, sync=True,
                                       num_threads=5, record_fail=False,
-                                      defer=False,
                                       scope=CbServer.default_scope,
                                       collection=CbServer.default_collection,
-                                      start_task=True):
+                                      start_task=True,
+                                      transaction_keyspace=None):
 
         bucket_list = list()
         client_list = list()
@@ -350,12 +309,19 @@ class ServerTasks(object):
         gen_end = int(generator.end)
         gen_range = max(int((generator.end - generator.start)
                             / process_concurrency), 1)
+
+        if op_type == "time_out":
+            transaction_timeout = 2
+        trans_conf = TransactionConfig(
+            durability=durability, timeout=transaction_timeout,
+            transaction_keyspace=transaction_keyspace)
+        transaction_options = SDKClient.get_transaction_options(trans_conf)
         for _ in range(gen_start, gen_end, gen_range):
             temp_bucket_list = list()
             temp_client_list = list()
             for bucket in buckets:
-                client = SDKClient([cluster.master], bucket,
-                                   scope, collection)
+                client = SDKClient([cluster.master], bucket, scope, collection,
+                                   transaction_config=trans_conf)
                 temp_client_list.append(client)
                 temp_bucket_list.append(client.collection)
             bucket_list.append(temp_bucket_list)
@@ -364,16 +330,19 @@ class ServerTasks(object):
         _task = jython_tasks.Atomicity(
             cluster, self.jython_task_manager, bucket_list,
             client_list, [generator], op_type, exp,
-            flag=flag, persist_to=persist_to,
+            transaction_options=transaction_options,
+            persist_to=persist_to,
             replicate_to=replicate_to,
             batch_size=batch_size,
             timeout_secs=timeout_secs,
             compression=compression,
-            process_concurrency=process_concurrency, retries=retries,
+            process_concurrency=process_concurrency,
+            retries=retries,
             update_count=update_count,
-            transaction_timeout=transaction_timeout, commit=commit,
-            durability=durability, sync=sync, num_threads=num_threads,
-            record_fail=record_fail, defer=defer)
+            commit=commit,
+            sync=sync,
+            num_threads=num_threads,
+            record_fail=record_fail)
         if start_task:
             self.jython_task_manager.add_new_task(_task)
         return _task
@@ -435,31 +404,15 @@ class ServerTasks(object):
                             collection=CbServer.default_collection,
                             sdk_client_pool=None, is_sub_doc=False,
                             suppress_error_table=True,
-                            sdk_retry_strategy=None):
+                            sdk_retry_strategy=None, ignore_exceptions=[], retry_exception=[]):
         clients = list()
-        gen_start = int(generator.start)
-        gen_end = int(generator.end)
-        gen_range = max(int((generator.end - generator.start)
-                            / process_concurrency), 1)
-        for _ in range(gen_start, gen_end, gen_range):
-            client = None
-            if sdk_client_pool is None:
-                client = SDKClient([cluster.master], bucket,
-                                   scope, collection)
-            clients.append(client)
-        _task = jython_tasks.DocumentsValidatorTask(
-            cluster, self.jython_task_manager, bucket, clients, [generator],
-            opt_type, exp, flag=flag,
-            batch_size=batch_size,
-            timeout_secs=timeout_secs, time_unit=time_unit,
-            compression=compression,
-            process_concurrency=process_concurrency,
-            check_replica=check_replica,
-            scope=scope, collection=collection,
-            sdk_client_pool=sdk_client_pool,
-            sdk_retry_strategy=sdk_retry_strategy,
-            is_sub_doc=is_sub_doc,
-            suppress_error_table=suppress_error_table)
+        _task = jython_tasks.RestBasedDocLoaderAbstract(
+            cluster=cluster, task_manager=self.jython_task_manager, bucket=bucket,
+            op_type=DocLoading.Bucket.DocOps.VALIDATE,
+            generator=[generator], exp=exp, sdk_retry_strategy=sdk_retry_strategy,
+            compression=compression, timeout_secs=timeout_secs, time_unit=time_unit,
+            flag=flag, batch_size=batch_size, ignore_exceptions=ignore_exceptions, retry_exception=retry_exception)
+
         self.jython_task_manager.add_new_task(_task)
         return _task
 
@@ -548,7 +501,7 @@ class ServerTasks(object):
                 service_group_len[service_group] = \
                     services.count(service_group)
 
-            for service_group, nodes_to_add in service_group_len.items():
+            for service_group, nodes_to_add in list(service_group_len.items()):
                 services_list = service_group.split(",")
                 services_list.sort()
                 for cluster_config_spec in cluster_config_to_update:
@@ -1141,8 +1094,9 @@ class ServerTasks(object):
 
     def compare_KV_Indexer_data(self, cluster, server, task_manager, query, sdk_client_pool, bucket, scope, collection,
                                 index_name, offset, field='body'):
-        _task = jython_tasks.CompareIndexKVData(cluster=cluster, server=server, task_manager=task_manager, query=query,
+        _task = CompareIndexKVData(cluster=cluster, server=server, task_manager=task_manager, query=query,
                                                 sdk_client_pool=sdk_client_pool, bucket=bucket, scope=scope,
-                                                collection=collection, index_name=index_name, offset=offset, field=field)
+                                                collection=collection, index_name=index_name, offset=offset,
+                                                field=field)
         self.jython_task_manager.add_new_task(_task)
         return _task

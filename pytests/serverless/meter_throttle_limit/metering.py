@@ -7,7 +7,7 @@ from Cb_constants import DocLoading
 from cb_tools.mc_stat import Mcthrottle
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_client3 import SDKClient
-from LMT_base import LMT
+from .LMT_base import LMT
 from reactor.util.function import Tuples
 from security_utils.audit_ready_functions import audit
 from couchbase_helper.documentgenerator import doc_generator
@@ -41,7 +41,7 @@ class ServerlessMetering(LMT):
 
     def perform_operation(self, operation, key_value, bucket,
                           expected_wu=0, expected_ru=0, durability=""):
-        for key, value in key_value.iteritems():
+        for key, value in list(key_value.items()):
             try:
                 result = self.client.crud(operation, key, value=value,
                                           durability=durability)
@@ -110,7 +110,7 @@ class ServerlessMetering(LMT):
             expected_wu += self.bucket_util.calculate_units(self.total_size, 0,
                                                             durability=self.durability_level) * self.num_items
         expected_ru += ru
-        for key, value in key_value.iteritems():
+        for key, value in list(key_value.items()):
             result = self.client.crud(DocLoading.Bucket.DocOps.TOUCH, key, exp=10,
                                       durability=self.durability_level)
             if self.validate_result(result):
@@ -228,7 +228,7 @@ class ServerlessMetering(LMT):
         # subdoc operations with system xattrs
         for sub_doc_op in ["subdoc_insert", "subdoc_upsert", "subdoc_replace"]:
             value = random.choice(string.ascii_letters) * self.sub_doc_size
-            for key in key_value.keys():
+            for key in list(key_value.keys()):
                 _, failed_items = self.client.crud(sub_doc_op, key,
                                                    [sub_doc_key, value],
                                                    durability=self.durability_level,

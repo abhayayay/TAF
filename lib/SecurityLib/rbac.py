@@ -1,6 +1,6 @@
-from ldap_user import LdapUser
-from internal_user import InternalUser
-import urllib
+from .ldap_user import LdapUser
+from .internal_user import InternalUser
+import urllib.request, urllib.parse, urllib.error
 import json
 
 
@@ -16,7 +16,7 @@ class RbacUtil:
         content = rest.ldapRestOperationGetResponse()
         if not content['enabled']:
             api = rest.baseUrl + 'settings/saslauthdAuth'
-            params = urllib.urlencode({"enabled": 'true',
+            params = urllib.parse.urlencode({"enabled": 'true',
                                        "admins": [],
                                        "roAdmins": []})
             status, content, header = rest._http_request(api, 'POST', params)

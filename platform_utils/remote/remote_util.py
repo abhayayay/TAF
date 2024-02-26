@@ -2,11 +2,12 @@ import copy
 import os
 import re
 import sys
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import uuid
 import time
 import stat
 import json
+
 import TestInput
 from subprocess import Popen, PIPE
 
@@ -26,11 +27,8 @@ from testconstants import RPM_DIS_NAME, SYSTEMD_SERVER
 from testconstants import NR_INSTALL_LOCATION_FILE
 
 from membase.api.rest_client import RestConnection
-from com.jcraft.jsch import JSchException, JSchAuthCancelException, \
-    JSchPartialAuthException, SftpException
 
-from com.jcraft.jsch import JSch
-from org.python.core.util import FileUtil
+import paramiko
 
 
 class COMMAND:
@@ -95,7 +93,7 @@ class RemoteMachineHelper(object):
                 self.infra_log.error("%s - process %s not running or crashed"
                                      % (self.remote_shell.ip, process_name))
                 return False
-            self.log.debug("Sleep before monitor_process retry..")
+            self.infra_log.debug("Sleep before monitor_process retry..")
             sleep(1, log_type="infra")
         return True
 
@@ -111,7 +109,7 @@ class RemoteMachineHelper(object):
             if error or output == [""] or output == []:
                 return None
             words = output[0].split(" ")
-            words = filter(lambda x: x != "", words)
+            words = [x for x in words if x != ""]
             process = RemoteMachineProcess()
             process.pid = words[1]
             process.name = words[0]
@@ -134,8 +132,7 @@ class RemoteMachineShellConnection:
 
     def __init__(self, serverInfo):
         RemoteMachineShellConnection.connections += 1
-        self.jsch = None
-        self.session = None
+        self.ssh_client = None
         self.input = TestInput.TestInputParser.get_test_input(sys.argv)
         self.log = logger.get("infra")
         self.test_log = logger.get("test")
@@ -186,11 +183,13 @@ class RemoteMachineShellConnection:
 
         self.log.debug("Connecting to {0} with username: {1}, password: {2}"
                        .format(self.ip, self.username, self.password))
-        self.jsch = JSch()
-        self.session = self.jsch.getSession(self.username, self.ip, 22)
-        self.session.setPassword(self.password)
-        self.session.setConfig("StrictHostKeyChecking", "no")
-        self.session.connect()
+
+        self.ssh_client = paramiko.SSHClient()
+        self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self.ssh_client.connect(username=self.username,
+                                password=self.password,
+                                hostname=self.ip,
+                                port=22)
 
     def disconnect(self):
         # For cluster_run case
@@ -198,7 +197,7 @@ class RemoteMachineShellConnection:
             return
 
         self.log.debug("Disconnecting ssh_client for {0}".format(self.ip))
-        self.session.disconnect()
+        self.ssh_client.close()
         RemoteMachineShellConnection.disconnections += 1
 
     """
@@ -217,15 +216,9 @@ class RemoteMachineShellConnection:
             try:
                 self.log.debug("%s - Connect as user %s" % (self.ip, user))
                 if self.remote and self.ssh_key == '':
-                    self._ssh_client.connect(hostname=self.ip, username=user,
-                                             password=self.password)
-                break
-            except JSchAuthCancelException:
-                self.log.fatal("%s - Authentication for root failed" % self.ip)
-                exit(1)
-            except JSchPartialAuthException:
-                self.log.fatal("%s - Invalid Host key" % self.ip)
-                exit(1)
+                    self.ssh_client.connect(hostname=self.ip, username=user,
+                                            password=self.password, port=22)
+                    break
             except Exception as e:
                 if str(e).find('PID check failed. RNG must be re-initialized') != -1 and \
                         attempt != max_attempts_connect:
@@ -739,7 +732,7 @@ class RemoteMachineShellConnection:
         self.log.info("Trying to check is this url alive: {0}".format(url))
         while retry_time > 0:
             try:
-                status = urllib.urlopen(url).getcode()
+                status = urllib.request.urlopen(url).getcode()
                 break
             except IOError as io_error:
                 if "Address already in use" in str(io_error):
@@ -890,7 +883,7 @@ class RemoteMachineShellConnection:
         file_status = False
         if self.info.type.lower() == Windows.NAME:
             self.terminate_processes(self.info, [s for s in Windows.PROCESSES_KILLED])
-            self.terminate_processes(self.info, [s + "-*" for s in CB_RELEASE_BUILDS.keys()])
+            self.terminate_processes(self.info, [s + "-*" for s in list(CB_RELEASE_BUILDS.keys())])
             self.disable_firewall()
             remove_words = ["-rel", ".exe"]
             for word in remove_words:
@@ -1019,51 +1012,42 @@ class RemoteMachineShellConnection:
             # binary and then return True if binary is installed
 
     def get_file(self, remotepath, filename, todir="."):
-        channel = self.session.openChannel("sftp")
-        channel.connect()
-        channelSftp = channel
-        result = False
-        try:
-            channelSftp.cd(remotepath)
-            if self.file_exists(remotepath, filename):
-                channelSftp.get('{0}/{1}'.format(remotepath, filename), todir)
-                channelSftp.disconnect()
-                result = True
-            else:
-                os.system("cp {0}/{1} {2}".format(remotepath, filename, todir))
-        except:
-            pass
-        finally:
-            channelSftp.disconnect()
+        if self.file_exists(remotepath, filename):
+            if self.remote:
+                sftp = self.ssh_client.open_sftp()
+                try:
+                    filenames = sftp.listdir(remotepath)
+                    for name in filenames:
+                        if filename in name:
+                            self.log.info("found the file {0}/{1}".format(remotepath, name))
+                            sftp.get('{0}/{1}'.format(remotepath, name), todir)
+                            sftp.close()
+                            return True
+                    sftp.close()
+                    return False
+                except IOError:
+                    return False
+        else:
+            os.system("cp {0} {1}".format('{0}/{1}'.format(remotepath, filename), todir))
 
-        return result
-
-    def get_dir(self, remotepath, dirname, todir="."):
-        channelSftp = self.session.openChannel("sftp")
-        channelSftp.connect()
-        result = True
+    def get_dir(self, remotepath, dirname, todir=".") -> bool:
+        sftp = self.ssh_client.open_sftp()
         remotepath = os.path.join(remotepath, dirname)
 
         # Create local dir (if not exists)
         if not os.path.exists(todir):
             os.makedirs(todir)
 
-        channelSftp.lcd(todir)
-
         try:
-            for remote_file in channelSftp.ls(remotepath):
-                file_name = remote_file.getFilename()
-                if file_name in [".", ".."]:
-                    continue
-
+            for file_name in sftp.listdir(remotepath):
                 remote_file = os.path.join(remotepath, file_name)
+                local_file = os.path.join(todir, file_name)
                 self.log.critical("GET %s" % remote_file)
-                result = channelSftp.get(remote_file, file_name) and result
+                sftp.get(remote_file, local_file)
         except Exception as e:
             self.log.critical("Copying file to slave failed: %s" % e)
-        finally:
-            channelSftp.disconnect()
-        return result
+            return False
+        return True
 
     def read_remote_file(self, remote_path, filename):
         if self.file_exists(remote_path, filename):
@@ -1094,23 +1078,18 @@ class RemoteMachineShellConnection:
         self.create_file(filepath, file_data)
 
     def remove_directory(self, remote_path):
-        result = False
         if self.remote:
-            channel = self.session.openChannel("sftp")
-            channel.connect()
-            channelSftp = channel
+            sftp = self.ssh_client.open_sftp()
             try:
-                channelSftp.rmdir(remote_path)
-                result = True
-            except:
-                pass
+                self.log.info("removing {0} directory...".format(remote_path))
+                sftp.rmdir(remote_path)
+            except IOError:
+                return False
             finally:
-                channel.disconnect()
-            return result
+                sftp.close()
         else:
             try:
-                p = Popen("rm -rf {0}".format(remote_path), shell=True,
-                          stdout=PIPE, stderr=PIPE)
+                p = Popen("rm -rf {0}".format(remote_path), shell=True, stdout=PIPE, stderr=PIPE)
                 stdout, stderro = p.communicate()
             except IOError:
                 return False
@@ -1123,15 +1102,15 @@ class RemoteMachineShellConnection:
                 self.rmtree(sftp, rpath, level=(level + 1))
             else:
                 rpath = remote_path + "/" + f.filename
-                print('removing %s' % (rpath))
+                print(('removing %s' % (rpath)))
                 sftp.remove(rpath)
-        print('removing %s' % (remote_path))
+        print(('removing %s' % (remote_path)))
         sftp.rmdir(remote_path)
 
     def remove_directory_recursive(self, remote_path):
         result = False
         if self.remote:
-            sftp = self._ssh_client.open_sftp()
+            sftp = self.ssh_client.open_sftp()
             try:
                 self.log.info("%s - Removing {0} directory"
                               % (self.ip, remote_path))
@@ -1151,24 +1130,19 @@ class RemoteMachineShellConnection:
         return result
 
     def list_files(self, remote_path):
-        files = []
         if self.remote:
-            channel = self.session.openChannel("sftp")
-            channel.connect()
-            channelSftp = channel
+            sftp = self.ssh_client.open_sftp()
+            files = []
             try:
-                channelSftp.cd(remote_path)
-                filenames = channelSftp.ls(remote_path)
-                for name in filenames:
+                file_names = sftp.listdir(remote_path)
+                for name in file_names:
                     files.append({'path': remote_path, 'file': name})
-            except:
-                pass
-            finally:
-                channel.disconnect()
+                sftp.close()
+            except IOError:
+                return []
             return files
         else:
-            p = Popen("ls {0}".format(remote_path), shell=True,
-                      stdout=PIPE, stderr=PIPE)
+            p = Popen("ls {0}".format(remote_path), shell=True, stdout=PIPE, stderr=PIPE)
             files, stderro = p.communicate()
             return files
 
@@ -1176,104 +1150,100 @@ class RemoteMachineShellConnection:
         """
          Check if file ending with this pattern is present in remote machine
         """
+        sftp = self.ssh_client.open_sftp()
         files_matched = []
-        channel = self.session.openChannel("sftp")
-        # errstream=channel.getErrStream()
-        channel.connect()
-        channelSftp = channel
         try:
-            channelSftp.cd(remotepath)
-            filenames = channelSftp.ls(remotepath)
-            for name in filenames:
+            file_names = sftp.listdir(remotepath)
+            for name in file_names:
                 if name.endswith(pattern):
                     files_matched.append("{0}/{1}".format(remotepath, name))
-        except SftpException:
+        except IOError:
+            # ignore this error
             pass
-        channel.disconnect()
-
+        sftp.close()
         if len(files_matched) > 0:
-            self.log.info("%s - Found these files %s"
-                          % (self.ip, files_matched))
+            self.log.info("found these files : {0}".format(files_matched))
         return files_matched
 
     # check if this file exists in the remote
     # machine or not
     def file_starts_with(self, remotepath, pattern):
+        sftp = self.ssh_client.open_sftp()
         files_matched = []
-        channel = self.session.openChannel("sftp")
-        channel.connect()
-        channelSftp = channel
         try:
-            channelSftp.cd(remotepath)
-            filenames = channelSftp.ls(remotepath)
-            for name in filenames:
+            file_names = sftp.listdir(remotepath)
+            for name in file_names:
                 if name.startswith(pattern):
                     files_matched.append("{0}/{1}".format(remotepath, name))
-        except:
+        except IOError:
+            # ignore this error
             pass
-        finally:
-            channel.disconnect()
-
+        sftp.close()
         if len(files_matched) > 0:
-            self.log.info("%s - Found these files %s"
-                          % (self.ip, files_matched))
+            self.log.info("found these files : {0}".format(files_matched))
         return files_matched
 
     def file_exists(self, remotepath, filename, pause_time=30):
-        channel = self.session.openChannel("sftp")
-        channel.connect()
-        channelSftp = channel
-        result = False
+        sftp = self.ssh_client.open_sftp()
         try:
-            channelSftp.cd(remotepath)
-            filenames = channelSftp.ls(remotepath)
+            if "Program" in remotepath:
+                if "Program\\" in remotepath:
+                    remotepath = remotepath.replace("Program\\", "Program")
+                output, _ = self.execute_command("cat '{0}{1}'".format(remotepath, filename))
+                if output and output[0]:
+                    return True
+                else:
+                    return False
+
+            filenames = sftp.listdir_attr(remotepath)
             for name in filenames:
-                if name.getFilename() == filename and int(name.getAttrs().getSize()) > 0:
-                    channel.disconnect()
-                    result = True
-                elif name.getFilename() == filename and int(name.getAttrs().getSize()) == 0:
-                    if name.getFilename() == NR_INSTALL_LOCATION_FILE:
+                if filename in name.filename and int(name.st_size) > 0:
+                    sftp.close()
+                    return True
+                elif filename in name.filename and int(name.st_size) == 0:
+                    if name.filename == NR_INSTALL_LOCATION_FILE:
                         continue
-                    self.log.info("%s - Delete file: %s" % (self.ip, filename))
-                    channel.rm(remotepath + filename)
-        except:
-            pass
-        finally:
-            channel.disconnect()
-        return result
+                    self.log.info("File {0} will be deleted".format(filename))
+                    if not remotepath.endswith("/"):
+                        remotepath += "/"
+                    self.execute_command("rm -rf {0}*{1}*".format(remotepath, filename))
+                    self.sleep(pause_time, "** Network or sever may be busy. **" \
+                                           "\nWait {0} seconds before executing next instrucion" \
+                               .format(pause_time))
+
+            sftp.close()
+            return False
+        except IOError:
+            return False
 
     def delete_file(self, remotepath, filename):
-        channel = self.session.openChannel("sftp")
-        channel.connect()
-        channelSftp = channel
+        sftp = self.ssh_client.open_sftp()
         delete_file = False
         try:
-            filenames = channelSftp.ls(remotepath)
+            filenames = sftp.listdir_attr(remotepath)
             for name in filenames:
                 if name.filename == filename:
-                    self.log.info("%s - Deleting file %s"
-                                  % (self.ip, filename))
-                    channelSftp.rm(remotepath + filename)
+                    self.log.info("File {0} will be deleted".format(filename))
+                    sftp.remove(remotepath + filename)
                     delete_file = True
                     break
             if delete_file:
                 """ verify file is deleted """
-                filenames = channelSftp.ls(remotepath)
+                filenames = sftp.listdir_attr(remotepath)
                 for name in filenames:
                     if name.filename == filename:
-                        self.log.error("%s - Failed to remove %s"
-                                       % (self.ip, filename))
+                        self.log.error("fail to remove file %s " % filename)
                         delete_file = False
-        except:
-            pass
-        finally:
-            channel.disconnect()
-        return delete_file
+                        break
+            sftp.close()
+            return delete_file
+        except IOError:
+            return False
 
     def download_binary_in_win(self, url, version, msi_install=False):
         self.terminate_processes(self.info, [s for s in Windows.PROCESSES_KILLED])
         self.terminate_processes(self.info,
-                                 [s + "-*" for s in CB_RELEASE_BUILDS.keys()])
+                                 [s + "-*" for s in list(CB_RELEASE_BUILDS.keys())])
         self.disable_firewall()
         version = version.replace("-rel", "")
         deliverable_type = "exe"
@@ -1318,34 +1288,24 @@ class RemoteMachineShellConnection:
         return file_status
 
     def copy_file_local_to_remote(self, src_path, des_path):
-        channel = self.session.openChannel("sftp")
-        # errstream=channel.getErrStream()
-        channel.connect()
-        channelSftp = channel
-        result = False
+        sftp = self.ssh_client.open_sftp()
         try:
-            channelSftp.put(src_path, des_path)
-            result = True
-        except:
-            pass
+            sftp.put(src_path, des_path)
+        except IOError:
+            self.log.error('Can not copy file')
         finally:
-            channel.disconnect()
-
-        return result
+            sftp.close()
 
     def copy_file_remote_to_local(self, rem_path, des_path):
-        channel = self.session.openChannel("sftp")
-        channel.connect()
-        channelSftp = channel
-        result = False
+        sftp = self.ssh_client.open_sftp()
         try:
-            channelSftp.get(rem_path, des_path)
-            result = True
-        except:
-            pass
+            sftp.get(rem_path, des_path)
+        except IOError as e:
+            if e:
+                print(e)
+            self.log.error('Can not copy file')
         finally:
-            channel.disconnect()
-        return result
+            sftp.close()
 
     def copy_files_local_to_remote(self, src_path, des_path):
         files = os.listdir(src_path)
@@ -1382,7 +1342,7 @@ class RemoteMachineShellConnection:
             pass
 
     def find_build_version(self, path_to_version, version_file, product):
-        sftp = self._ssh_client.open_sftp()
+        sftp = self.ssh_client.open_sftp()
         ex_type = "exe"
         if self.file_exists(Windows.CB_PATH, VERSION_FILE):
             path_to_version = Windows.CB_PATH
@@ -1451,7 +1411,7 @@ class RemoteMachineShellConnection:
         info.update(systeminfo)
         self.execute_batch_command("rm -rf  /cygdrive/c/tmp/windows_info.txt")
         self.execute_batch_command("touch  /cygdrive/c/tmp/windows_info.txt")
-        sftp = self._ssh_client.open_sftp()
+        sftp = self.ssh_client.open_sftp()
         try:
             f = sftp.open('/cygdrive/c/tmp/windows_info.txt', 'w')
             content = ''
@@ -1547,7 +1507,7 @@ class RemoteMachineShellConnection:
         sftp = self._ssh_client.open_sftp()
         capture_iss_file = ""
 
-        if version[:5] in CB_RELEASE_BUILDS.keys():
+        if version[:5] in list(CB_RELEASE_BUILDS.keys()):
             product_version = version[:5]
             name = "cb"
         else:
@@ -1692,41 +1652,20 @@ class RemoteMachineShellConnection:
         os.remove(des_file)
 
     def create_directory(self, remote_path):
-        channel = self.session.openChannel("sftp")
-        channel.connect()
-        channelSftp = channel
-        result = False
+        sftp = self.ssh_client.open_sftp()
         try:
-            channelSftp.ls(remote_path)
-            result = True
-        except SftpException:
-            try:
-                channelSftp.mkdir(remote_path)
-                result = True
-            except SftpException:
-                self.log.debug("Creating Directory...")
-                complPath = remote_path.split("/")
-                channelSftp.cd("/")
-                for dir in complPath:
-                    if dir:
-                        try:
-                            self.log.debug("Current Dir : " + channelSftp.pwd())
-                            channelSftp.cd(dir)
-                        except:
-                            try:
-                                channelSftp.mkdir(dir)
-                                self.give_directory_permissions_to_couchbase(dir)
-                                channelSftp.cd(dir)
-                                result = True
-                            except:
-                                result = False
-                                break
-        except:
-            result = False
-            pass
-        finally:
-            channel.disconnect()
-        return result
+            self.log.info("Checking if the directory {0} exists or not.".format(remote_path))
+            sftp.stat(remote_path)
+        except IOError as e:
+            if e.errno == 2:
+                self.log.info("Directory at {0} DOES NOT exist. We will create on here".format(remote_path))
+                sftp.mkdir(remote_path)
+                sftp.close()
+                return False
+            raise
+        else:
+            self.log.error("Directory at {0} DOES exist. Fx returns True".format(remote_path))
+            return True
 
     # this function will remove the automation directory in windows
     def create_multiple_dir(self, dir_paths):
@@ -1913,7 +1852,7 @@ class RemoteMachineShellConnection:
             self.terminate_processes(self.info,
                                      [s for s in Windows.PROCESSES_KILLED])
             self.terminate_processes(self.info,
-                                     [s + "-*" for s in CB_RELEASE_BUILDS.keys()])
+                                     [s + "-*" for s in list(CB_RELEASE_BUILDS.keys())])
             # to prevent getting full disk let's delete some large files
             self.remove_win_backup_dir()
             self.remove_win_collect_tmp()
@@ -2479,7 +2418,7 @@ class RemoteMachineShellConnection:
             self.log.info("kill any in/uninstall process from version 3 in node %s"
                           % self.ip)
             self.terminate_processes(self.info,
-                                     [s + "-*" for s in CB_RELEASE_BUILDS.keys()])
+                                     [s + "-*" for s in list(CB_RELEASE_BUILDS.keys())])
             exist = self.file_exists(version_path, VERSION_FILE)
             self.log.info("Is VERSION file existed on {0}? {1}"
                           .format(self.ip, exist))
@@ -2668,11 +2607,11 @@ class RemoteMachineShellConnection:
                     """ check if old files from root install left in server """
                     if self.file_exists(Linux.CB_PATH + "etc/couchdb/",
                                         "local.ini.debsave"):
-                        print(" ***** ERROR: ***** \n" \
-                              "Couchbase Server files was left by root install at %s .\n"
-                              "Use root user to delete them all at server %s "
-                              " (rm -rf /opt/couchbase) to remove all couchbase folder."
-                              % (Linux.CB_PATH, self.ip))
+                        print((" ***** ERROR: ***** \n" \
+                               "Couchbase Server files was left by root install at %s .\n"
+                               "Use root user to delete them all at server %s "
+                               " (rm -rf /opt/couchbase) to remove all couchbase folder."
+                               % (Linux.CB_PATH, self.ip)))
                         sys.exit(1)
                     self.stop_server()
                 else:
@@ -2696,10 +2635,10 @@ class RemoteMachineShellConnection:
                     """ check if old files from root install left in server """
                     if self.file_exists(Linux.CB_PATH + "etc/couchdb/",
                                         "local.ini.rpmsave"):
-                        print("Couchbase Server files was left by root install at %s.\n"
-                              "Use root user to delete them all at server %s "
-                              "(rm -rf /opt/couchbase) to remove all couchbase folder."
-                              % (Linux.CB_PATH, self.ip))
+                        print(("Couchbase Server files was left by root install at %s.\n"
+                               "Use root user to delete them all at server %s "
+                               "(rm -rf /opt/couchbase) to remove all couchbase folder."
+                               % (Linux.CB_PATH, self.ip)))
                         sys.exit(1)
                     self.stop_server()
                 else:
@@ -3174,73 +3113,17 @@ class RemoteMachineShellConnection:
                 error = [i for i in error if i]
         else:
             try:
-                self._ssh_client = self.session.openChannel("exec")
-                self._ssh_client.setInputStream(None)
-                self._ssh_client.setErrStream(None)
-
-                instream = self._ssh_client.getInputStream()
-                errstream = self._ssh_client.getErrStream()
-                self._ssh_client.setCommand(command)
-                self._ssh_client.connect()
-                output = []
-                error = []
-                fu = FileUtil.wrap(instream)
-                for line in fu.readlines():
-                    output.append(line)
-                fu.close()
-
-                fu1 = FileUtil.wrap(errstream)
-                for line in fu1.readlines():
-                    error.append(line)
-                fu1.close()
-
-                self._ssh_client.disconnect()
-            #                 self.session.disconnect()
-            except JSchException as e:
-                self.log.error("JSch exception on %s: %s" % (self.ip, str(e)))
-        return output, error
-
-    def execute_command_raw(self, command, debug=True, use_channel=False):
-        if debug:
-            self.log.info("running command.raw on {0}: {1}"
-                          .format(self.ip, command))
-        output = []
-        error = []
-        temp = ''
-        if self.remote and self.use_sudo or use_channel:
-            channel = self._ssh_client.get_transport().open_session()
-            channel.get_pty()
-            channel.settimeout(900)
-            stdin = channel.makefile('wb')
-            stdout = channel.makefile('rb')
-            stderro = channel.makefile_stderr('rb')
-            channel.exec_command(command)
-            data = channel.recv(1024)
-            while data:
-                temp += data
-                data = channel.recv(1024)
-            channel.close()
-            stdin.close()
-        elif self.remote:
-            stdin, stdout, stderro = self._ssh_client.exec_command(command)
-            stdin.close()
-
-        if not self.remote:
-            p = Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
-            output, error = p.communicate()
-
-        if self.remote:
-            for line in stdout.read().splitlines():
-                output.append(line)
-            for line in stderro.read().splitlines():
-                error.append(line)
-            if temp:
-                line = temp.splitlines()
-                output.extend(line)
-            stdout.close()
-            stderro.close()
-        if debug:
-            self.log.info('command executed successfully')
+                stdin, stdout, stderr = self.ssh_client.exec_command(str(command))
+                if stdout:
+                    o = stdout.read().decode('utf-8')
+                    o = o.split('\n')
+                    output = [i for i in o if i]
+                if stdout:
+                    e = stderr.read().decode('utf-8')
+                    e = e.split('\n')
+                    error = [i for i in e if i]
+            except Exception as e:
+                self.log.error("exce_command exception on %s: %s" % (self.ip, str(e)))
         return output, error
 
     def execute_non_sudo_command(self, command, info=None, debug=True,
@@ -3412,7 +3295,7 @@ class RemoteMachineShellConnection:
                         var, err = p.communicate()
                     file = open(filename)
                     redhat_release = ''
-                    for line in file.xreadlines():
+                    for line in file:
                         redhat_release = line
                         break
                     redhat_release = redhat_release.rstrip('\n').rstrip('\\l').rstrip('\\n')
@@ -3647,7 +3530,7 @@ class RemoteMachineShellConnection:
             if error or output == [""] or output == []:
                 return None
             words = output[0].split(" ")
-            words = filter(lambda x: x != "", words)
+            words = [x for x in words if x != ""]
             return words[1]
 
     def get_prometheus_pid(self):
@@ -3661,7 +3544,7 @@ class RemoteMachineShellConnection:
             if error or output == [""] or output == []:
                 return None
             words = output[0].split(" ")
-            words = filter(lambda x: x != "", words)
+            words = [x for x in words if x != ""]
             return words[1]
 
     def cleanup_data_config(self, data_path, config_path=None):
@@ -3773,10 +3656,7 @@ class RemoteMachineShellConnection:
                 if not o:
                     raise Exception("Node not yet reachable")
                 break
-            except JSchException:
-                sleep(10, "Node not reachable, retry after 10 secs",
-                      log_type="infra")
-            except Exception:
+            except Exception as e:
                 sleep(10, "Node not reachable, retry after 10 secs",
                       log_type="infra")
 
@@ -3953,7 +3833,7 @@ class RemoteMachineShellConnection:
         """
         From spock, the file to edit is in /opt/couchbase/bin/couchbase-server
         """
-        for key in dict.keys():
+        for key in list(dict.keys()):
             o, r = self.execute_command("sed -i 's/{1}.*//' {0}"
                                         .format(sourceFile, key))
             self.log_command_output(o, r)
@@ -3965,7 +3845,7 @@ class RemoteMachineShellConnection:
             command = "sed -i 's/{0}/{0}" \
                 .format("set NS_ERTS=%NS_ROOT%\erts-5.8.5.cb1\bin")
 
-        for key in dict.keys():
+        for key in list(dict.keys()):
             if self.info.type.lower() == Windows.NAME:
                 environmentVariables += prefix + 'set {0}={1}' \
                     .format(key, dict[key])
@@ -4771,7 +4651,7 @@ class RemoteMachineShellConnection:
         if output:
             for x in output:
                 x = x.strip()
-                if x and "-" in x and x.split("-")[0] in CB_RELEASE_BUILDS.keys():
+                if x and "-" in x and x.split("-")[0] in list(CB_RELEASE_BUILDS.keys()):
                     fv = x
                     tmp = x.split("-")
                     sv = tmp[0]

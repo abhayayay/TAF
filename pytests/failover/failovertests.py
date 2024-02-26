@@ -299,7 +299,7 @@ class FailoverTests(FailoverBaseTest):
                 tasks_info, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(tasks_info)
-            for task, task_info in tasks_info.items():
+            for task, task_info in list(tasks_info.items()):
                 self.assertFalse(
                     task_info['ops_failed'],
                     "Doc ops failed for task: {}".format(task.thread_name))
@@ -460,13 +460,13 @@ class FailoverTests(FailoverBaseTest):
             # Retry of failed keys after rebalance
             tasks_info = self.loadgen_docs(retry_exceptions=retry_exceptions,
                                            task_verification=True)
-            for task, tasks_info in tasks_info.items():
+            for task, tasks_info in list(tasks_info.items()):
                 self.task_manager.get_task_result(task)
             self.bucket_util.verify_doc_op_task_exceptions(
                 tasks_info, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(tasks_info)
-            for task, task_info in tasks_info.items():
+            for task, task_info in list(tasks_info.items()):
                 self.assertFalse(
                     task_info['ops_failed'],
                     "Doc ops failed for task: {}".format(task.thread_name))

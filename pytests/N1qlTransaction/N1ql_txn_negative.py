@@ -112,7 +112,7 @@ class N1ql_txn_negative(N1qlBase):
                  break
         doc_gen_list = self.n1ql_helper.get_doc_gen_list(bucket_col)
         stmts = self.n1ql_helper.get_stmt(bucket_col)
-        print("stmts are %s"%stmts)
+        print(("stmts are %s"%stmts))
         query_params = self.n1ql_helper.create_txn(5)
         # recreate the collection
         scope_name = collection.split('.')[-2]

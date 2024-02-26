@@ -1,4 +1,4 @@
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from membase.api.rest_client import RestConnection
 from BucketLib.bucket import Bucket
 

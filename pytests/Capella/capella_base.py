@@ -13,14 +13,14 @@ from Cb_constants.CBServer import CbServer
 from basetestcase import BaseTestCase
 from membase.api.rest_client import RestConnection
 from sdk_exceptions import SDKException
-from sdk_constants.java_client import SDKConstants
+from sdk_constants.sdk_client_constants import SDKConstants
 from com.couchbase.test.taskmanager import TaskManager
 from com.couchbase.test.sdk import SDKClient as NewSDKClient
 from com.couchbase.test.docgen import WorkLoadSettings,\
     DocumentGenerator
 from com.couchbase.test.sdk import Server
 from com.couchbase.test.loadgen import WorkLoadGenerate
-from Jython_tasks.task import PrintBucketStats
+from tasks.task import PrintBucketStats
 from java.util import HashMap
 from com.couchbase.test.docgen import DocRange
 from couchbase.test.docgen import DRConstants
@@ -118,7 +118,7 @@ class CapellaBase(BaseTestCase):
                                               bucket,
                                               {"name": scope_name})
                 self.sleep(2)
-        self.scopes = self.buckets[0].scopes.keys()
+        self.scopes = list(self.buckets[0].scopes.keys())
         self.log.info("Scopes list is {}".format(self.scopes))
 
         collection_prefix = "FunctionCollection"
@@ -133,7 +133,7 @@ class CapellaBase(BaseTestCase):
                         self.cluster.master, bucket,
                         scope_name, {"name": collection_name})
                     self.sleep(2)
-        self.collections = self.buckets[0].scopes[CbServer.default_scope].collections.keys()
+        self.collections = list(self.buckets[0].scopes[CbServer.default_scope].collections.keys())
         self.log.debug("Collections list == {}".format(self.collections))
 
         # Doc controlling params
@@ -193,9 +193,9 @@ class CapellaBase(BaseTestCase):
     def _loader_dict_new(self, cmd={}, scopes=None, collections=None):
         self.loader_map = dict()
         for bucket in self.cluster.buckets:
-            scopes_keys = scopes or bucket.scopes.keys()
+            scopes_keys = scopes or list(bucket.scopes.keys())
             for scope in scopes_keys:
-                collections_keys = collections or bucket.scopes[scope].collections.keys()
+                collections_keys = collections or list(bucket.scopes[scope].collections.keys())
                 for collection in collections_keys:
                     if collection == "_default" and scope == "_default":
                         continue
@@ -236,18 +236,20 @@ class CapellaBase(BaseTestCase):
     def retry_failures(self, tasks, wait_for_stats=True):
         for task in tasks:
             task.result = True
-            for optype, failures in task.failedMutations.items():
+            for optype, failures in list(task.failedMutations.items()):
                 for failure in failures:
-                    print("Test Retrying {}: {} -> {}".format(optype, failure.id(), failure.err().getClass().getSimpleName()))
+                    print(("Test Retrying {}: {} -> {}".format(optype, failure.id(),
+                                                               failure.err().getClass().getSimpleName())))
                     try:
                         if optype == "create":
                             task.docops.insert(failure.id(), failure.document(), task.sdk.connection, task.setOptions)
                         if optype == "update":
-                            task.docops.upsert(failure.id(), failure.document(), task.sdk.connection, task.upsertOptions)
+                            task.docops.upsert(failure.id(), failure.document(), task.sdk.connection,
+                                               task.upsertOptions)
                         if optype == "delete":
                             task.docops.delete(failure.id(), task.sdk.connection, task.removeOptions)
                     except (ServerOutOfMemoryException, TimeoutException) as e:
-                        print("Retry {} failed for key: {} - {}".format(optype, failure.id(), e))
+                        print(("Retry {} failed for key: {} - {}".format(optype, failure.id(), e)))
                         task.result = False
                     except (DocumentNotFoundException, DocumentExistsException) as e:
                         pass
@@ -281,9 +283,9 @@ class CapellaBase(BaseTestCase):
 
         while i > 0:
             for bucket in self.cluster.buckets:
-                scopes_keys = scopes or bucket.scopes.keys()
+                scopes_keys = scopes or list(bucket.scopes.keys())
                 for scope in scopes_keys:
-                    collections_keys = collections or bucket.scopes[scope].collections.keys()
+                    collections_keys = collections or list(bucket.scopes[scope].collections.keys())
                     for collection in collections_keys:
                         if collection == "_default" and scope == "_default":
                             continue
@@ -317,9 +319,9 @@ class CapellaBase(BaseTestCase):
                         str(self.cluster.master.memcached_port))
         self.loader_map = dict()
         for bucket in self.cluster.buckets:
-            scopes_keys = scopes or bucket.scopes.keys()
+            scopes_keys = scopes or list(bucket.scopes.keys())
             for scope in scopes_keys:
-                collections_keys = collections or bucket.scopes[scope].collections.keys()
+                collections_keys = collections or list(bucket.scopes[scope].collections.keys())
                 self.log.info("scope is {}".format(scope))
                 for collection in collections_keys:
                     self.log.info("collection is {}".format(collection))
@@ -367,8 +369,8 @@ class CapellaBase(BaseTestCase):
         i = self.process_concurrency
         while i > 0:
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
-                    for collection in bucket.scopes[scope].collections.keys():
+                for scope in list(bucket.scopes.keys()):
+                    for collection in list(bucket.scopes[scope].collections.keys()):
                         if collection == "_default" and scope == "_default":
                             continue
                         for op_type in doc_ops:
@@ -377,8 +379,10 @@ class CapellaBase(BaseTestCase):
                             client = NewSDKClient(master, bucket.name, scope, collection)
                             client.initialiseSDK()
                             self.sleep(1)
-                            taskName = "Validate_%s_%s_%s_%s_%s_%s" % (bucket.name, scope, collection, op_type, str(i), time.time())
-                            task = WorkLoadGenerate(taskName, self.loader_map[bucket.name+scope+collection+op_type],
+                            taskName = "Validate_%s_%s_%s_%s_%s_%s" % (
+                            bucket.name, scope, collection, op_type, str(i), time.time())
+                            task = WorkLoadGenerate(taskName,
+                                                    self.loader_map[bucket.name + scope + collection + op_type],
                                                     client, "NONE",
                                                     self.maxttl, self.time_unit,
                                                     self.track_failures, 0)

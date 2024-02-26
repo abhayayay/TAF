@@ -4,7 +4,7 @@ from membase.api.rest_client import RestConnection
 from couchbase_helper.documentgenerator import doc_generator
 from BucketLib.bucket import Bucket
 from remote.remote_util import RemoteMachineShellConnection
-from enterprise_bkrs_basetest import EnterpriseBKRSNewBaseTest
+from .enterprise_bkrs_basetest import EnterpriseBKRSNewBaseTest
 
 
 class EnterpriseBackupRestoreTransactionTest(EnterpriseBKRSNewBaseTest):

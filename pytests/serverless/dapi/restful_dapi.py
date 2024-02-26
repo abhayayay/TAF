@@ -100,7 +100,7 @@ class RestfulDAPITest(BaseTestCase):
             document_list = []
             for i in range(self.number_of_docs):
                 if gen_obj.has_next():
-                    key, doc = gen_obj.next()
+                    key, doc = next(gen_obj)
                     doc = doc.toMap()
                     doc = dict(doc)
                     response = self.rest_dapi.insert_doc(key, doc, "_default", "_default", 1200)
@@ -150,7 +150,7 @@ class RestfulDAPITest(BaseTestCase):
             document_list = []
             for i in range(self.number_of_docs):
                 if gen_obj.has_next():
-                    key, doc = gen_obj.next()
+                    key, doc = next(gen_obj)
                     doc = doc.toMap()
                     doc = dict(doc)
                     key_document = {"key": key, "doc": doc}
@@ -169,7 +169,7 @@ class RestfulDAPITest(BaseTestCase):
                 response = self.rest_dapi.get_doc(key, "_default", "_default")
                 self.assertTrue(response.status_code == 200,
                                 "Get failed for with key {} for database {}".format(key, bucket.name))
-                val = json.loads(response.content).values()[0]
+                val = list(json.loads(response.content).values())[0]
                 self.assertTrue(val == document, "Value mismatch")
 
             # GET for non existing document
@@ -192,7 +192,7 @@ class RestfulDAPITest(BaseTestCase):
             document_list = []
             for i in range(self.number_of_docs):
                 if gen_obj.has_next():
-                    key, doc = gen_obj.next()
+                    key, doc = next(gen_obj)
                     doc = doc.toMap()
                     doc = dict(doc)
                     key_document = {"key": key, "doc": doc}
@@ -211,7 +211,7 @@ class RestfulDAPITest(BaseTestCase):
                 response = self.rest_dapi.get_doc(key, "_default", "_default")
                 self.assertTrue(response.status_code == 200,
                                 "Get failed for with key {} for database {}".format(key, bucket.name))
-                val = json.loads(response.content).values()[0]
+                val = list(json.loads(response.content).values())[0]
                 self.assertTrue(val == document, "Value mismatch")
             # Upsert Doc
             self.randomize_value = (not self.randomize_value)
@@ -220,7 +220,7 @@ class RestfulDAPITest(BaseTestCase):
             document_list = []
             for i in range(self.number_of_docs):
                 if gen_obj.has_next():
-                    key, doc = gen_obj.next()
+                    key, doc = next(gen_obj)
                     doc = doc.toMap()
                     doc = dict(doc)
                     key_document = {"key": key, "doc": doc}
@@ -239,7 +239,7 @@ class RestfulDAPITest(BaseTestCase):
                 response = self.rest_dapi.get_doc(key, "_default", "_default")
                 self.assertTrue(response.status_code == 200,
                                 "Get failed for with key {} for database {}".format(key, bucket.name))
-                val = json.loads(response.content).values()[0]
+                val = list(json.loads(response.content).values())[0]
                 self.assertTrue(val == document, "Value mismatch")
 
             # upsert a non existing document
@@ -247,7 +247,7 @@ class RestfulDAPITest(BaseTestCase):
                                     key_size=self.key_size, doc_size=self.value_size,
                                     randomize_value=self.randomize_value)
             if gen_obj.has_next():
-                key, doc = gen_obj.next()
+                key, doc = next(gen_obj)
                 doc = doc.toMap()
                 doc = dict(doc)
                 # upsert for non existing document
@@ -308,7 +308,7 @@ class RestfulDAPITest(BaseTestCase):
             document_list = []
             for i in range(self.number_of_docs):
                 if gen_obj.has_next():
-                    key, doc = gen_obj.next()
+                    key, doc = next(gen_obj)
                     doc = doc.toMap()
                     doc = dict(doc)
                     key_document = {"key": key, "doc": doc}
@@ -795,7 +795,7 @@ class RestfulDAPITest(BaseTestCase):
                 # bulk keys get in response after insertion of bulk document
                 keys = json.loads(response.content).get("docs", [])
                 # compare both the list
-                if [key["id"] for key in keys].sort() != kv.keys().sort():
+                if [key["id"] for key in keys].sort() != list(kv.keys()).sort():
                     self.log.critical("Ambiguous keys get inserted for database {}".format(bucket_name))
                     self.log.critical("Response: ".format(response))
                     self.result = False
@@ -886,7 +886,7 @@ class RestfulDAPITest(BaseTestCase):
                 # bulk keys get in response after insertion of bulk document
                 keys = json.loads(response.content).get("docs", [])
                 # compare both the list
-                if [key["id"] for key in keys].sort() != kv.keys().sort():
+                if [key["id"] for key in keys].sort() != list(kv.keys()).sort():
                     self.log.critical("Ambiguous keys get inserted for database {}".format(bucket_name))
                     self.log.critical("Response: ".format(response))
                     self.result = False
@@ -906,7 +906,7 @@ class RestfulDAPITest(BaseTestCase):
 
                 keys = json.loads(response.content).get("docs", [])
 
-                if [key["id"] for key in keys].sort() != kv.keys().sort():
+                if [key["id"] for key in keys].sort() != list(kv.keys()).sort():
                     self.log.critical("Ambiguous keys get deleted for database {}".format(bucket_name))
                     self.log.critical("Response: ".format(response))
                     self.result = False
@@ -976,7 +976,7 @@ class RestfulDAPITest(BaseTestCase):
                 # bulk keys get in response after insertion of bulk document
                 keys = json.loads(response.content).get("docs", [])
                 # compare both the list
-                if [key["id"] for key in keys].sort() != kv.keys().sort():
+                if [key["id"] for key in keys].sort() != list(kv.keys()).sort():
                     self.log.critical("Ambiguous keys get inserted for database {}".format(bucket_name))
                     self.log.critical("Response: ".format(response))
                     self.result = False
@@ -1000,7 +1000,7 @@ class RestfulDAPITest(BaseTestCase):
                 # bulk keys get in response after insertion of bulk document
                 keys = json.loads(response.content).get("docs", [])
                 # compare both the list
-                if [key["id"] for key in keys].sort() != kv.keys().sort():
+                if [key["id"] for key in keys].sort() != list(kv.keys()).sort():
                     self.log.critical("Ambiguous keys get updated for database {}".format(bucket_name))
                     self.log.critical("Response: ".format(response))
                     self.result = False

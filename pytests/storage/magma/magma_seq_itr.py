@@ -22,7 +22,7 @@ class DCPSeqItr(MagmaBaseTest):
     def setUp(self):
         super(DCPSeqItr, self).setUp()
 
-        self.vbuckets = range(1024)
+        self.vbuckets = list(range(1024))
         self.start_seq_no_list = self.input.param("start", [0] * len(self.vbuckets))
         self.end_seq_no = self.input.param("end", 0xffffffffffffffff)
         self.vb_uuid_list = self.input.param("vb_uuid_list", ['0'] * len(self.vbuckets))
@@ -117,8 +117,8 @@ class DCPSeqItr(MagmaBaseTest):
         collections = self.bucket_util.get_random_collections(
             [self.cluster.buckets[0]], 1, 1, 1)
         scope_dict = collections[self.cluster.buckets[0].name]["scopes"]
-        scope_name = scope_dict.keys()[0]
-        collection_name = scope_dict[scope_name]["collections"].keys()[0]
+        scope_name = list(scope_dict.keys())[0]
+        collection_name = list(scope_dict[scope_name]["collections"].keys())[0]
 
         '''
          --- Doc ops in given collection(random collection)
@@ -149,7 +149,7 @@ class DCPSeqItr(MagmaBaseTest):
         '''
           --- Item Count verification
         '''
-        actual_item_count = len(list(filter(lambda x: 'CMD_MUTATION' in x, output_string)))
+        actual_item_count = len(list([x for x in output_string if 'CMD_MUTATION' in x]))
         self.log.info("actual item count is {}".format(actual_item_count))
 
         msg = "item count mismatch, expected {} actual {}"
@@ -208,7 +208,7 @@ class DCPSeqItr(MagmaBaseTest):
         self.log.info("expected item count {}".format(expected_item_count))
         # stream dcp events and verify events
         output_string = self.dcp_util.get_dcp_event()
-        actual_item_count = len(list(filter(lambda x: 'CMD_MUTATION' in x, output_string)))
+        actual_item_count = len(list([x for x in output_string if 'CMD_MUTATION' in x]))
         self.log.info("actual_item_count is {}".format(actual_item_count))
         msg = "item count mismatch, expected {} actual {}"
         self.assertIs(actual_item_count == expected_item_count, True,
@@ -332,7 +332,7 @@ class DCPSeqItr(MagmaBaseTest):
                 servers=[self.cluster.master],
                 wait_time=self.wait_timeout * 10))
             output_string = self.dcp_util.get_dcp_event()
-            actual_item_count = len(list(filter(lambda x: 'CMD_MUTATION' in x, output_string)))
+            actual_item_count = len(list([x for x in output_string if 'CMD_MUTATION' in x]))
             self.log.info("actual_item_count is {}".format(actual_item_count))
             msg = "item count mismatch, expected {} actual {}"
             self.assertIs(actual_item_count == self.num_items, True,

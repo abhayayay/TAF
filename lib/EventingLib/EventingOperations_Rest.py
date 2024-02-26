@@ -148,7 +148,7 @@ class EventingHelper(RestConnection):
             raise Exception(content)
         if status:
             json_parsed = json.loads(content)
-            for key in json_parsed[0].keys():  # returns an array
+            for key in list(json_parsed[0].keys()):  # returns an array
                 tokens = key.split(":")
                 val = json_parsed[0][key]
                 if len(tokens) == 1:
@@ -208,7 +208,7 @@ class EventingHelper(RestConnection):
         status, content, header = self._http_request(api, 'GET', headers=headers)
         if status:
             json_parsed = json.loads(content)
-            for key in json_parsed.keys():
+            for key in list(json_parsed.keys()):
                 tokens = key.split(":")
                 val = json_parsed[key]
                 if len(tokens) == 1:
@@ -230,7 +230,7 @@ class EventingHelper(RestConnection):
         status, content, header = self._http_request(api, 'GET', headers=headers)
         if status:
             json_parsed = json.loads(content)
-            for key in json_parsed.keys():
+            for key in list(json_parsed.keys()):
                 tokens = key.split(":")
                 val = json_parsed[key]
                 if len(tokens) == 1:
@@ -252,7 +252,7 @@ class EventingHelper(RestConnection):
         status, content, header = self._http_request(api, 'GET', headers=headers)
         if status:
             json_parsed = json.loads(content)
-            for key in json_parsed.keys():
+            for key in list(json_parsed.keys()):
                 tokens = key.split(":")
                 val = json_parsed[key]
                 if len(tokens) == 1:
@@ -274,7 +274,7 @@ class EventingHelper(RestConnection):
         status, content, header = self._http_request(api, 'GET', headers=headers)
         if status:
             json_parsed = json.loads(content)
-            for key in json_parsed.keys():
+            for key in list(json_parsed.keys()):
                 tokens = key.split(":")
                 val = json_parsed[key]
                 if len(tokens) == 1:

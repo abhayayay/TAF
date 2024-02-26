@@ -198,7 +198,7 @@ class AppBase(BaseTestCase):
             self.map_collection_data(bucket_obj)
             self.__print_step("Creating required scope/collections")
             for scope in bucket["scopes"]:
-                if scope["name"] in bucket_obj.scopes.keys():
+                if scope["name"] in list(bucket_obj.scopes.keys()):
                     self.log.debug("Scope %s already exists for bucket %s"
                                    % (scope["name"], bucket_obj.name))
                 else:
@@ -271,7 +271,7 @@ class AppBase(BaseTestCase):
 
     def shutdown_sdk_clients(self):
         self.__print_step("Closing SDK client connections")
-        for _, client in self.sdk_clients.items():
+        for _, client in list(self.sdk_clients.items()):
             client.close()
 
     def create_indexes(self):
@@ -318,9 +318,9 @@ class AppBase(BaseTestCase):
 
             indexes_to_build[bucket][scope][collection].append(row.get("name"))
 
-        for bucket, b_data in indexes_to_build.items():
-            for scope, s_data in b_data.items():
-                for collection, indexes in s_data.items():
+        for bucket, b_data in list(indexes_to_build.items()):
+            for scope, s_data in list(b_data.items()):
+                for collection, indexes in list(s_data.items()):
                     try:
                         build_res = \
                             self.sdk_clients["bucket_admin"].cluster.query(
@@ -424,18 +424,18 @@ class AppBase(BaseTestCase):
             if collection_data is None:
                 collection_data = tem_collection_data
             else:
-                for key, value in tem_collection_data.items():
+                for key, value in list(tem_collection_data.items()):
                     if type(value) is dict:
-                        for col_name, c_data in value.items():
+                        for col_name, c_data in list(value.items()):
                             collection_data[key][col_name]['items'] \
                                 += c_data['items']
 
-        for s_name, s_data in collection_data.items():
+        for s_name, s_data in list(collection_data.items()):
             if type(s_data) is not dict:
                 continue
             self.bucket_util.create_scope_object(bucket,
                                                  {"name": s_name})
-            for c_name, c_data in s_data.items():
+            for c_name, c_data in list(s_data.items()):
                 if type(c_data) is not dict:
                     continue
                 self.bucket_util.create_collection_object(

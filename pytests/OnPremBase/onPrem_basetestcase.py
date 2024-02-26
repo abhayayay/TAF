@@ -11,18 +11,22 @@ import global_vars
 from BucketLib.bucket import Bucket
 from Cb_constants import ClusterRun, CbServer
 import Cb_constants
+from tasks.task import RestBasedDocLoaderCleaner
 from SystemEventLogLib.Events import Event
 from SystemEventLogLib.data_service_events import DataServiceEvents
 from TestInput import TestInputSingleton
 from bucket_utils.bucket_ready_functions import BucketUtils
 from constants.platform_constants import os_constants
 from cb_basetest import CouchbaseBaseTest
-from cluster_utils.cluster_ready_functions import ClusterUtils, CBCluster
+from cluster_utils.cluster_ready_functions import ClusterUtils, CBCluster, \
+    Nebula
+from couchbase_utils.security_utils.security_utils import SecurityUtils
 from couchbase_utils.security_utils.x509_multiple_CA_util import x509main
 from membase.api.rest_client import RestConnection
 from remote.remote_util import RemoteMachineShellConnection
 from security_config import trust_all_certs
-from awsLib.s3_data_helper import perform_S3_operation
+# from docker_utils.DockerSDK import DockerClient
+import importlib
 
 
 class OnPremBaseTest(CouchbaseBaseTest):
@@ -32,14 +36,11 @@ class OnPremBaseTest(CouchbaseBaseTest):
         # Framework specific parameters (Extension from cb_basetest)
         self.skip_cluster_reset = self.input.param("skip_cluster_reset", False)
         self.skip_setup_cleanup = self.input.param("skip_setup_cleanup", False)
-        self.storage_compute_separation = self.input.param(
-            "storage_compute_separation", False)
         # End of framework parameters
 
         # Cluster level info settings
         self.log_info = self.input.param("log_info", None)
-        self.minimum_bucket_replica = self.input.param(
-            "minimum_bucket_replica", None)
+        self.minimum_bucket_replica = self.input.param("minimum_bucket_replica", None)
         self.disable_max_fo_count = self.input.param("disable_max_fo_count",
                                                      'false')
         self.log_location = self.input.param("log_location", None)
@@ -128,6 +129,9 @@ class OnPremBaseTest(CouchbaseBaseTest):
         global_vars.cluster_util = self.cluster_util
         global_vars.bucket_util = self.bucket_util
 
+        # Sets internal password rotation time interval
+        self.int_pwd_rotn = self.input.param("int_pwd_rotn", 1800000)
+
         # Populate memcached_port in case of cluster_run
         if int(self.input.servers[0].port) == ClusterRun.port:
             # This flag will be used globally to decide port_mapping stuff
@@ -146,7 +150,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
         num_vb = self.vbuckets or CbServer.total_vbuckets
         if len(self.input.clusters) > 1:
             # Multi cluster setup
-            for _, nodes in self.input.clusters.iteritems():
+            for _, nodes in list(self.input.clusters.items()):
                 cluster_name = cluster_name_format % counter_index
                 tem_cluster = CBCluster(name=cluster_name, servers=nodes,
                                         vbuckets=num_vb)
@@ -177,7 +181,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
 
         if self.use_https:
             CbServer.use_https = True
-            trust_all_certs()
+            # trust_all_certs()
 
         # Initialize self.cluster with first available cluster as default
         self.cluster = self.cb_clusters[cluster_name_format
@@ -191,7 +195,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
             self.bucket_util.change_max_buckets(self.cluster.master,
                                                 self.standard_buckets)
 
-        for cluster_name, cluster in self.cb_clusters.items():
+        for cluster_name, cluster in list(self.cb_clusters.items()):
             # Append initial master node to the nodes_in_cluster list
             cluster.nodes_in_cluster.append(cluster.master)
 
@@ -228,9 +232,13 @@ class OnPremBaseTest(CouchbaseBaseTest):
             if not mem_quota_percent:
                 mem_quota_percent = None
 
+            # Rotate the internal user's password at the specified interval
+            self.security_util = SecurityUtils(self.log)
+            self.security_util.set_internal_creds_rotation_interval(self.cluster, self.int_pwd_rotn)
+
             if self.skip_setup_cleanup:
                 # Update current server/service map and buckets for the cluster
-                for _, cluster in self.cb_clusters.items():
+                for _, cluster in list(self.cb_clusters.items()):
                     self.cluster_util.update_cluster_nodes_service_list(
                         cluster)
                     cluster.buckets = self.bucket_util.get_all_buckets(cluster)
@@ -241,7 +249,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
                         cluster.backup_nodes))
                 return
             else:
-                for cluster_name, cluster in self.cb_clusters.items():
+                for cluster_name, cluster in list(self.cb_clusters.items()):
                     self.log.info("Delete all buckets and rebalance out "
                                   "other nodes from '%s'" % cluster_name)
                     self.cluster_util.cluster_cleanup(cluster,
@@ -254,7 +262,14 @@ class OnPremBaseTest(CouchbaseBaseTest):
                     self.case_number -= 1000
                 self.tearDownEverything(reset_cluster_env_vars=False)
 
-            for cluster_name, cluster in self.cb_clusters.items():
+            self.nebula = self.input.param("nebula", False)
+            self.nebula_details = dict()
+            for cluster_name, cluster in list(self.cb_clusters.items()):
+                # Check if the master node is initialized. If not, force reset
+                # the cluster to avoid initial rebalance failure
+                result = RestConnection(cluster.master).get_pools_default()
+                if result == "unknown pool":
+                    self.skip_cluster_reset = False
                 if not self.skip_cluster_reset:
                     services = None
                     if self.services_init:
@@ -267,6 +282,52 @@ class OnPremBaseTest(CouchbaseBaseTest):
                 # Set this unconditionally
                 RestConnection(cluster.master).set_internalSetting(
                     "magmaMinMemoryQuota", 256)
+                self.docker_containers = []
+                self.docker = None
+                self.image_id = None
+                if self.nebula and CbServer.cluster_profile == "serverless":
+                    try:
+                        # Check out nebula git repo
+                        # Config nebula
+                        self.log.info("launch docker container running nebula")
+                        nebula_ip = self.get_executor_ip()
+                        nebula_path = self.input.param("nebula_path",
+                                                       "/root/direct-nebula")
+                        self.create_nebula_config(nebula_path=nebula_path,
+                                                  nebula_ip=nebula_ip,
+                                                  cluster=cluster)
+                        self.log.info("Create docker SDK client")
+                        self.docker = DockerClient()
+                        self.log.info("Build docker image")
+                        _rand = random.randint(1, 1000)
+                        self.image_id = \
+                            self.docker.buildImage(nebula_path,
+                                                   "directnebula-%s" % _rand)
+                        self.log.info("Construct docker port mapping")
+                        portMap = dict()
+                        for i in range(9000, 9011):
+                            i = str(i)
+                            portMap.update({i: i})
+                        for i in range(11000, 11011):
+                            i = str(i)
+                            portMap.update({i: i})
+                        host_config = self.docker.portMapping(portMap)
+                        self.log.info("Start Docker Container")
+                        dn_container_id = self.docker.startDockerContainer(
+                            host_config, self.image_id,
+                            exposedPorts=list(portMap.keys()),
+                            tag="DirectNebula-{}".format(_rand))
+                        self.docker_containers.append(dn_container_id)
+                        self.use_https = False
+                        self.enforce_tls = False
+                        CbServer.use_https = False
+                        nebula = Nebula(nebula_ip, cluster.master)
+                        nebula.endpoint.srv = nebula_ip
+                        self.log.info("Populate Nebula object done!!")
+                        self.nebula_details[cluster] = nebula
+                    except:
+                        traceback.print_exc()
+                        self.nebula = False
 
             # Enable dp_version
             if self.enable_dp:
@@ -293,14 +354,14 @@ class OnPremBaseTest(CouchbaseBaseTest):
                 else:
                     for server in self.input.servers:
                         self.set_ports_for_server(server, "ssl")
-            reload(Cb_constants)
+            importlib.reload(Cb_constants)
 
             # Update initial service map for the master node
             self.cluster_util.update_cluster_nodes_service_list(self.cluster)
 
             # Enforce IPv4 or IPv6 or both
             if self.ipv4_only or self.ipv6_only:
-                for _, cluster in self.cb_clusters.items():
+                for _, cluster in list(self.cb_clusters.items()):
                     status, msg = self.cluster_util.enable_disable_ip_address_family_type(
                         cluster, True, self.ipv4_only, self.ipv6_only)
                     if not status:
@@ -312,7 +373,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
             self.encryption_type = \
                 self.input.param("encryption_type", "aes256")
             if self.multiple_ca:
-                for _, cluster in self.cb_clusters.items():
+                for _, cluster in list(self.cb_clusters.items()):
                     cluster.x509 = x509main(
                         host=cluster.master, standard=self.standard,
                         encryption_type=self.encryption_type,
@@ -324,7 +385,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
                     rest = RestConnection(cluster.master)
                     rest.add_set_builtin_user("cbadminbucket", payload)
 
-            for cluster_name, cluster in self.cb_clusters.items():
+            for cluster_name, cluster in list(self.cb_clusters.items()):
                 self.modify_cluster_settings(cluster)
 
             # Track test start time only if we need system log validation
@@ -332,8 +393,16 @@ class OnPremBaseTest(CouchbaseBaseTest):
                 self.system_events.set_test_start_time()
             self.log_setup_status("OnPremBaseTest", "finished")
             self.__log("started")
+            _clean_sirius_data = RestBasedDocLoaderCleaner(cluster=self.cluster, task_manager=self.task_manager,
+                                                           scope=self.scope_name,
+                                                           collection=self.collection_name)
+            self.task_manager.add_new_task(_clean_sirius_data)
+            self.task_manager.get_task_result(_clean_sirius_data)
+
         except Exception as e:
             traceback.print_exc()
+            for server in self.input.servers:
+                self.set_ports_for_server(server, "non_ssl")
             self.task.shutdown(force=True)
             self.fail(e)
         finally:
@@ -345,48 +414,11 @@ class OnPremBaseTest(CouchbaseBaseTest):
 
     def initialize_cluster(self, cluster_name, cluster, services=None,
                            services_mem_quota_percent=None):
-        self.log.info("Initializing cluster : {0}".format(cluster_name))
         self.node_utils.reset_cluster_nodes(self.cluster_util, cluster)
+        self.cluster_util.wait_for_ns_servers_or_assert(cluster.servers)
+        self.sleep(5, "Wait for nodes to become ready after reset")
 
-        # This check is to set up compute storage separation for
-        # analytics in serverless mode
-        if (self.storage_compute_separation and
-                CbServer.cluster_profile == "serverless"):
-            self.aws_access_key = self.input.param("aws_access_key", None)
-            self.aws_secret_key = self.input.param("aws_secret_key", None)
-            self.sink_S3_region = self.input.param("sink_S3_region", None)
-            self.aws_session_token = self.input.param("aws_session_token", "")
-            for i in range(5):
-                try:
-                    self.sink_S3_bucket_name = "goldfish-qe-" + str(
-                        random.randint(1, 100000))
-                    self.log.info("Creating S3 bucket: {}".format(
-                        self.sink_S3_bucket_name))
-                    self.sink_bucket_created = perform_S3_operation(
-                        aws_access_key=self.aws_access_key,
-                        aws_secret_key=self.aws_secret_key,
-                        aws_session_token=self.aws_session_token,
-                        create_bucket=True, bucket_name=self.sink_S3_bucket_name,
-                        region=self.sink_S3_region)
-                    break
-                except Exception as e:
-                    self.log.error("Creating S3 bucket - {0} in region {1}. "
-                                   "Failed.".format(
-                        self.sink_S3_bucket_name, self.sink_S3_region))
-                    self.log.error(str(e))
-                finally:
-                    if i == 4:
-                        self.fail("Unable to create S3 bucket even after 5 "
-                                  "retries")
-            self.log.info("Adding aws bucket credentials to analytics")
-            rest = RestConnection(self.cluster.master)
-            status = rest.set_AWS_bucket_credential_to_anlaytics(
-                self.aws_access_key, self.aws_secret_key,
-                self.sink_S3_bucket_name, self.sink_S3_region)
-            if not status:
-                self.fail("Failed to put aws credentials to analytics, "
-                          "request error")
-
+        self.log.info("Initializing cluster : {0}".format(cluster_name))
         if not services:
             master_services = self.cluster_util.get_services(
                 cluster.servers[:1], self.services_init, start_node=0)
@@ -429,6 +461,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
             status, content = rest.set_minimum_bucket_replica_for_cluster(
                 self.minimum_bucket_replica)
             self.assertTrue(status, "minimum replica setting failed to update")
+            self.num_replicas = self.minimum_bucket_replica
 
     def start_fetch_pcaps(self):
         log_path = TestInputSingleton.input.param("logs_folder", "/tmp")
@@ -464,7 +497,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
             retry = 0
             status = False
             while retry < retry_count:
-                for _, cluster in self.cb_clusters.items():
+                for _, cluster in list(self.cb_clusters.items()):
                     status = True
                     task = self.node_utils.async_enable_tls(cluster.master,
                                                             self.encryption_level)
@@ -476,6 +509,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
                                 self.cluster.master) != self.encryption_level:
                             status = False
                     if self.encryption_level == "strict":
+                        self.sleep(120, "waiting after enabling TLS")
                         status = self.cluster_util.check_if_services_obey_tls(
                             cluster.servers)
                 if status:
@@ -485,9 +519,15 @@ class OnPremBaseTest(CouchbaseBaseTest):
                     self.sleep(10, "Retrying enforcing TLS on servers")
             else:
                 self.fail("Services did not honor enforce tls")
-            self.sleep(120, "waiting after enabling TLS")
 
     def tearDown(self):
+        for container in self.docker_containers:
+            self.docker.killContainer(container)
+            self.log.info("Container {} killed/removed".format(container))
+        if self.docker is not None:
+            if self.image_id is not None:
+                self.docker.deleteImage(self.image_id)
+            self.docker.close()
         # Perform system event log validation and get failures (if any)
         sys_event_validation_failure = None
         if self.validate_system_event_logs:
@@ -495,14 +535,14 @@ class OnPremBaseTest(CouchbaseBaseTest):
                 self.system_events.validate(self.cluster.master)
 
         if self.ipv4_only or self.ipv6_only:
-            for _, cluster in self.cb_clusters.items():
+            for _, cluster in list(self.cb_clusters.items()):
                 self.cluster_util.enable_disable_ip_address_family_type(
                     cluster, False, self.ipv4_only, self.ipv6_only)
 
         # Disable n2n encryption on nodes of all clusters
         if self.use_https:
             if self.enforce_tls:
-                for _, cluster in self.cb_clusters.items():
+                for _, cluster in list(self.cb_clusters.items()):
                     task = self.node_utils.async_disable_tls(cluster.master)
                     self.task_manager.get_task_result(task)
             # Set CbServer.use_https to False when
@@ -520,7 +560,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
 
         if self.multiple_ca:
             CbServer.use_https = False
-            for _, cluster in self.cb_clusters.items():
+            for _, cluster in list(self.cb_clusters.items()):
                 rest = RestConnection(cluster.master)
                 rest.delete_builtin_user("cbadminbucket")
                 x509 = x509main(host=cluster.master)
@@ -547,60 +587,10 @@ class OnPremBaseTest(CouchbaseBaseTest):
             self.log.critical("System event log validation failed: %s"
                               % sys_event_validation_failure)
 
-        # delete aws bucket that was created for compute storage separation
-        if self.storage_compute_separation and CbServer.cluster_profile == "serverless" \
-                and self.sink_bucket_created:
-
-            for cluster_name, cluster in self.cb_clusters.items():
-                self.log.info("Resetting cluster nodes")
-                self.node_utils.reset_cluster_nodes(self.cluster_util, cluster)
-
-            self.log.info("Emptying AWS S3 bucket - {0}".format(
-                self.sink_S3_bucket_name))
-            for i in range(5):
-                try:
-                    if perform_S3_operation(
-                            aws_access_key=self.aws_access_key,
-                            aws_secret_key=self.aws_secret_key,
-                            aws_session_token=self.aws_session_token,
-                            empty_bucket=True,
-                            bucket_name=self.sink_S3_bucket_name,
-                            region=self.sink_S3_region):
-                        break
-                except Exception as e:
-                    self.log.error("Unable to empty S3 bucket - {0}".format(
-                        self.sink_S3_bucket_name))
-                    self.log.error(str(e))
-                finally:
-                    if i == 4:
-                        self.fail("Unable to empty S3 bucket even after 5 "
-                                  "retries")
-
-            self.log.info("Deleting AWS S3 bucket - {0}".format(
-                self.sink_S3_bucket_name))
-            for i in range(5):
-                try:
-                    if perform_S3_operation(
-                            aws_access_key=self.aws_access_key,
-                            aws_secret_key=self.aws_secret_key,
-                            aws_session_token=self.aws_session_token,
-                            delete_bucket=True,
-                            bucket_name=self.sink_S3_bucket_name,
-                            region=self.sink_S3_region):
-                        break
-                except Exception as e:
-                    self.log.error("Unable to delete S3 bucket - {0}".format(
-                        self.sink_S3_bucket_name))
-                    self.log.error(str(e))
-                finally:
-                    if i == 4:
-                        self.fail("Unable to delete S3 bucket even after 5 "
-                                  "retries")
-
         self.shutdown_task_manager()
 
     def tearDownEverything(self, reset_cluster_env_vars=True):
-        for _, cluster in self.cb_clusters.items():
+        for _, cluster in list(self.cb_clusters.items()):
             try:
                 test_failed = self.is_test_failed()
                 if test_failed:
@@ -632,6 +622,11 @@ class OnPremBaseTest(CouchbaseBaseTest):
             finally:
                 if reset_cluster_env_vars:
                     self.cluster_util.reset_env_variables(cluster)
+        _clean_sirius_data = RestBasedDocLoaderCleaner(cluster=self.cluster, task_manager=self.task_manager,
+                                                       scope=self.scope_name,
+                                                       collection=self.collection_name)
+        self.task_manager.add_new_task(_clean_sirius_data)
+        self.task_manager.get_task_result(_clean_sirius_data)
         self.infra_log.info("========== tasks in thread pool ==========")
         self.task_manager.print_tasks_in_pool()
         self.infra_log.info("==========================================")
@@ -661,6 +656,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
 
         for server in cluster.servers:
             # Make sure that data_and index_path are writable by couchbase user
+            ClusterUtils.flush_network_rules(server)
             if not server.index_path:
                 server.index_path = server.data_path
             if not server.cbas_path:
@@ -679,7 +675,6 @@ class OnPremBaseTest(CouchbaseBaseTest):
 
             if cluster.master != server:
                 continue
-
             init_port = port or server.port or '8091'
             assigned_services = services
             init_tasks.append(
@@ -694,8 +689,11 @@ class OnPremBaseTest(CouchbaseBaseTest):
                     services_mem_quota_percent=services_mem_quota_percent))
         for _task in init_tasks:
             node_quota = self.task_manager.get_task_result(_task)
-            if node_quota < quota or quota == 0:
-                quota = node_quota
+            if (node_quota is not None and node_quota < quota) or quota == 0:
+                if node_quota is None:
+                    quota = 0
+                else:
+                    quota = node_quota
         if quota < 100 and not len(set([server.ip
                                         for server in self.servers])) == 1:
             self.log.warn("RAM quota was defined less than 100 MB:")
@@ -716,7 +714,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
     def fetch_cb_collect_logs(self):
         log_path = TestInputSingleton.input.param("logs_folder", "/tmp")
         is_single_node_server = len(self.servers) == 1
-        for _, cluster in self.cb_clusters.items():
+        for _, cluster in list(self.cb_clusters.items()):
             rest = RestConnection(cluster.master)
             nodes = rest.get_nodes(inactive_added=True,
                                    inactive_failed=True)
@@ -750,11 +748,11 @@ class OnPremBaseTest(CouchbaseBaseTest):
             core_file = dmp_path + dmp_name.strip(".dmp") + ".core"
             gdb_shell.execute_command("rm -rf " + core_file)
             core_cmd = "/" + bin_cb + "minidump-2-core " + dmp_file + " > " + core_file
-            print("running: %s" % core_cmd)
+            print(("running: %s" % core_cmd))
             gdb_shell.execute_command(core_cmd)
             gdb = "gdb --batch {} -c {} -ex \"bt full\" -ex quit" \
-                .format(os.path.join(bin_cb, "memcached"), core_file)
-            print("running: %s" % gdb)
+                .format(os.path.join(bin_cb, "../../lib/memcached"), core_file)
+            print(("running: %s" % gdb))
             result = gdb_shell.execute_command(gdb)[0]
             t_index = find_index_of(result, "Core was generated by")
             result = result[t_index:]
@@ -763,7 +761,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
 
         def get_full_thread_dump(shell):
             cmd = 'gdb -p `(pidof memcached)` -ex "thread apply all bt" -ex detach -ex quit'
-            print("running: %s" % cmd)
+            print(("running: %s" % cmd))
             thread_dump = shell.execute_command(cmd)[0]
             index = find_index_of(
                 thread_dump, "Thread debugging using libthread_db enabled")
@@ -773,15 +771,12 @@ class OnPremBaseTest(CouchbaseBaseTest):
         def run_cbanalyze_core(shell, core_file):
             cbanalyze_core = os.path.join(bin_cb, "tools/cbanalyze-core")
             cmd = '%s %s' % (cbanalyze_core, core_file)
-            print("running: %s" % cmd)
+            print(("running: %s" % cmd))
             shell.execute_command(cmd)[0]
             cbanalyze_log = core_file + ".log"
-            if shell.file_exists(os.path.dirname(cbanalyze_log),
-                                 os.path.basename(cbanalyze_log)):
-                log_path = TestInputSingleton.input.param("logs_folder",
-                                                          "/tmp")
-                shell.get_file(os.path.dirname(cbanalyze_log),
-                               os.path.basename(cbanalyze_log), log_path)
+            if shell.file_exists(os.path.dirname(cbanalyze_log), os.path.basename(cbanalyze_log)):
+                log_path = TestInputSingleton.input.param("logs_folder", "/tmp")
+                shell.get_file(os.path.dirname(cbanalyze_log), os.path.basename(cbanalyze_log), log_path)
 
         def check_logs(grep_output_list):
             """
@@ -793,12 +788,10 @@ class OnPremBaseTest(CouchbaseBaseTest):
             """
             last_line = grep_output_list[-1]
             # eg: 2021-07-12T04:03:45
-            timestamp_regex = re.compile(
-                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+            timestamp_regex = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
             match_obj = timestamp_regex.search(last_line)
             if not match_obj:
-                self.log.critical(
-                    "%s does not match any timestamp" % last_line)
+                self.log.critical("%s does not match any timestamp" % last_line)
                 return True
             timestamp = match_obj.group()
             timestamp = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S")
@@ -820,7 +813,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
                                          ClusterRun.port + 10):
                 crash_dir = os.path.join(
                     TestInputSingleton.input.servers[0].cli_path,
-                    "ns_server", "data",
+                    "../../conf/ns_server", "data",
                     "n_%s" % str(idx), "crash")
             dmp_files = shell.execute_command("ls -lt " + crash_dir)[0]
             dmp_files = [f for f in dmp_files if ".core" not in f]
@@ -828,12 +821,12 @@ class OnPremBaseTest(CouchbaseBaseTest):
             dmp_files = [f.split()[-1] for f in dmp_files if ".core" not in f]
             dmp_files = [f.strip("\n") for f in dmp_files]
             if dmp_files:
-                print("#" * 30)
-                print("%s: %d core dump seen" % (server.ip, len(dmp_files)))
-                print("%s: Stack Trace of first crash - %s\n%s"
-                      % (server.ip, dmp_files[-1],
-                         get_gdb(shell, crash_dir, dmp_files[-1])))
-                print("#" * 30)
+                print(("#" * 30))
+                print(("%s: %d core dump seen" % (server.ip, len(dmp_files))))
+                print(("%s: Stack Trace of first crash - %s\n%s"
+                       % (server.ip, dmp_files[-1],
+                          get_gdb(shell, crash_dir, dmp_files[-1]))))
+                print(("#" * 30))
                 result = get_full_thread_dump(shell)
                 print(result)
                 #                 print("#"*30)
@@ -850,11 +843,11 @@ class OnPremBaseTest(CouchbaseBaseTest):
                                          ClusterRun.port + 10):
                 logs_dir = os.path.join(
                     TestInputSingleton.input.servers[0].cli_path,
-                    "ns_server", "logs", "n_%s" % str(idx))
+                    "../../conf/ns_server", "logs", "n_%s" % str(idx))
 
             # Perform log file searching based on the input yaml config
             yaml = YAML()
-            with open("lib/couchbase_helper/error_log_config.yaml", "r") as fp:
+            with open(os.path.join(os.getcwd(), "lib/couchbase_helper/error_log_config.yaml"), "r") as fp:
                 y_data = yaml.load(fp.read())
 
             for file_data in y_data["file_name_patterns"]:
@@ -877,8 +870,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
                     if 'grep_for' in file_data:
                         for grep_pattern_of_log_file in file_data['grep_for']:
                             pattern_to_grep.append(grep_pattern_of_log_file)
-                    for common_grep_pattern in y_data["common_patterns"][
-                        'grep_for']:
+                    for common_grep_pattern in y_data["common_patterns"]['grep_for']:
                         pattern_to_grep.append(common_grep_pattern)
                     for grep_pattern in pattern_to_grep:
                         grep_for_str = grep_pattern['string']
@@ -980,7 +972,7 @@ class OnPremBaseTest(CouchbaseBaseTest):
             self.log.critical("data_sets ==> {}".format(self.data_sets))
             wal_tar = "wal.tar.gz"
             config_json_tar = "config.json.tar.gz"
-            for server, kvstores in self.data_sets.items():
+            for server, kvstores in list(self.data_sets.items()):
                 shell = RemoteMachineShellConnection(server)
                 if not kvstores:
                     copy_to_path = os.path.join(log_path,
@@ -1057,6 +1049,30 @@ class OnPremBaseTest(CouchbaseBaseTest):
         s.connect(("8.8.8.8", 80))
         return s.getsockname()[0]
 
+    def create_nebula_config(self, nebula_path="",
+                             nebula_ip=None, cluster=None):
+        import json
+        with open(os.path.join(nebula_path, "config.json.example"), "r") as jsonFile:
+            data = json.load(jsonFile)
+            jsonFile.close()
+            data["localHostname"] = nebula_ip
+            data["certificates"]["certificate"] = ""
+            data["certificates"]["privateKey"] = ""
+            data["couchbase"]["certificate"] = ""
+            data["couchbase"]["hosts"] = [node.ip for node in cluster.nodes_in_cluster]
+
+        with open(os.path.join(nebula_path, "config.json"), "w") as jsonFile:
+            json.dump(data, jsonFile, indent=4)
+            jsonFile.close()
+
+        import shutil
+        shutil.copy("../../couchbase_utils/nebula_utils/Dockerfile", nebula_path)
+
+    def handle_setup_exception(self, exception_obj):
+        for server in self.input.servers:
+            self.set_ports_for_server(server, "non_ssl")
+        super(OnPremBaseTest, self).handle_setup_exception(exception_obj)
+
 
 class ClusterSetup(OnPremBaseTest):
     def setUp(self):
@@ -1095,6 +1111,10 @@ class ClusterSetup(OnPremBaseTest):
         nodes_init = self.cluster.servers[1:self.nodes_init] \
             if self.nodes_init != 1 else []
         if nodes_init:
+            # Sleeping for 30 seconds since many test runs failed when nodes were added to uninitialized node
+            # error observed - Adding nodes to not provisioned nodes is not allowed
+            # TODO - Investigate why the nodes are taking so long to be initialized and provisioned
+            self.sleep(30, "Sleeping for 30 seconds to let the nodes be initialized")
             result = self.task.rebalance(self.cluster, nodes_init, [],
                                          services=services,
                                          add_nodes_server_groups=None)
@@ -1103,16 +1123,18 @@ class ClusterSetup(OnPremBaseTest):
                 # in BaseTest if failure happens during setup() stage
                 if self.get_cbcollect_info:
                     self.fetch_cb_collect_logs()
+                CbServer.use_https = False
+                CbServer.n2n_encryption = False
+                for server in self.input.servers:
+                    self.set_ports_for_server(server, "non_ssl")
                 self.fail("Initial rebalance failed")
 
         if CbServer.cluster_profile == "serverless":
             # Workaround to hitting throttling on serverless config
-            RestConnection(self.cluster.master).set_internalSetting(
-                "dataThrottleLimit",
-                self.kv_throttling_limit)
-            RestConnection(self.cluster.master).set_internalSetting(
-                "dataStorageLimit",
-                self.kv_storage_limit)
+            RestConnection(self.cluster.master).set_internalSetting("dataThrottleLimit",
+                                                                    self.kv_throttling_limit)
+            RestConnection(self.cluster.master).set_internalSetting("dataStorageLimit",
+                                                                    self.kv_storage_limit)
 
         # Used to track spare nodes.
         # Test case can use this for further rebalance
@@ -1125,6 +1147,7 @@ class ClusterSetup(OnPremBaseTest):
             "ram_quota": self.bucket_size,
             "replica": self.num_replicas,
             "maxTTL": self.bucket_ttl,
+            "bucket_rank": self.bucket_rank,
             "compression_mode": self.compression_mode,
             "wait_for_warmup": True,
             "conflict_resolution": Bucket.ConflictResolution.SEQ_NO,

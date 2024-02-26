@@ -7,7 +7,7 @@ elif mode.cli:
     # from GsiHelper_CLI import GsiHelper as GsiLib
     pass
 else:
-    from GsiHelper_Rest import GsiHelper as GsiLib
+    from .GsiHelper_Rest import GsiHelper as GsiLib
 
 
 class GsiHelper(GsiLib):

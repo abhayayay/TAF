@@ -51,7 +51,7 @@ class CGroup(CGroupBase):
         # Number of threads spun by a CB process depends on the ceil(cores) used by CB
         cores = int(ceil(cores))
         self.log.info("CB server is using {0} cores".format(cores))
-        for process in actual_thread_map.keys():
+        for process in list(actual_thread_map.keys()):
             actual_val = actual_thread_map[process]
             if cores > self.baseline_cores:
                 expected_val = self.baseline_core_threads[process] \

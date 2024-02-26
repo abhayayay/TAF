@@ -6,11 +6,11 @@ Created on 2-March-2023
 
 import re
 import json
-from Queue import Queue
+from queue import Queue
 
 from cbas.cbas_base import CBASBaseTest
 from security.rbac_base import RbacBase
-from Jython_tasks.task import RunQueriesTask
+from tasks.task import RunQueriesTask
 from cbas_utils.cbas_utils import CBASRebalanceUtil
 from BucketLib.bucket import TravelSample
 from remote.remote_util import RemoteMachineShellConnection
@@ -31,7 +31,7 @@ class CBASCBO(CBASBaseTest):
         super(CBASCBO, self).setUp()
 
         # Since all the test cases are being run on 1 cluster only
-        self.cluster = self.cb_clusters.values()[0]
+        self.cluster = list(self.cb_clusters.values())[0]
         self.create_index = self.input.param('create_index', False)
 
         self.log_setup_status(self.__class__.__name__, "Finished",
@@ -93,11 +93,12 @@ class CBASCBO(CBASBaseTest):
 
         if wait_for_ingestion:
             if self.data_load_type == "travel-sample":
-                for collection, doc_count in self.cbas_util.travel_sample_inventory_collections.iteritems():
+                for collection, doc_count in list(self.cbas_util.travel_sample_inventory_collections.items()):
                     result = self.cbas_util.wait_for_ingestion_complete(
                         self.cluster, "`travel-sample`.inventory.{0}".format(collection), doc_count)
                     if not result:
-                        self.fail("error while ingesting data into dataset `travel-sample`.inventory.{0}".format(collection))
+                        self.fail(
+                            "error while ingesting data into dataset `travel-sample`.inventory.{0}".format(collection))
             elif self.data_load_type == "tpch":
                 bucket_doc_count = self.tpch_util.get_doc_count_in_tpch_buckets()
 
@@ -129,7 +130,7 @@ class CBASCBO(CBASBaseTest):
 
         if create_samples_on_travel_sample:
             # Create samples on all collections of `travel-sample`.inventory dataverse
-            for collection in self.cbas_util.travel_sample_inventory_collections.keys():
+            for collection in list(self.cbas_util.travel_sample_inventory_collections.keys()):
                 result = self.cbas_util.create_sample_for_analytics_collections(
                     self.cluster, "`travel-sample`.inventory." + collection)
                 if not result:
@@ -390,7 +391,7 @@ class CBASCBO(CBASBaseTest):
 
         queries = list()
         # Create samples on all collections of `travel-sample`.inventory dataverse
-        for collection in self.cbas_util.travel_sample_inventory_collections.keys():
+        for collection in list(self.cbas_util.travel_sample_inventory_collections.keys()):
             queries.append("ANALYZE ANALYTICS COLLECTION `travel-sample`.inventory.%s" % collection)
 
         cluster_cbas_nodes = self.cluster_util.get_nodes_from_services_map(
@@ -419,7 +420,7 @@ class CBASCBO(CBASBaseTest):
 
         result = True
 
-        for collection in self.cbas_util.travel_sample_inventory_collections.keys():
+        for collection in list(self.cbas_util.travel_sample_inventory_collections.keys()):
             result = result and self.cbas_util.verify_sample_present_in_Metadata(self.cluster, collection)
 
         if result:
@@ -432,7 +433,7 @@ class CBASCBO(CBASBaseTest):
 
         queries = list()
         # Create samples on all collections of `travel-sample`.inventory dataverse
-        for collection in self.cbas_util.travel_sample_inventory_collections.keys():
+        for collection in list(self.cbas_util.travel_sample_inventory_collections.keys()):
             queries.append("ANALYZE ANALYTICS COLLECTION `travel-sample`.inventory.%s" % collection)
 
         cluster_kv_nodes = self.cluster_util.get_nodes_from_services_map(
@@ -461,7 +462,7 @@ class CBASCBO(CBASBaseTest):
 
         result = True
 
-        for collection in self.cbas_util.travel_sample_inventory_collections.keys():
+        for collection in list(self.cbas_util.travel_sample_inventory_collections.keys()):
             result = result and self.cbas_util.verify_sample_present_in_Metadata(self.cluster, collection)
 
         if not result:
@@ -481,7 +482,7 @@ class CBASCBO(CBASBaseTest):
 
         queries = list()
         # Create samples on all collections of `travel-sample`.inventory dataverse
-        for collection in self.cbas_util.travel_sample_inventory_collections.keys():
+        for collection in list(self.cbas_util.travel_sample_inventory_collections.keys()):
             queries.append("ANALYZE ANALYTICS COLLECTION `travel-sample`.inventory.%s" % collection)
 
         queries.append(CBASCBO.query)
@@ -507,9 +508,9 @@ class CBASCBO(CBASBaseTest):
         if self.input.param('same_collection', True):
             for i in range(5):
                 queries.append("ANALYZE ANALYTICS COLLECTION `travel-sample`.inventory.%s;" %
-                               self.cbas_util.travel_sample_inventory_collections.keys()[0])
+                               list(self.cbas_util.travel_sample_inventory_collections.keys())[0])
         else:
-            for collection in self.cbas_util.travel_sample_inventory_collections.keys():
+            for collection in list(self.cbas_util.travel_sample_inventory_collections.keys()):
                 queries.append("ANALYZE ANALYTICS COLLECTION `travel-sample`.inventory.%s;" % collection)
 
         self.query_task = RunQueriesTask(
@@ -528,9 +529,9 @@ class CBASCBO(CBASBaseTest):
         if self.input.param('same_collection', True):
             for i in range(5):
                 queries.append("ANALYZE ANALYTICS COLLECTION `travel-sample`.inventory.%s" %
-                               self.cbas_util.travel_sample_inventory_collections.keys()[0])
+                               list(self.cbas_util.travel_sample_inventory_collections.keys())[0])
         else:
-            for collection in self.cbas_util.travel_sample_inventory_collections.keys():
+            for collection in list(self.cbas_util.travel_sample_inventory_collections.keys()):
                 queries.append("ANALYZE ANALYTICS COLLECTION `travel-sample`.inventory.%s" % collection)
 
         # create multiple users

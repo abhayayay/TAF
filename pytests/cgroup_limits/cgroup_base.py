@@ -114,9 +114,9 @@ class CGroupBase(unittest.TestCase):
               "/opt/couchbase/bin/couchbase-cli cluster-init -c 127.0.0.1 --cluster-username Administrator " \
               "--cluster-password password "
         if self.service_and_memory_allocation:
-            services = ",".join(self.service_and_memory_allocation.keys())
+            services = ",".join(list(self.service_and_memory_allocation.keys()))
             memory_allocations = ""
-            for service, memory in self.service_and_memory_allocation.iteritems():
+            for service, memory in list(self.service_and_memory_allocation.items()):
                 if service == "data":
                     memory_allocations += "--cluster-ramsize {0} ".format(memory)
                 elif service == "index":
@@ -192,7 +192,7 @@ class CGroupBase(unittest.TestCase):
                       format(self.cpus, cpus))
         cmd = "docker update --cpus " + str(cpus) + "  db"
         o, e = self.shell.execute_command(cmd)
-        print(o, e)
+        print((o, e))
         self.cpus = cpus
 
     def update_container_mem_limit(self, mem):
@@ -204,7 +204,7 @@ class CGroupBase(unittest.TestCase):
                       format(self.mem, mem))
         cmd = "docker update -m " + str(mem) + " --memory-swap -1 db"
         o, e = self.shell.execute_command(cmd)
-        print(o, e)
+        print((o, e))
         self.mem = mem
 
     def restart_server(self):

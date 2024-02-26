@@ -49,7 +49,7 @@ class CBASExternalLinks(CBASBaseTest):
         2) No cbas node on any other cluster apart from analytics cluster.
         """
         self.to_clusters = list()
-        for cluster in self.cb_clusters.values():
+        for cluster in list(self.cb_clusters.values()):
             if hasattr(cluster, "cbas_cc_node"):
                 self.analytics_cluster = cluster
             else:
@@ -77,7 +77,7 @@ class CBASExternalLinks(CBASBaseTest):
         self.create_or_delete_users(self.analytics_cluster.rbac_util,
                                     rbac_users_created, delete=True)
 
-        for cluster in self.cb_clusters.values():
+        for cluster in list(self.cb_clusters.values()):
             self.cluster_util.stop_firewall_on_node(cluster, cluster.master)
             if self.setup_certs_status:
                 x509 = x509main(
@@ -374,7 +374,7 @@ class CBASExternalLinks(CBASBaseTest):
                 self.log.info(testcase["description"])
                 link_properties = copy.deepcopy(link.properties)
                 # Copying link property values for the testcase, to link_property dict, to create a new link.
-                for key, value in testcase.iteritems():
+                for key, value in list(testcase.items()):
                     if key == "username" and not testcase[key]:
                         link_properties[key] = value
                     elif key in link_properties and key != "username":
@@ -844,7 +844,7 @@ class CBASExternalLinks(CBASBaseTest):
 
                 link_properties = copy.deepcopy(link.properties)
                 # Copying link property values for the testcase, to link_property dict, to create a new link.
-                for key, value in testcase.iteritems():
+                for key, value in list(testcase.items()):
                     if key == "username" and not testcase[key]:
                         link_properties[key] = value
                     elif key in link_properties and key != "username":

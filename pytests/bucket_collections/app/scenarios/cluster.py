@@ -92,7 +92,7 @@ class Cluster(object):
                     self.get_node_to_remove(self.node_service_mapping[service])
                 nodes_to_remove.append(node_to_remove)
             else:
-                for t_service, node_list in self.node_service_mapping.items():
+                for t_service, node_list in list(self.node_service_mapping.items()):
                     if service in t_service:
                         node_to_remove = self.get_node_to_remove(node_list)
                         nodes_to_remove.append(node_to_remove)
@@ -104,7 +104,7 @@ class Cluster(object):
             retry_get_process_num=25)
 
         # Update existing node as master
-        for _, node_list in self.node_service_mapping.items():
+        for _, node_list in list(self.node_service_mapping.items()):
             if node_list:
                 self.cluster.master = node_list[0]
                 break
@@ -122,7 +122,7 @@ class Cluster(object):
                     self.get_node_to_remove(self.node_service_mapping[service])
                 nodes_to_remove.append(node_to_remove)
             else:
-                for t_service, node_list in self.node_service_mapping.items():
+                for t_service, node_list in list(self.node_service_mapping.items()):
                     if service in t_service:
                         node_to_remove = self.get_node_to_remove(node_list)
                         nodes_to_remove.append(node_to_remove)
@@ -149,7 +149,7 @@ class Cluster(object):
                     self.get_node_to_remove(self.node_service_mapping[service])
                 nodes_to_failover.append(node_to_remove)
             else:
-                for t_service, node_list in self.node_service_mapping.items():
+                for t_service, node_list in list(self.node_service_mapping.items()):
                     if service in t_service:
                         node_to_remove = self.get_node_to_remove(node_list)
                         nodes_to_failover.append(node_to_remove)
@@ -158,7 +158,7 @@ class Cluster(object):
             [self.cluster.master], nodes_to_failover, graceful=True)
 
         # Update existing node as master
-        for _, node_list in self.node_service_mapping.items():
+        for _, node_list in list(self.node_service_mapping.items()):
             if node_list:
                 self.cluster.master = node_list[0]
                 break

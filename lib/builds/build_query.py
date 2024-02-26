@@ -1,10 +1,10 @@
 # Contains methods which we
 # use later to map a version # -> rpm url
 from datetime import datetime
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import re
 import socket
-import BeautifulSoup
+from . import BeautifulSoup
 import testconstants
 import traceback
 import sys
@@ -452,7 +452,7 @@ class BuildQuery(object):
                 try:
                     if timeout:
                         socket.setdefaulttimeout(timeout)
-                    page = urllib2.urlopen(build_page + index_url)
+                    page = urllib.request.urlopen(build_page + index_url)
                     soup = BeautifulSoup.BeautifulSoup(page)
                     break
                 except:
@@ -479,10 +479,10 @@ class BuildQuery(object):
                         build.url = '%s/%s' % (build_page, build_id)
                         builds.append(build)
                 except Exception as e:
-                    print("ERROR in creating build/change info for: "
+                    print(("ERROR in creating build/change info for: "
                           "Build_id: %s , Build_Description: %s"
-                          % (build_id, build_description))
-                    print(traceback.print_exc(file=sys.stderr))
+                          % (build_id, build_description)))
+                    print((traceback.print_exc(file=sys.stderr)))
                     #raise e : Skipping parsing for this build information,
                     #Eventually, It will fail with build not found error at install.py:240
             for build in builds:
@@ -531,7 +531,7 @@ class BuildQuery(object):
                     couchbase_server-enterprise-windows-amd64-3.5.0-926.exe
                     couchbase-server-enterprise_3.5.0-952-windows_amd64.exe"""
 
-            if any( x + "-" in build_info for x in CB_RELEASE_BUILDS.keys()):
+            if any( x + "-" in build_info for x in list(CB_RELEASE_BUILDS.keys())):
                 deb_words = ["debian7", "debian8", "debian10", "ubuntu12.04", "ubuntu14.04",
                              "ubuntu16.04", "windows", "macos"]
                 if "centos" not in build_info and "suse" not in build_info:
@@ -542,7 +542,7 @@ class BuildQuery(object):
                 else:
                     product_version = build_info.split("-")
                     product_version = product_version[3] + "-" + product_version[4]
-                if product_version[:5] in testconstants.CB_RELEASE_BUILDS.keys():
+                if product_version[:5] in list(testconstants.CB_RELEASE_BUILDS.keys()):
                     build.product_version = product_version
                     if "centos" not in build_info and "suse" not in build_info:
                         build_info = build_info.replace("_" + product_version,"")
@@ -573,7 +573,7 @@ class BuildQuery(object):
                 return build
             product_version = build_info.split("_")
             product_version = product_version[len(product_version)-1]
-            if product_version[:5] in testconstants.CB_RELEASE_BUILDS.keys():
+            if product_version[:5] in list(testconstants.CB_RELEASE_BUILDS.keys()):
                 build.product_version = product_version
                 build_info = build_info.replace("_" + product_version,"")
             else:
@@ -668,7 +668,7 @@ class BuildQuery(object):
                     In spock from build 2924 and later release, we only support
                     msi installation method on windows
             """
-            if "-" in version and version.split("-")[0] in CB_RELEASE_BUILDS.keys():
+            if "-" in version and version.split("-")[0] in list(CB_RELEASE_BUILDS.keys()):
                 deliverable_type = "msi"
 
         if "deb" in deliverable_type and "centos6" in edition_type:

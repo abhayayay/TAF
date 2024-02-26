@@ -6,11 +6,12 @@ from epengine.durability_base import DurabilityTestsBase
 from error_simulation.cb_error import CouchbaseError
 from error_simulation.disk_error import DiskError
 from sdk_client3 import SDKClient
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 from remote.remote_util import RemoteMachineShellConnection
-
-from java.util import Collections
-from java.lang import String
-from com.couchbase.client.java.kv import LookupInMacro, LookupInSpec
+from couchbase.subdocument import get
+# from java.util import Collections
+# from java.lang import String
+# from com.couchbase.client.java.kv import LookupInMacro, LookupInSpec
 
 
 class DurabilitySuccessTests(DurabilityTestsBase):
@@ -35,8 +36,8 @@ class DurabilitySuccessTests(DurabilityTestsBase):
         """
 
         if self.durability_level.upper() in [
-                Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
-                Bucket.DurabilityLevel.PERSIST_TO_MAJORITY]:
+                SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
+                SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY]:
             self.log.critical("Test not valid for persistence durability")
             return
 
@@ -72,7 +73,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
                 in [DiskError.DISK_FULL, DiskError.DISK_FAILURE]:
             error_sim = DiskError(self.log, self.task_manager,
                                   self.cluster.master, target_nodes,
-                                  60, 0, False, 120,
+                                  60, 0, False, 10,
                                   disk_location="/data")
             error_sim.create(action=self.simulate_error)
         else:
@@ -115,7 +116,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
         for task in tasks:
             self.task.jython_task_manager.get_task_result(task)
             # Verify there is not failed docs in the task
-            if len(task.fail.keys()) != 0:
+            if len(list(task.fail.keys())) != 0:
                 self.log_failure("Some CRUD failed during {0}: {1}"
                                  .format(task.op_type, task.fail))
 
@@ -140,7 +141,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
         for task in tasks[2:]:
             self.task.jython_task_manager.get_task_result(task)
             # Verify there is not failed docs in the task
-            if len(task.fail.keys()) != 0:
+            if len(list(task.fail.keys())) != 0:
                 self.log_failure("Some CRUD failed during {0}: {1}"
                                  .format(task.op_type, task.fail))
 
@@ -237,7 +238,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
         cbstat_obj = dict()
         failover_info = dict()
         vb_info_info = dict()
-        target_vbuckets = range(0, self.cluster.vbuckets)
+        target_vbuckets = list(range(0, self.cluster.vbuckets))
         active_vbs_in_target_nodes = list()
         failover_info["init"] = dict()
         failover_info["afterCrud"] = dict()
@@ -332,7 +333,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
         for task in tasks:
             self.task.jython_task_manager.get_task_result(task)
             # Verify there is not failed docs in the task
-            if len(task.fail.keys()) != 0:
+            if len(list(task.fail.keys())) != 0:
                 self.log_failure("Some CRUD failed during {0}: {1}"
                                  .format(task.op_type, task.fail))
 
@@ -356,8 +357,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
                 retry_num = 0
                 while retry_num != 2:
                     result = self.task.rebalance(
-                        self.servers[0:self.nodes_init],
-                        [], [])
+                        self.cluster, [], [])
                     if result:
                         break
                     retry_num += 1
@@ -598,7 +598,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
         for node in self.cluster_util.get_kv_nodes(self.cluster):
             cb_stat = Cbstats(node)
             dcp_stats = cb_stat.dcp_stats(self.bucket.name)
-            for stat_name, val in dcp_stats.items():
+            for stat_name, val in list(dcp_stats.items()):
                 if stat_name.split(":")[-1] == "unacked_bytes":
                     self.log.debug("%s: %s" % (stat_name, val))
                     if int(val) != 0:
@@ -615,7 +615,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
 
         Ref: MB-48179
         """
-        if self.durability_level in ["", Bucket.DurabilityLevel.NONE]:
+        if self.durability_level in ["", SDKConstants.DurabilityLevel.NONE]:
             self.fail("Test supported only for sync_write scenarios")
 
         crud_pattern = self.input.param("crud_pattern", "async:sync:async")
@@ -627,7 +627,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
         # Async create of keys
         for i in range(self.num_items):
             key = self.key + str(i)
-            durability = ""
+            durability = "NONE"
             if crud_pattern[0] == "sync":
                 durability = self.durability_level
             client.crud(DocLoading.Bucket.DocOps.CREATE, key, {},
@@ -636,7 +636,7 @@ class DurabilitySuccessTests(DurabilityTestsBase):
         # Sync delete of keys
         for i in range(self.num_items):
             key = self.key + str(i)
-            durability = ""
+            durability = "NONE"
             if crud_pattern[1] == "sync":
                 durability = self.durability_level
             client.crud(DocLoading.Bucket.DocOps.DELETE, key,
@@ -645,15 +645,15 @@ class DurabilitySuccessTests(DurabilityTestsBase):
         # Async create of keys
         for i in range(self.num_items):
             key = self.key + str(i)
-            durability = ""
+            durability = "NONE"
             if crud_pattern[2] == "sync":
                 durability = self.durability_level
             client.crud(DocLoading.Bucket.DocOps.CREATE, key, {},
                         durability=durability)
-            result = client.collection.lookupIn(
-                key, Collections.singletonList(LookupInSpec.get(
-                    LookupInMacro.REV_ID).xattr()))
-            rev_ids[key] = int(result.contentAs(0, String))
+
+            result = client.collection.lookup_in(key=key, spec=(get('$document', xattr=True),))
+            rev_ids[key] = int(result.content_as[dict](0)['revid'])
+            
         client.close()
 
         # Rev_id validation

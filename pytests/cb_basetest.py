@@ -6,13 +6,13 @@ from datetime import datetime
 import global_vars
 from BucketLib.bucket import Bucket
 from Cb_constants import CbServer
-from Jython_tasks.task_manager import TaskManager
+from tasks.task_manager import TaskManager
 from SystemEventLogLib.Events import EventHelper
 from TestInput import TestInputSingleton
 from bucket_utils.bucket_ready_functions import DocLoaderUtils
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 from common_lib import sleep
 from couchbase_helper.cluster import ServerTasks
-from couchbase_helper.durability_helper import BucketDurability
 from global_vars import logger
 from node_utils.node_ready_functions import NodeUtils
 from sdk_client3 import SDKClientPool
@@ -56,7 +56,7 @@ class CouchbaseBaseTest(unittest.TestCase):
         self.num_replicas = self.input.param("replicas",
                                              Bucket.ReplicaNum.ONE)
         self.bucket_durability_level = self.input.param(
-            "bucket_durability", Bucket.DurabilityLevel.NONE).upper()
+            "bucket_durability", SDKConstants.DurabilityLevel.NONE).upper()
         self.active_resident_threshold = \
             int(self.input.param("active_resident_threshold", 100))
         self.compression_mode = \
@@ -65,6 +65,7 @@ class CouchbaseBaseTest(unittest.TestCase):
         self.bucket_storage = \
             self.input.param("bucket_storage",
                              Bucket.StorageBackend.magma)
+        self.bucket_rank = self.input.param("bucket_rank", None)
         self.bucket_eviction_policy = \
             self.input.param("bucket_eviction_policy", None)
 
@@ -73,8 +74,9 @@ class CouchbaseBaseTest(unittest.TestCase):
                                                 CbServer.default_collection)
         self.bucket_purge_interval = self.input.param("bucket_purge_interval",
                                                       1)
-        self.bucket_durability_level = \
-            BucketDurability[self.bucket_durability_level]
+        self.bucket_durability_level = getattr(Bucket.DurabilityMinLevel,
+                                               self.bucket_durability_level)
+        self.oso_dcp_backfill = self.input.param("oso_dcp_backfill", None)
         self.bucket_collection_history_retention_default = \
             self.input.param("default_history_retention_for_collections", None)
         self.bucket_dedup_retention_seconds = \
@@ -134,7 +136,6 @@ class CouchbaseBaseTest(unittest.TestCase):
         self.default_bucket = self.input.param("default_bucket", True)
         self.num_buckets = self.input.param("num_buckets", 0)
         self.atomicity = self.input.param("atomicity", False)
-        self.defer = self.input.param("defer", False)
         # end of transaction parameters
 
         # Client specific params
@@ -145,6 +146,7 @@ class CouchbaseBaseTest(unittest.TestCase):
         self.sdk_timeout = self.input.param("sdk_timeout", 5)
         self.time_unit = self.input.param("time_unit", "seconds")
         self.durability_level = self.input.param("durability", "NONE").upper()
+        self.validate_bucket_ranking = self.input.param("validate_bucket_ranking", True)
         self.sdk_client_pool = self.input.param("sdk_client_pool", None)
         self.sdk_pool_capacity = self.input.param("sdk_pool_capacity", 1)
         # Client compression settings
@@ -241,7 +243,7 @@ class CouchbaseBaseTest(unittest.TestCase):
             self.fail(self.test_failure)
 
     def get_clusters(self):
-        return [self.cb_clusters[name] for name in self.cb_clusters.keys()]
+        return [self.cb_clusters[name] for name in list(self.cb_clusters.keys())]
 
     def get_task(self):
         return self.task
@@ -255,5 +257,4 @@ class CouchbaseBaseTest(unittest.TestCase):
 
     def shutdown_task_manager(self):
         self.task_manager.shutdown_task_manager()
-        self.task.shutdown(force=True)
         self.task_manager.abort_all_tasks()

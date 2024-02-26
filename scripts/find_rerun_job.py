@@ -7,7 +7,7 @@ from java.time import Duration
 import argparse
 import json
 import time
-import get_jenkins_params as jenkins_api
+from . import get_jenkins_params as jenkins_api
 
 host = '172.23.121.84'
 bucket_name = 'rerun_jobs'
@@ -78,7 +78,7 @@ def get_json_object(document):
     :rtype: JsonObject
     """
     json_object = JsonObject.create()
-    for field, val in document.items():
+    for field, val in list(document.items()):
         value = None
         if isinstance(val, dict):
             value = get_json_object(val)
@@ -126,7 +126,7 @@ def get_document(collection, doc_id):
     :rtype: (bool, dict)
     """
     try:
-        print("reading from %s" % doc_id)
+        print(("reading from %s" % doc_id))
         document = collection.get(doc_id)
         content = document.contentAsObject()
         doc = json.loads(str(content))
@@ -157,7 +157,7 @@ def upsert_document(collection, doc_id, document):
     upsert_option = UpsertOptions.upsertOptions().expiry(duration)
     try:
         collection.upsert(doc_id, doc_to_insert, upsert_option)
-        print('upserted %s' % doc_id)
+        print(('upserted %s' % doc_id))
     except Exception as e:
         print(e)
 
@@ -265,4 +265,4 @@ def get_bucket_gsi_types(parameters):
 if __name__ == "__main__":
     args = parse_args()
     rerun, document = find_rerun_job(args)
-    print(rerun.__str__())
+    print((rerun.__str__()))

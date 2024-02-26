@@ -5,6 +5,7 @@ from Cb_constants import CbServer, DocLoading
 from bucket_collections.collections_base import CollectionBase
 from bucket_utils.bucket_ready_functions import BucketUtils
 from cb_tools.cbstats import Cbstats
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 from couchbase_helper.documentgenerator import doc_generator
 from couchbase_helper.durability_helper import DurabilityHelper
 from crash_test.constants import signum
@@ -106,7 +107,7 @@ class CrashTest(CollectionBase):
                 CbServer.default_collection].num_items += self.num_items
             verification_dict["ops_create"] += self.num_items
             if self.__is_sync_write_enabled \
-                    and self.durability_level != Bucket.DurabilityLevel.NONE:
+                    and self.durability_level != SDKConstants.DurabilityLevel.NONE:
                 verification_dict["sync_write_committed_count"] += \
                     self.num_items
             # Verify cbstats vbucket-details
@@ -255,7 +256,7 @@ class CrashTest(CollectionBase):
             BucketUtils.get_random_name(max_length=CbServer.max_scope_name_len)
 
         # Select a KV node other than master node from the cluster
-        node_to_crash = kv_nodes[sample(range(1, len(kv_nodes)), 1)[0]]
+        node_to_crash = kv_nodes[sample(list(range(1, len(kv_nodes))), 1)[0]]
 
         client = self.sdk_client_pool.get_client_for_bucket(self.bucket)
         use_client = sample(["sdk", "rest"], 1)[0]
@@ -366,7 +367,7 @@ class CrashTest(CollectionBase):
                     max_length=CbServer.max_collection_name_len)
 
         # Select a KV node other than master node from the cluster
-        node_to_crash = kv_nodes[sample(range(1, len(kv_nodes)), 1)[0]]
+        node_to_crash = kv_nodes[sample(list(range(1, len(kv_nodes))), 1)[0]]
 
         client = self.sdk_client_pool.get_client_for_bucket(self.bucket)
         use_client = sample(["sdk", "rest"], 1)[0]
@@ -451,10 +452,10 @@ class CrashTest(CollectionBase):
             consider_buckets="all")
 
         bucket = BucketUtils.get_bucket_obj(self.cluster.buckets,
-                                            bucket_dict.keys()[0])
-        scope_name = bucket_dict[bucket.name]["scopes"].keys()[0]
-        collection_name = bucket_dict[bucket.name][
-            "scopes"][scope_name]["collections"].keys()[0]
+                                            list(bucket_dict.keys())[0])
+        scope_name = list(bucket_dict[bucket.name]["scopes"].keys())[0]
+        collection_name = list(bucket_dict[bucket.name][
+            "scopes"][scope_name]["collections"].keys())[0]
         scope = BucketUtils.get_scope_obj(
             bucket, scope_name)
         collection = BucketUtils.get_collection_obj(scope, collection_name)
@@ -486,10 +487,10 @@ class CrashTest(CollectionBase):
             self.task.jython_task_manager.get_task_result(
                 self.N1ql_load_task)
 
-        if len(self.doc_loading_task.fail.keys()) != 0:
+        if len(list(self.doc_loading_task.fail.keys())) != 0:
             if self.target_node == "active" or self.num_replicas in [2, 3]:
                 self.log_failure("Unwanted failures for keys: %s"
-                                 % self.doc_loading_task.fail.keys())
+                                 % list(self.doc_loading_task.fail.keys()))
 
         validate_passed = \
             self.durability_helper.validate_durability_exception(
@@ -500,7 +501,7 @@ class CrashTest(CollectionBase):
 
         # Get SDK client for CRUD retries
         sdk_client = self.sdk_client_pool.get_client_for_bucket(self.bucket)
-        for doc_key, crud_result in self.doc_loading_task.fail.items():
+        for doc_key, crud_result in list(self.doc_loading_task.fail.items()):
             result = sdk_client.crud(DocLoading.Bucket.DocOps.CREATE,
                                      doc_key,
                                      crud_result["value"],
@@ -534,7 +535,7 @@ class CrashTest(CollectionBase):
         def_bucket = self.cluster.buckets[0]
         target_node = self.getTargetNode()
         remote = RemoteMachineShellConnection(target_node)
-        target_vbuckets = range(0, self.cluster.vbuckets)
+        target_vbuckets = list(range(0, self.cluster.vbuckets))
         retry_exceptions = list()
         self.transaction_load_task = None
         self.doc_loading_task = None
@@ -559,10 +560,10 @@ class CrashTest(CollectionBase):
             consider_buckets="all")
 
         bucket = BucketUtils.get_bucket_obj(self.cluster.buckets,
-                                            bucket_dict.keys()[0])
-        scope_name = bucket_dict[bucket.name]["scopes"].keys()[0]
-        collection_name = bucket_dict[bucket.name][
-            "scopes"][scope_name]["collections"].keys()[0]
+                                            list(bucket_dict.keys())[0])
+        scope_name = list(bucket_dict[bucket.name]["scopes"].keys())[0]
+        collection_name = list(bucket_dict[bucket.name][
+            "scopes"][scope_name]["collections"].keys())[0]
         scope = BucketUtils.get_scope_obj(
             bucket, scope_name)
         collection = BucketUtils.get_collection_obj(

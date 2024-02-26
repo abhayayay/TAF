@@ -1,5 +1,5 @@
 import random
-from guardrails_base import GuardrailsBase
+from .guardrails_base import GuardrailsBase
 
 
 class BucketGuardrails(GuardrailsBase):

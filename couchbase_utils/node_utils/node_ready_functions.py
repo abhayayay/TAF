@@ -5,7 +5,7 @@ Created on Jan 10, 2022
 """
 import os
 
-import Jython_tasks.task as jython_tasks
+import tasks.task as jython_tasks
 from couchbase_cli import CouchbaseCLI
 from global_vars import logger
 from remote.remote_util import RemoteMachineShellConnection

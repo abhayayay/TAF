@@ -94,7 +94,7 @@ class CapellaUtils:
                     continue
                 state = json.loads(resp.content).get("data").get("status").get("state")
             except:
-                print resp.content
+                print((resp.content))
         if state != "healthy":
             raise Exception("Deploying database {} failed with \
                 timeout {}. Current state: {}".format(database_id, timeout, state))

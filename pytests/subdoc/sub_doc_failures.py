@@ -9,6 +9,7 @@ from couchbase_helper.documentgenerator import \
     sub_doc_generator, \
     sub_doc_generator_for_edit
 from epengine.durability_base import DurabilityTestsBase
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 from error_simulation.cb_error import CouchbaseError
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_exceptions import SDKException
@@ -103,7 +104,7 @@ class SubDocTimeouts(DurabilityTestsBase):
             key_size=self.key_size,
             template_index=2)
 
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             self.log.info("Performing '%s' with timeout=%s"
                           % (op_type, self.sdk_timeout))
             doc_load_task = self.task.async_load_gen_sub_docs(
@@ -129,11 +130,11 @@ class SubDocTimeouts(DurabilityTestsBase):
 
             self.task_manager.get_task_result(doc_load_task)
 
-            if len(doc_load_task.fail.keys()) != 0:
+            if len(list(doc_load_task.fail.keys())) != 0:
                 if op_type == "read":
                     self.log.warning("Read failed for %d keys: %s"
-                                     % (len(doc_load_task.fail.keys()),
-                                        doc_load_task.fail.keys()))
+                                     % (len(list(doc_load_task.fail.keys())),
+                                        list(doc_load_task.fail.keys())))
                 else:
                     self.log_failure("Failures during %s operation: %s"
                                      % (op_type, doc_load_task.fail))
@@ -169,11 +170,11 @@ class SubDocTimeouts(DurabilityTestsBase):
             timeout_secs=self.sdk_timeout)
         self.task_manager.get_task_result(reader_task)
 
-        len_failed_keys = len(reader_task.fail.keys())
+        len_failed_keys = len(list(reader_task.fail.keys()))
         if len_failed_keys != 0:
             self.log_failure("Failures in read_task (%d): %s"
-                             % (len_failed_keys, reader_task.fail.keys()))
-        for doc_key, crud_result in reader_task.success.items():
+                             % (len_failed_keys, list(reader_task.fail.keys())))
+        for doc_key, crud_result in list(reader_task.success.items()):
             expected_val = 2
             if int(doc_key.split('-')[1]) >= self.num_items/2:
                 expected_val = 1
@@ -218,7 +219,7 @@ class SubDocTimeouts(DurabilityTestsBase):
             for vb_id in range(self.cluster.vbuckets):
                 vb_id = str(vb_id)
                 if vb_id not in affected_vbs:
-                    if vb_id in vb_info["init"][node.ip].keys() \
+                    if vb_id in list(vb_info["init"][node.ip].keys()) \
                             and vb_info["init"][node.ip][vb_id] \
                             != vb_info["post_timeout"][node.ip][vb_id]:
                         self.log_failure(
@@ -228,7 +229,7 @@ class SubDocTimeouts(DurabilityTestsBase):
                                vb_info["post_timeout"][node.ip][vb_id]))
                 elif int(vb_id) \
                         in target_nodes_vbuckets[Bucket.vBucket.ACTIVE]:
-                    if vb_id in vb_info["init"][node.ip].keys() \
+                    if vb_id in list(vb_info["init"][node.ip].keys()) \
                             and vb_info["init"][node.ip][vb_id] \
                             != vb_info["post_timeout"][node.ip][vb_id]:
                         self.log.warning(
@@ -240,7 +241,7 @@ class SubDocTimeouts(DurabilityTestsBase):
                                vb_info["post_timeout"][node.ip][vb_id]))
                 elif int(vb_id) \
                         in target_nodes_vbuckets[Bucket.vBucket.REPLICA]:
-                    if vb_id in vb_info["init"][node.ip].keys() \
+                    if vb_id in list(vb_info["init"][node.ip].keys()) \
                             and vb_info["init"][node.ip][vb_id] \
                             == vb_info["post_timeout"][node.ip][vb_id]:
                         retry_validation = True
@@ -294,7 +295,7 @@ class SubDocTimeouts(DurabilityTestsBase):
         if self.nodes_init == 1:
             pass
         elif self.durability_level \
-                == Bucket.DurabilityLevel.PERSIST_TO_MAJORITY:
+                == SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY:
             target_vbs = target_nodes_vbuckets[Bucket.vBucket.REPLICA]
 
         # Create required doc_generators
@@ -326,7 +327,7 @@ class SubDocTimeouts(DurabilityTestsBase):
             template_index=1,
             target_vbucket=target_vbs)
 
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             tasks[op_type] = self.task.async_load_gen_sub_docs(
                 self.cluster, self.bucket, doc_gen[op_type], op_type, 0,
                 path_create=True,
@@ -342,22 +343,22 @@ class SubDocTimeouts(DurabilityTestsBase):
             error_sim[node.ip].create(self.simulate_error,
                                       bucket_name=self.bucket.name)
 
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             self.task_manager.add_new_task(tasks[op_type])
 
         # Wait for document_loader tasks to complete
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             self.task.jython_task_manager.get_task_result(tasks[op_type])
 
             # Validate task failures
             if op_type == DocLoading.Bucket.DocOps.READ:
                 # Validation for read task
-                if len(tasks[op_type].fail.keys()) != 0:
+                if len(list(tasks[op_type].fail.keys())) != 0:
                     self.log_failure("Read failed for few docs: %s"
-                                     % tasks[op_type].fail.keys())
+                                     % list(tasks[op_type].fail.keys()))
             else:
                 # Validation of CRUDs - Update / Create / Delete
-                for doc_id, crud_result in tasks[op_type].fail.items():
+                for doc_id, crud_result in list(tasks[op_type].fail.items()):
                     vb_num = self.bucket_util.get_vbucket_num_for_key(
                         doc_id, self.cluster.vbuckets)
                     if SDKException.DurabilityAmbiguousException \
@@ -375,11 +376,11 @@ class SubDocTimeouts(DurabilityTestsBase):
         if int(time.time()) < expected_timeout:
             self.log_failure("Timed-out before expected time")
 
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             if op_type == DocLoading.Bucket.DocOps.READ:
                 continue
             while doc_gen[op_type].has_next():
-                doc_id, _ = doc_gen[op_type].next()
+                doc_id, _ = next(doc_gen[op_type])
                 affected_vbs.append(
                     str(self.bucket_util.get_vbucket_num_for_key(
                         doc_id,
@@ -419,7 +420,7 @@ class SubDocTimeouts(DurabilityTestsBase):
             failed_keys = TableView(self.log.error)
             failed_keys.set_headers(["Key", "Error"])
             half_of_num_items = self.num_items/2
-            for doc_key, doc_info in read_task.success.items():
+            for doc_key, doc_info in list(read_task.success.items()):
                 key_index = int(doc_key.split("-")[1])
                 expected_mutated_val = 0
                 if key_index < half_of_num_items:
@@ -432,7 +433,7 @@ class SubDocTimeouts(DurabilityTestsBase):
             self.log.error(read_task.fail)
 
         # Doc error validation
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             task = tasks[op_type]
 
             retry_task = self.task.async_load_gen_sub_docs(
@@ -496,7 +497,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
                 process_concurrency=8,
                 timeout_secs=self.sdk_timeout)
             self.task_manager.get_task_result(reader_task)
-            for doc_id, read_result in reader_task.success.items():
+            for doc_id, read_result in list(reader_task.success.items()):
                 if int(read_result["value"][0]) != int(expected_val):
                     self.log_failure("Key %s - mutated value is %s != %s"
                                      % (doc_id,
@@ -562,7 +563,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
                 vb_info["failure_stat"].update(
                     cbstat_obj[node.ip].vbucket_seqno(self.bucket.name))
 
-            self.assertTrue(len(d_create_task.fail.keys()) == self.num_items,
+            self.assertTrue(len(list(d_create_task.fail.keys())) == self.num_items,
                             msg=err_msg)
             if vb_info["init"] != vb_info["failure_stat"]:
                 self.log_failure(
@@ -587,10 +588,10 @@ class DurabilityFailureTests(DurabilityTestsBase):
             timeout_secs=self.sdk_timeout)
         self.task.jython_task_manager.get_task_result(async_create_task)
 
-        if len(async_create_task.fail.keys()) != 0:
+        if len(list(async_create_task.fail.keys())) != 0:
             self.log_failure("Few failures during async_create(%d): %s"
-                             % (len(async_create_task.fail.keys()),
-                                async_create_task.fail.keys()))
+                             % (len(list(async_create_task.fail.keys())),
+                                list(async_create_task.fail.keys())))
         validate_doc_mutated_value(1)
 
         # Verify doc load count
@@ -623,9 +624,9 @@ class DurabilityFailureTests(DurabilityTestsBase):
         for task in tasks:
             self.task.jython_task_manager.get_task_result(task)
 
-            if len(task.fail.keys()) != self.num_items:
+            if len(list(task.fail.keys())) != self.num_items:
                 self.log_failure("Few keys have not received exceptions: {0}"
-                                 .format(task.fail.keys()))
+                                 .format(list(task.fail.keys())))
             validation_passed = \
                 self.durability_helper.validate_durability_exception(
                     task.fail,
@@ -851,7 +852,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
 
         # Validation to verify the sync_in_write_errors in doc_loader_task_2
         failed_docs = doc_loader_task_2.fail
-        if len(failed_docs.keys()) != expected_failed_doc_num:
+        if len(list(failed_docs.keys())) != expected_failed_doc_num:
             self.log_failure("Exception not seen for few docs: {0}"
                              .format(failed_docs))
 
@@ -876,7 +877,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
                 batch_size=self.crud_batch_size, process_concurrency=1,
                 timeout_secs=self.sdk_timeout)
             self.task_manager.get_task_result(read_task)
-            for key, doc_info in read_task.success.items():
+            for key, doc_info in list(read_task.success.items()):
                 if doc_info["cas"] != 0 \
                         and json.loads(str(doc_info["value"]))["mutated"] != 1:
                     self.log_failure("Update failed for key %s: %s"

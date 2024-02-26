@@ -135,7 +135,7 @@ class KVUpgradeTests(UpgradeBase):
                                     key_size=100, doc_size=10240,
                                     target_vbucket=[key_vb])
             while doc_gen.has_next():
-                d_key, val = doc_gen.next()
+                d_key, val = next(doc_gen)
                 client.crud(DocLoading.Bucket.DocOps.CREATE, d_key, val)
 
             output, _ = shell.execute_command(hash_dump_cmd)

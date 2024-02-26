@@ -5,14 +5,12 @@ from BucketLib.bucket import Bucket
 from basetestcase import ClusterSetup
 from cb_tools.cbstats import Cbstats
 from couchbase_helper.documentgenerator import doc_generator
-from couchbase_helper.durability_helper import \
-    BucketDurability, \
-    DurabilityHelper
+from couchbase_helper.durability_helper import DurabilityHelper
 from error_simulation.cb_error import CouchbaseError
 from membase.api.rest_client import RestConnection
 from remote.remote_util import RemoteMachineShellConnection
-from sdk_exceptions import SDKException
-
+from sdk_exceptions import SDKException, check_if_exception_exists
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 
 class DurabilityTestsBase(ClusterSetup):
     def setUp(self):
@@ -93,12 +91,12 @@ class DurabilityTestsBase(ClusterSetup):
         super(DurabilityTestsBase, self).tearDown()
 
     def get_random_node(self):
-        rand_node_index = randint(1, self.nodes_init-1)
+        rand_node_index = randint(1, self.nodes_init - 1)
         return self.cluster.nodes_in_cluster[rand_node_index]
 
     def getTargetNodes(self):
         def select_randam_node(nodes):
-            rand_node_index = randint(1, self.nodes_init-1)
+            rand_node_index = randint(1, self.nodes_init - 1)
             if self.cluster.nodes_in_cluster[rand_node_index] not in node_list:
                 nodes.append(self.cluster.nodes_in_cluster[rand_node_index])
 
@@ -136,7 +134,7 @@ class BucketDurabilityBase(ClusterSetup):
         # Bucket create options representation
         self.bucket_template = dict()
         self.bucket_template[Bucket.name] = "default"
-        self.bucket_template[Bucket.ramQuotaMB] = 100
+        self.bucket_template[Bucket.ramQuotaMB] = 256
         self.bucket_template[Bucket.replicaNumber] = self.num_replicas
         if self.bucket_type == Bucket.Type.MEMBASE:
             self.bucket_template[Bucket.storageBackend] = self.bucket_storage
@@ -150,20 +148,20 @@ class BucketDurabilityBase(ClusterSetup):
                                      Bucket.Type.MEMCACHED]
 
         self.d_level_order = [
-            Bucket.DurabilityLevel.NONE,
-            Bucket.DurabilityLevel.MAJORITY,
-            Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
-            Bucket.DurabilityLevel.PERSIST_TO_MAJORITY]
+            SDKConstants.DurabilityLevel.NONE,
+            SDKConstants.DurabilityLevel.MAJORITY,
+            SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
+            SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY]
 
         # Dict representing the possible levels supported by each bucket type
         self.possible_d_levels = dict()
         self.possible_d_levels[Bucket.Type.MEMBASE] = \
             self.bucket_util.get_supported_durability_levels()
         self.possible_d_levels[Bucket.Type.EPHEMERAL] = [
-            Bucket.DurabilityLevel.NONE,
-            Bucket.DurabilityLevel.MAJORITY]
+            SDKConstants.DurabilityLevel.NONE,
+            SDKConstants.DurabilityLevel.MAJORITY]
         self.possible_d_levels[Bucket.Type.MEMCACHED] = [
-            Bucket.DurabilityLevel.NONE]
+            SDKConstants.DurabilityLevel.NONE]
 
         # Dict to store the list of active/replica VBs in each node
         self.vbs_in_node = dict()
@@ -184,6 +182,14 @@ class BucketDurabilityBase(ClusterSetup):
         self.validate_test_failure()
 
     @staticmethod
+    def get_bucket_durability_level(sdk_durability_level):
+        sdk_durability_level = sdk_durability_level.upper()
+        if sdk_durability_level == \
+                SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
+            return Bucket.DurabilityMinLevel.MAJORITY_AND_PERSIST_ACTIVE
+        return getattr(Bucket.DurabilityMinLevel, sdk_durability_level)
+
+    @staticmethod
     def get_cb_stat_verification_dict():
         verification_dict = dict()
         verification_dict["ops_create"] = 0
@@ -195,7 +201,7 @@ class BucketDurabilityBase(ClusterSetup):
         return verification_dict
 
     def get_vbucket_type_mapping(self, bucket_name):
-        for node in self.vbs_in_node.keys():
+        for node in list(self.vbs_in_node.keys()):
             cb_stat = Cbstats(node)
             self.vbs_in_node[node]["active"] = \
                 cb_stat.vbucket_list(bucket_name, "active")
@@ -206,14 +212,14 @@ class BucketDurabilityBase(ClusterSetup):
         bucket_dict = deepcopy(self.bucket_template)
         bucket_dict[Bucket.bucketType] = bucket_type
         bucket_dict[Bucket.durabilityMinLevel] = \
-            BucketDurability[bucket_durability]
+            bucket_durability
 
         return bucket_dict
 
     def get_supported_durability_for_bucket(self):
         if self.bucket_type == Bucket.Type.EPHEMERAL:
-            return [Bucket.DurabilityLevel.NONE,
-                    Bucket.DurabilityLevel.MAJORITY]
+            return [SDKConstants.DurabilityLevel.NONE,
+                    SDKConstants.DurabilityLevel.MAJORITY]
         return self.bucket_util.get_supported_durability_levels()
 
     def validate_durability_with_crud(
@@ -221,7 +227,7 @@ class BucketDurabilityBase(ClusterSetup):
             verification_dict,
             doc_start_index=0,
             num_items_to_load=1, op_type="create",
-            doc_durability=Bucket.DurabilityLevel.NONE):
+            doc_durability=SDKConstants.DurabilityLevel.NONE):
         """
         Common API to validate durability settings of the bucket is set
         correctly or not.
@@ -247,7 +253,7 @@ class BucketDurabilityBase(ClusterSetup):
 
         d_level_to_test = get_d_level_used()
         # Nothing to test for durability_level=None (async_write case)
-        if d_level_to_test == Bucket.DurabilityLevel.NONE:
+        if d_level_to_test == SDKConstants.DurabilityLevel.NONE:
             return
 
         self.log.info("Performing %s operation to validate d_level %s"
@@ -255,9 +261,9 @@ class BucketDurabilityBase(ClusterSetup):
 
         # Can't simulate error conditions for all durability_levels.
         # So only perform CRUD without error_sim
-        if len(self.vbs_in_node.keys()) > 1:
+        if len(list(self.vbs_in_node.keys())) > 1:
             # Pick a random node to perform error sim and load
-            random_node = choice(self.vbs_in_node.keys())
+            random_node = choice(list(self.vbs_in_node.keys()))
 
             target_vb_type, simulate_error = \
                 self.durability_helper.get_vb_and_error_type(d_level_to_test)
@@ -282,7 +288,7 @@ class BucketDurabilityBase(ClusterSetup):
                 start_task=False,
                 sdk_client_pool=self.sdk_client_pool)
 
-            self.sleep(5, "Wait for sdk_client to get warmed_up")
+            self.sleep(30, "Wait for sdk_client to get warmed_up")
             # Simulate target error condition
             error_sim.create(simulate_error)
             self.sleep(5, "Wait for error_sim to take effect")
@@ -296,12 +302,11 @@ class BucketDurabilityBase(ClusterSetup):
             error_sim.revert(simulate_error)
 
             # Validate failed doc count and exception type from SDK
-            if not doc_load_task.fail.keys():
+            if not list(doc_load_task.fail.keys()):
                 self.log_failure("Docs inserted without honoring the "
                                  "bucket durability level")
-            for key, result in doc_load_task.fail.items():
-                if SDKException.DurabilityAmbiguousException \
-                        not in str(result["error"]):
+            for key, result in list(doc_load_task.fail.items()):
+                if not check_if_exception_exists(str(result["error"]), SDKException.DurabilityAmbiguousException):
                     self.log_failure("Invalid exception for key %s "
                                      "during %s operation: %s"
                                      % (key, op_type, result["error"]))
@@ -323,7 +328,7 @@ class BucketDurabilityBase(ClusterSetup):
         if doc_load_task.fail:
             self.log_failure("Failures seen during CRUD without "
                              "error simulation. Keys failed: %s"
-                             % doc_load_task.fail.keys())
+                             % list(doc_load_task.fail.keys()))
         else:
             verification_dict["ops_%s" % op_type] += \
                 num_items_to_load
@@ -332,7 +337,7 @@ class BucketDurabilityBase(ClusterSetup):
 
     def getTargetNodes(self):
         def select_randam_node(nodes):
-            rand_node_index = randint(1, self.nodes_init-1)
+            rand_node_index = randint(1, self.nodes_init - 1)
             if self.cluster.nodes_in_cluster[rand_node_index] not in node_list:
                 nodes.append(self.cluster.nodes_in_cluster[rand_node_index])
 

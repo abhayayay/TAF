@@ -5,7 +5,7 @@ from threading import Thread
 from cbas_utils.cbas_utils import CBASRebalanceUtil ,CbasUtil
 from collections_helper.collections_spec_constants import MetaCrudParams
 from Cb_constants import CbServer
-from Jython_tasks.task import ConcurrentFailoverTask
+from tasks.task import ConcurrentFailoverTask
 from membase.api.rest_client import RestConnection
 from pytests.bucket_collections.collections_base import CollectionBase
 

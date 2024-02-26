@@ -1,6 +1,6 @@
 from Cb_constants.CBServer import CbServer
 from couchbase_helper.documentgenerator import doc_generator
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 import time
 import math
 from BucketLib.BucketOperations import BucketHelper
@@ -191,7 +191,7 @@ class BasicCrudTests(MagmaBaseTest):
                 self.cluster.master, self.buckets[0],
                 scope_name, {"name": collection_name})
             self.sleep(2)
-        collections = self.buckets[0].scopes[scope_name].collections.keys()
+        collections = list(self.buckets[0].scopes[scope_name].collections.keys())
         if self.num_collections > 1 and scope_name is CbServer.default_scope:
             collections.remove(CbServer.default_collection)
         self.log.info("List of collections {}".format(collections))
@@ -221,7 +221,7 @@ class BasicCrudTests(MagmaBaseTest):
                 scope=scope_name,
                 collection=collection,
                 _sync=False)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
         self.num_items -= init_items
         for task in tasks_info:
             self.task_manager.get_task_result(task)
@@ -300,13 +300,13 @@ class BasicCrudTests(MagmaBaseTest):
             _res = disk_usage[0]
             self.assertIs(
                 _res > 2.5 * self.disk_usage[
-                    self.disk_usage.keys()[0]],
+                    list(self.disk_usage.keys())[0]],
                 False, "Disk Usage {}MB '\n' \
                 exceeds Actual'\n' \
                 disk usage {}MB by 2.5'\n' \
                 times".format(
                         _res,
-                        self.disk_usage[self.disk_usage.keys()[0]]))
+                        self.disk_usage[list(self.disk_usage.keys())[0]]))
         # # # # Space Amplification check ends # # # #
 
         self.log.info("====test_drop_collections_after_upserts====")
@@ -341,7 +341,7 @@ class BasicCrudTests(MagmaBaseTest):
                 self.cluster.master, self.buckets[0],
                 scope_name, {"name": collection_name})
             self.sleep(2)
-        collections = self.buckets[0].scopes[scope_name].collections.keys()
+        collections = list(self.buckets[0].scopes[scope_name].collections.keys())
         if self.num_collections > 1 and scope_name is CbServer.default_scope:
             collections.remove(CbServer.default_collection)
         self.log.info("List of collections {}".format(collections))
@@ -371,7 +371,7 @@ class BasicCrudTests(MagmaBaseTest):
                 scope=scope_name,
                 collection=collection,
                 _sync=False)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
         self.num_items -= init_items
         for task in tasks_info:
             self.task_manager.get_task_result(task)

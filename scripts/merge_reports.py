@@ -56,7 +56,7 @@ def filter_fields(testname, run_params=""):
 def compare_with_sort(dict, key):
     key_split = key.split(',')
     key = '%s,%s' % (key_split[0], ','.join(sorted(key_split[1:])))
-    for k in dict.keys():
+    for k in list(dict.keys()):
         test_case_split = k.split(',')
         test_case = "%s,%s" % (test_case_split[0],
                                ",".join(sorted(test_case_split[1:])))
@@ -93,7 +93,7 @@ def merge_reports(filespath, run_params=""):
                 tests = {}
                 testsuite = {}
                 # fill testsuite details
-                if tsname in testsuites.keys():
+                if tsname in list(testsuites.keys()):
                     testsuite = testsuites[tsname]
                     tests = testsuite['tests']
                 else:
@@ -143,7 +143,7 @@ def merge_reports(filespath, run_params=""):
         return {}
     log.info("\nNumber of TestSuites=" + str(len(testsuites)))
     tsindex = 0
-    for tskey in testsuites.keys():
+    for tskey in list(testsuites.keys()):
         tsindex = tsindex + 1
         log.info("\nTestSuite#" + str(tsindex) + ") " + str(
             tskey) + ", Number of Tests=" + str(
@@ -152,7 +152,7 @@ def merge_reports(filespath, run_params=""):
         fail_count = 0
         tests = testsuites[tskey]['tests']
         xunit = XUnitTestResult()
-        for testname in tests.keys():
+        for testname in list(tests.keys()):
             testcase = tests[testname]
             tname = testcase['name']
             ttime = testcase['time']
@@ -208,5 +208,5 @@ if __name__ == "__main__":
                         help='Accept all input xml files')
     args = parser.parse_args()
 
-    print(args.files)
+    print((args.files))
     merge_reports(args.files, args.run_params)

@@ -129,7 +129,7 @@ class EnforceTls(CollectionBase):
         self.enable_tls_encryption_cli_on_nodes(nodes=[self.cluster.master])
         CbServer.use_https = True
         rest = RestConnection(self.cluster.master)
-        for non_ssl_request in self.sample_urls_map.keys():
+        for non_ssl_request in list(self.sample_urls_map.keys()):
             api = non_ssl_request % self.cluster.master.ip
             try:
                 rest._http_request(api=api, timeout=10)
@@ -145,7 +145,7 @@ class EnforceTls(CollectionBase):
         self.disable_n2n_encryption_cli_on_nodes(nodes=[self.cluster.master])
         CbServer.use_https = False
         rest = RestConnection(self.cluster.master)
-        for non_ssl_request in self.sample_urls_map.keys():
+        for non_ssl_request in list(self.sample_urls_map.keys()):
             api = non_ssl_request % self.cluster.master.ip
             status, content, response = rest._http_request(api=api, timeout=10)
             if not status:

@@ -19,7 +19,7 @@ class CBASUDF(CBASBaseTest):
         super(CBASUDF, self).setUp()
 
         # Since all the test cases are being run on 1 cluster only
-        self.cluster = self.cb_clusters.values()[0]
+        self.cluster = list(self.cb_clusters.values())[0]
 
         self.log_setup_status(self.__class__.__name__, "Finished",
                               stage=self.setUp.__name__)
@@ -63,10 +63,10 @@ class CBASUDF(CBASBaseTest):
             for i in range(0, no_of_parameters):
                 parameters.append("param_{0}".format(i))
 
-        dataverse = random.choice(self.cbas_util.dataverses.values())
+        dataverse = random.choice(list(self.cbas_util.dataverses.values()))
         if not consider_default_dataverse:
             while dataverse.name == "Default":
-                dataverse = random.choice(self.cbas_util.dataverses.values())
+                dataverse = random.choice(list(self.cbas_util.dataverses.values()))
 
         dependent_entity = list()
         body_template = {
@@ -90,26 +90,26 @@ class CBASUDF(CBASBaseTest):
                 skip_dataverses.append("Default")
 
             if dataverse.name in skip_dataverses:
-                new_dataverse = random.choice(self.cbas_util.dataverses.values())
+                new_dataverse = random.choice(list(self.cbas_util.dataverses.values()))
                 while new_dataverse.name == dataverse.name or new_dataverse.name in skip_dataverses:
-                    new_dataverse = random.choice(self.cbas_util.dataverses.values())
+                    new_dataverse = random.choice(list(self.cbas_util.dataverses.values()))
                 dataverse = new_dataverse
 
             entity = None
             while not entity:
                 if body_type == "dataset" and dataverse.datasets:
-                    entity = random.choice(dataverse.datasets.values())
+                    entity = random.choice(list(dataverse.datasets.values()))
                 elif body_type == "synonym" and dataverse.synonyms:
-                    entity = random.choice(dataverse.synonyms.values())
+                    entity = random.choice(list(dataverse.synonyms.values()))
                 elif body_type == "udf" and dataverse.udfs:
-                    entity = random.choice(dataverse.udfs.values())
+                    entity = random.choice(list(dataverse.udfs.values()))
                 else:
                     self.log.info(
                         "No entity of type \"{0}\" present in dataverse {1}, hence selecting another dataverse".format(
                             body_type, dataverse.name))
-                    new_dataverse = random.choice(self.cbas_util.dataverses.values())
+                    new_dataverse = random.choice(list(self.cbas_util.dataverses.values()))
                     while new_dataverse.name == dataverse.name or new_dataverse.name in skip_dataverses:
-                        new_dataverse = random.choice(self.cbas_util.dataverses.values())
+                        new_dataverse = random.choice(list(self.cbas_util.dataverses.values()))
                     dataverse = new_dataverse
             self.log.debug("selected_entity --> {0} selected_entity_dv --> {1} expected_dv --> {2}".format(
                 entity.full_name, entity.dataverse_name, dataverse.name))
@@ -119,9 +119,9 @@ class CBASUDF(CBASBaseTest):
             if dependent_entity_dv == "same":
                 return get_entity(dataverse)
             elif dependent_entity_dv == "diff":
-                diff_dataverse = random.choice(self.cbas_util.dataverses.values())
+                diff_dataverse = random.choice(list(self.cbas_util.dataverses.values()))
                 while diff_dataverse.name == dataverse.name:
-                    diff_dataverse = random.choice(self.cbas_util.dataverses.values())
+                    diff_dataverse = random.choice(list(self.cbas_util.dataverses.values()))
                 diff_dataverse, entity = get_entity(dataverse, [dataverse.name])
                 return dataverse, entity
 
@@ -286,7 +286,7 @@ class CBASUDF(CBASBaseTest):
         else:
             while test_udf_obj.dataverse_name == udf_objs[0].dataverse_name:
                 test_udf_obj.dataverse_name = random.choice(
-                    self.cbas_util.dataverses.values()).name
+                    list(self.cbas_util.dataverses.values())).name
         if self.input.param('test_udf_param_name', "diff") == "same":
             test_udf_obj.parameters = udf_objs[0].parameters
 
@@ -555,7 +555,7 @@ class CBASUDF(CBASBaseTest):
                     CBASHelper.unformat_name(udf_obj.name), udf_obj.arity))
 
         # Create UDF to test replace
-        idx = random.choice(range(len(udf_objs)))
+        idx = random.choice(list(range(len(udf_objs))))
         udf_type = udf_types[idx]
         test_udf_obj = self.create_udf_object(
             udf_type[0], udf_type[1], udf_type[2])

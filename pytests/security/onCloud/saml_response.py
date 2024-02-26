@@ -230,7 +230,7 @@ class SAMLResponse:
         if node.hasAttributes():
             xmlns = []
             others = []
-            for attr in node.attributes.values():
+            for attr in list(node.attributes.values()):
                 if attr.name.startswith("xmlns"):
                     xmlns.append((attr.name, attr.value))
                 else:
@@ -272,4 +272,4 @@ if __name__ == "__main__":
     s.attribute("mail", ["user1@capella.test"])
     s.add_digest("test_dgst", "cert_data")
     s.add_signature("test_sig")
-    print s.to_string()
+    print((s.to_string()))

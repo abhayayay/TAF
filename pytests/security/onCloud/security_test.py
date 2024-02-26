@@ -57,7 +57,7 @@ class SecurityTest(BaseTestCase):
         end_time = time.time() + timeout
         while time.time() < end_time:
             subnet = CapellaUtils.get_next_cidr() + "/20"
-            print("Trying with cidr: {}".format(subnet))
+            print(("Trying with cidr: {}".format(subnet)))
             cluster_details["cidr"] = subnet
             url = '{0}/v2/organizations/{1}/clusters'.format("https://" + base_url, tenant_id)
             capella_api_resp = capella_api.do_internal_request(url, method="POST",
@@ -65,14 +65,14 @@ class SecurityTest(BaseTestCase):
                                                                    cluster_details))
             if capella_api_resp.status_code == 202:
                 cluster_id = json.loads(capella_api_resp.content).get("id")
-                print("Creating capella cluster with id: {0}".format(cluster_id))
+                print(("Creating capella cluster with id: {0}".format(cluster_id)))
                 break
             elif capella_api_resp.status_code == 403:
                 return capella_api_resp
             print("Create capella_utils cluster failed.")
-            print("Capella API returned " + str(
-                capella_api_resp.status_code))
-            print(capella_api_resp.json()["message"])
+            print(("Capella API returned " + str(
+                capella_api_resp.status_code)))
+            print((capella_api_resp.json()["message"]))
         return capella_api_resp
 
     def connect_node_port(self, node, ports, expect_to_connect=True):
@@ -286,7 +286,7 @@ class SecurityTest(BaseTestCase):
                 self.connect_node_port(node, valid_ports, expect_to_connect=True)
 
                 invalid_ports = ["3389"]
-                random_ports = random.sample(range(0, 65536), 5)
+                random_ports = random.sample(list(range(0, 65536)), 5)
                 s = set(valid_ports)
                 invalid_ports.extend([str(x) for x in random_ports if str(x) not in s])
                 self.connect_node_port(node, invalid_ports, expect_to_connect=False)

@@ -357,7 +357,7 @@ class XDCRUtils:
                     self.check_goxdcr_log(node,
                                           "Try to fix Pipeline",
                                           goxdcr_log)
-        print(self._repl_restart_count_dict)
+        print((self._repl_restart_count_dict))
 
     def __initialize_error_count_dict(self):
         """
@@ -375,7 +375,7 @@ class XDCRUtils:
             for error in self.__report_error_list:
                 self.__error_count_dict[node.ip][error] = \
                     self.check_goxdcr_log(node, error, goxdcr_log)
-        print(self.__error_count_dict)
+        print((self.__error_count_dict))
 
     def get_cb_cluster_by_name(self, name):
         """Return couchbase cluster object for given name.
@@ -622,10 +622,7 @@ class XDCRUtils:
             if "META().id" in filter_exp:
                 filter_exp = filter_exp.split('\'')[1]
 
-            filtered_src_keys = filter(
-                lambda key: re.search(str(filter_exp), key) is not None,
-                valid_keys_src
-            )
+            filtered_src_keys = [key for key in valid_keys_src if re.search(str(filter_exp), key) is not None]
             valid_keys_src = filtered_src_keys
             self.log.debug(
                 "{0} keys matched the filter expression {1}".format(
@@ -966,7 +963,7 @@ class XDCReplication:
         if param_str:
             argument_split = re.split('[:,]', param_str)
             self.__test_xdcr_params.update(
-                dict(zip(argument_split[::2], argument_split[1::2]))
+                dict(list(zip(argument_split[::2], argument_split[1::2])))
             )
         if 'filter_expression' in self.__test_xdcr_params:
             if len(self.__test_xdcr_params['filter_expression']) > 0:
@@ -981,7 +978,7 @@ class XDCReplication:
     def __convert_test_to_xdcr_params(self):
         xdcr_params = {}
         xdcr_param_map = TEST_XDCR_PARAM.get_test_to_create_repl_param_map()
-        for test_param, value in self.__test_xdcr_params.iteritems():
+        for test_param, value in list(self.__test_xdcr_params.items()):
             xdcr_params[xdcr_param_map[test_param]] = value
         return xdcr_params
 
@@ -1059,8 +1056,8 @@ class XDCReplication:
             self.__to_bucket.name,
             param,
             value)
-        print("Updated {0}={1} on bucket'{2}' on {3}".format(param, value, self.__from_bucket.name,
-                                                                     self.__src_cluster.master.ip))
+        print(("Updated {0}={1} on bucket'{2}' on {3}".format(param, value, self.__from_bucket.name,
+                                                                     self.__src_cluster.master.ip)))
         self.__updated_params[param] = value
         if verify_event:
             self.__validate_set_param_event()
@@ -1132,27 +1129,27 @@ class XDCReplication:
                 self.__from_bucket.name,
                 'replication_changes_left')
             if outbound_mutations == 0:
-                print(
+                print((
                     "Outbound mutations on {0} is {1}".format(
                         src_master.ip,
-                        outbound_mutations))
+                        outbound_mutations)))
                 count += 1
                 continue
             else:
-                print(
+                print((
                     "Outbound mutations on {0} is {1}".format(
                         src_master.ip,
-                        outbound_mutations))
-                print("Node {0} is replicating".format(src_master.ip))
+                        outbound_mutations)))
+                print(("Node {0} is replicating".format(src_master.ip)))
                 break
         else:
-            print(
+            print((
                 "Outbound mutations on {0} is {1}".format(
                     src_master.ip,
-                    outbound_mutations))
-            print(
+                    outbound_mutations)))
+            print((
                 "Cluster with node {0} is not replicating".format(
-                    src_master.ip))
+                    src_master.ip)))
             return False
         return True
 

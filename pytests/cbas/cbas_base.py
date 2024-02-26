@@ -1,8 +1,7 @@
-"""
-Created on 17-Oct-2023
+'''
+Created on 04-Jun-2021
 @author: Umang Agrawal
-"""
-import copy
+'''
 
 from basetestcase import BaseTestCase
 from TestInput import TestInputSingleton
@@ -12,14 +11,11 @@ from Cb_constants import CbServer
 from cbas_utils.cbas_utils import CbasUtil
 from java.lang import Exception as Java_base_exception
 from bucket_collections.collections_base import CollectionBase
-from collections_helper.collections_spec_constants import \
-    MetaConstants, MetaCrudParams
-from sdk_exceptions import SDKException
+from collections_helper.collections_spec_constants import MetaConstants
 from BucketLib.bucket import Bucket
 from security_utils.security_utils import SecurityUtils
-from BucketLib.BucketOperations import BucketHelper
 from tpch_utils.tpch_utils import TPCHUtil
-from sdk_client3 import SDKClientPool
+from security_config import trust_all_certs
 
 
 class CBASBaseTest(BaseTestCase):
@@ -50,8 +46,6 @@ class CBASBaseTest(BaseTestCase):
                 "ipv4_only": False, "ipv6_only": False})
 
         super(CBASBaseTest, self).setUp()
-
-        self.use_sdk_for_cbas = self.input.param("use_sdk_for_cbas", False)
 
         """
         Cluster node services. Parameter value format
@@ -93,16 +87,20 @@ class CBASBaseTest(BaseTestCase):
         """
         start = 0
         end = self.nodes_init[0]
-        cluster = self.cb_clusters[self.cb_clusters.keys()[0]]
+        cluster = self.cb_clusters[list(self.cb_clusters.keys())[0]]
+        # Instead of cluster.servers , use cluster.nodes_in_cluster
         cluster.servers = self.servers[start:end]
         if "cbas" in cluster.master.services:
             cluster.cbas_nodes.append(cluster.master)
 
-        # This is to support static remote clusters. Multiple remote cluster
-        # IPs can be passed in format ip1:ip2
-        remote_cluster_ips = self.input.param("remote_cluster_ips", None)
-        if remote_cluster_ips:
-            remote_cluster_ips = remote_cluster_ips.split("|")
+        # Force disable TLS to avoid initial connection issues
+        tasks = [self.node_utils.async_disable_tls(server)
+                 for server in self.servers]
+        for task in tasks:
+            self.task_manager.get_task_result(task)
+        for server in self.servers:
+            self.set_ports_for_server(server, "non_ssl")
+        CbServer.use_https = False
 
         """
         Since BaseTestCase will initialize at least one cluster, we need to
@@ -110,48 +108,45 @@ class CBASBaseTest(BaseTestCase):
         """
         cluster_name_format = "C%s"
         for i in range(1, self.num_of_clusters):
-            cluster_name = cluster_name_format % str(i + 1)
-
-            if remote_cluster_ips:
-                remote_server = copy.deepcopy(self.servers[0])
-                remote_server.ip = remote_cluster_ips[i-1]
-                cluster = CBCluster(
-                    name=cluster_name, servers=[remote_server])
-            else:
-                start = end
-                end += self.nodes_init[i]
-                cluster = CBCluster(
-                    name=cluster_name,
-                    servers=self.servers[start:end])
-
+            start = end
+            end += self.nodes_init[i]
+            cluster_name = cluster_name_format % str(i+1)
+            cluster = CBCluster(
+                name=cluster_name,
+                servers=self.servers[start:end])
             self.cb_clusters[cluster_name] = cluster
-            cluster.nodes_in_cluster.append(cluster.master)
             cluster.kv_nodes.append(cluster.master)
 
-            if not remote_cluster_ips:
-                # We don't need compute-storage separation on remote cluster
-                self.storage_compute_separation = False
-                self.initialize_cluster(cluster_name, cluster,
-                                        services=self.services_init[i][0])
-                cluster.master.services = self.services_init[i][0].replace(":", ",")
+            self.initialize_cluster(cluster_name, cluster,
+                                    services=self.services_init[i][0])
+            cluster.master.services = self.services_init[i][0].replace(":", ",")
 
-                if "cbas" in cluster.master.services:
-                    cluster.cbas_nodes.append(cluster.master)
+            if "cbas" in cluster.master.services:
+                cluster.cbas_nodes.append(cluster.master)
 
-                if self.input.param("cluster_ip_family", ""):
-                    # Enforce IPv4 or IPv6 or both
-                    if cluster_ip_family[i] == "ipv4_only":
-                        status, msg = self.cluster_util.enable_disable_ip_address_family_type(
-                            cluster, True, True, False)
-                    if cluster_ip_family[i] == "ipv6_only":
-                        status, msg = self.cluster_util.enable_disable_ip_address_family_type(
-                            cluster, True, False, True)
-                    if cluster_ip_family[i] == "ipv4_ipv6":
-                        status, msg = self.cluster_util.enable_disable_ip_address_family_type(
-                            cluster, True, True, True)
-                    if not status:
-                        self.fail(msg)
-                self.modify_cluster_settings(cluster)
+            if self.input.param("cluster_ip_family", ""):
+                # Enforce IPv4 or IPv6 or both
+                if cluster_ip_family[i] == "ipv4_only":
+                    status, msg = self.cluster_util.enable_disable_ip_address_family_type(
+                        cluster, True, True, False)
+                if cluster_ip_family[i] == "ipv6_only":
+                    status, msg = self.cluster_util.enable_disable_ip_address_family_type(
+                        cluster, True, False, True)
+                if cluster_ip_family[i] == "ipv4_ipv6":
+                    status, msg = self.cluster_util.enable_disable_ip_address_family_type(
+                        cluster, True, True, True)
+                if not status:
+                    self.fail(msg)
+            self.modify_cluster_settings(cluster)
+            RestConnection(cluster.master).set_internalSetting(
+                "magmaMinMemoryQuota", 256)
+
+        # Enforce tls on nodes of all clusters
+        self.enable_tls_on_nodes()
+        for server in self.servers:
+            self.set_ports_for_server(server, "ssl")
+        CbServer.use_https = True
+        trust_all_certs()
 
         self.available_servers = self.servers[end:]
 
@@ -193,10 +188,10 @@ class CBASBaseTest(BaseTestCase):
             'set_default_cbas_memory', False)
 
         self.cbas_memory_quota_percent = int(self.input.param(
-            "cbas_memory_quota_percent", 100))
+            "cbas_memory_quota_percent", 80))
         self.bucket_size = self.input.param("bucket_size", 256)
 
-        self.cbas_util = CbasUtil(self.task, self.use_sdk_for_cbas)
+        self.cbas_util = CbasUtil(self.task)
 
         self.tpch_util = TPCHUtil(self)
 
@@ -269,7 +264,7 @@ class CBASBaseTest(BaseTestCase):
             if cluster.cbas_nodes:
                 cbas_cc_node_ip = None
                 retry = 0
-                while True and retry < 60:
+                while True and retry < 3:
                     cbas_cc_node_ip = self.cbas_util.retrieve_cc_ip_from_master(
                         cluster)
                     if cbas_cc_node_ip:
@@ -279,7 +274,7 @@ class CBASBaseTest(BaseTestCase):
                         retry += 1
 
                 if not cbas_cc_node_ip:
-                    self.fail("CBAS service did not come up even after 10 "
+                    self.fail("CBAS service did not come up even after 15 "
                               "mins.")
 
                 for server in cluster.cbas_nodes:
@@ -288,36 +283,15 @@ class CBASBaseTest(BaseTestCase):
                         break
 
             if "cbas" in cluster.master.services:
-                self.cbas_util.cleanup_cbas(cluster, retry=3)
+                self.cbas_util.cleanup_cbas(cluster, retry=1)
 
             cluster.otpNodes = cluster.rest.node_statuses()
-
-            if self.use_sdk_for_cbas:
-                cluster.sdk_client_pool = SDKClientPool()
-                cluster.sdk_client_pool.create_cluster_clients(
-                    cluster, cluster.nodes_in_cluster)
 
             # Wait for analytics service to be up.
             if hasattr(cluster, "cbas_cc_node"):
                 if not self.cbas_util.is_analytics_running(cluster):
                     self.fail("Analytics service did not come up even after 10\
                                  mins of wait after initialisation")
-
-                if self.input.param("service_storage_format", None) :
-                    status, content, _ = self.cbas_util.fetch_service_parameter_configuration_on_cbas(self.cluster)
-
-                    if self.input.param("service_storage_format", None) != content["storageFormat"]:
-                        status, content, _ = self.cbas_util.update_service_parameter_configuration_on_cbas(
-                            cluster, {"storageFormat": self.input.param("service_storage_format")})
-                        if not status:
-                            self.log.error(str(content))
-                            self.fail("Error while setting storage format for analytics datasets")
-                        status, content, _ = self.cbas_util.restart_analytics_cluster_uri(self.cluster)
-                        if not status:
-                            self.log.error(str(content))
-                            self.fail("Error while restarting analytics cluster.")
-                        if not self.cbas_util.wait_for_cbas_to_recover(self.cluster):
-                            self.fail("Analytics service failed to recover from restart")
 
             if self.input.param("n2n_encryption", False):
 
@@ -445,7 +419,7 @@ class CBASBaseTest(BaseTestCase):
                     self.fail("Analytics service Failed to recover")
 
         if self.disk_optimized_thread_settings:
-            for cluster in self.cb_clusters.values():
+            for cluster in list(self.cb_clusters.values()):
                 self.bucket_util.update_memcached_num_threads_settings(
                     cluster.master,
                     num_writer_threads="default",
@@ -646,6 +620,7 @@ class CBASBaseTest(BaseTestCase):
             if Bucket.ramQuotaMB not in buckets_spec:
                 buckets_spec[Bucket.ramQuotaMB] = 100
 
+        self.cluster_util.update_cluster_nodes_service_list(cluster)
         # Process params to over_ride values if required
         self.over_ride_bucket_template_params(cluster, buckets_spec)
         self.bucket_util.create_buckets_using_json_data(cluster, buckets_spec)
@@ -654,7 +629,7 @@ class CBASBaseTest(BaseTestCase):
         # Prints bucket stats before doc_ops
         self.bucket_util.print_bucket_stats(cluster)
 
-        CollectionBase.create_clients_for_sdk_pool(self)
+        CollectionBase.create_clients_for_sdk_pool(self, cluster)
         self.cluster_util.print_cluster_stats(cluster)
         if load_data:
             self.load_data_into_buckets(cluster, doc_loading_spec)
@@ -692,7 +667,7 @@ class CBASBaseTest(BaseTestCase):
         self.bucket_util.print_bucket_stats(self.cluster)
 
     def over_ride_bucket_template_params(self, cluster, bucket_spec):
-        for key, val in self.input.test_params.items():
+        for key, val in list(self.input.test_params.items()):
             if key == "replicas":
                 bucket_spec[Bucket.replicaNumber] = self.num_replicas
             elif key == "remove_default_collection":

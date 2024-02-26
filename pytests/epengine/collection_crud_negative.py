@@ -11,6 +11,7 @@ from error_simulation.cb_error import CouchbaseError
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_client3 import SDKClient
 from sdk_exceptions import SDKException
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 
 
 class CollectionDurabilityTests(CollectionBase):
@@ -30,8 +31,8 @@ class CollectionDurabilityTests(CollectionBase):
         self.verification_dict["rollback_item_count"] = 0
         self.verification_dict["sync_write_committed_count"] = 0
         # Populate initial cb_stat values as per num_items
-        for _, scope in self.bucket.scopes.items():
-            for _, collection in scope.collections.items():
+        for _, scope in list(self.bucket.scopes.items()):
+            for _, collection in list(scope.collections.items()):
                 self.verification_dict["ops_create"] += collection.num_items
                 if self.durability_helper.is_sync_write_enabled(
                         self.bucket_durability_level, self.durability_level):
@@ -43,13 +44,13 @@ class CollectionDurabilityTests(CollectionBase):
 
     def __get_random_durability_level(self):
         supported_d_levels = [d_level for d_level in self.supported_d_levels]
-        supported_d_levels.remove(Bucket.DurabilityLevel.NONE)
+        supported_d_levels.remove(SDKConstants.DurabilityLevel.NONE)
         return choice(supported_d_levels)
 
     def __get_d_level_and_error_to_simulate(self):
         self.simulate_error = CouchbaseError.STOP_PERSISTENCE
         self.durability_level = self.__get_random_durability_level()
-        if self.durability_level == Bucket.DurabilityLevel.MAJORITY:
+        if self.durability_level == SDKConstants.DurabilityLevel.MAJORITY:
             self.simulate_error = CouchbaseError.STOP_MEMCACHED
         self.log.info("Testing with durability_level=%s, simulate_error=%s"
                       % (self.durability_level, self.simulate_error))
@@ -156,14 +157,14 @@ class CollectionDurabilityTests(CollectionBase):
                     .format(vb_info["create_stat"], vb_info["failure_stat"]))
 
             # Rewind doc_indexes to starting point to re-use the same index
-            for bucket, s_dict in collection_crud_task.loader_spec.items():
-                for s_name, c_dict in s_dict["scopes"].items():
+            for bucket, s_dict in list(collection_crud_task.loader_spec.items()):
+                for s_name, c_dict in list(s_dict["scopes"].items()):
                     scope = bucket.scopes[s_name]
-                    for c_name, _ in c_dict["collections"].items():
+                    for c_name, _ in list(c_dict["collections"].items()):
                         c_crud_data = collection_crud_task.loader_spec[
                             bucket]["scopes"][
                             s_name]["collections"][c_name]
-                        for op_type in c_crud_data.keys():
+                        for op_type in list(c_crud_data.keys()):
                             self.bucket_util.rewind_doc_index(
                                 scope.collections[c_name],
                                 op_type,
@@ -250,7 +251,7 @@ class CollectionDurabilityTests(CollectionBase):
                                     node=server)
             target_vb_type = "replica"
             if self.durability_level \
-                    == Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
+                    == SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
                 target_vb_type = "active"
             target_vbs = cbstats.vbucket_list(self.bucket.name, target_vb_type)
             doc_load_spec = dict()
@@ -307,13 +308,13 @@ class CollectionDurabilityTests(CollectionBase):
                 self.log_failure("Doc retry task failed on %s" % server.ip)
 
             # Update cbstat vb-details verification counters
-            for bucket, s_dict in load_task[server].loader_spec.items():
-                for s_name, c_dict in s_dict["scopes"].items():
-                    for c_name, _ in c_dict["collections"].items():
+            for bucket, s_dict in list(load_task[server].loader_spec.items()):
+                for s_name, c_dict in list(s_dict["scopes"].items()):
+                    for c_name, _ in list(c_dict["collections"].items()):
                         c_crud_data = load_task[server].loader_spec[
                             bucket]["scopes"][
                             s_name]["collections"][c_name]
-                        for op_type in c_crud_data.keys():
+                        for op_type in list(c_crud_data.keys()):
                             total_mutation = \
                                 c_crud_data[op_type]["doc_gen"].end \
                                 - c_crud_data[op_type]["doc_gen"].start
@@ -366,7 +367,7 @@ class CollectionDurabilityTests(CollectionBase):
                 self.bucket.name, vbucket_type="replica")
 
         if self.durability_level \
-                == Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
+                == SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
             target_vbs = active_vbs
             target_vbuckets = list()
             for target_node in target_nodes:
@@ -422,12 +423,12 @@ class CollectionDurabilityTests(CollectionBase):
 
         self.sleep(5, "Wait for doc ops to reach server")
 
-        for bucket, s_dict in doc_loading_task.loader_spec.items():
-            for s_name, c_dict in s_dict["scopes"].items():
-                for c_name, c_meta in c_dict["collections"].items():
+        for bucket, s_dict in list(doc_loading_task.loader_spec.items()):
+            for s_name, c_dict in list(s_dict["scopes"].items()):
+                for c_name, c_meta in list(c_dict["collections"].items()):
                     client.select_collection(s_name, c_name)
                     for op_type in c_meta:
-                        key, value = c_meta[op_type]["doc_gen"].next()
+                        key, value = next(c_meta[op_type]["doc_gen"])
                         if self.with_non_sync_writes:
                             fail = client.crud(
                                 doc_ops[1], key, value,
@@ -525,7 +526,7 @@ class CollectionDurabilityTests(CollectionBase):
 
         target_vbs = replica_vbs
         if self.durability_level \
-                == Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
+                == SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
             target_vbs = active_vbs
             target_vbuckets = list()
             for target_node in target_nodes:
@@ -584,9 +585,9 @@ class CollectionDurabilityTests(CollectionBase):
         if self.with_non_sync_writes:
             tem_durability = "NONE"
 
-        for bucket, s_dict in doc_loading_task.loader_spec.items():
-            for s_name, c_dict in s_dict["scopes"].items():
-                for c_name, c_meta in c_dict["collections"].items():
+        for bucket, s_dict in list(doc_loading_task.loader_spec.items()):
+            for s_name, c_dict in list(s_dict["scopes"].items()):
+                for c_name, c_meta in list(c_dict["collections"].items()):
                     for op_type in c_meta:
                         # This will support both sync-write and non-sync-writes
                         doc_loader_task_2 = self.task.async_load_gen_docs(
@@ -608,7 +609,7 @@ class CollectionDurabilityTests(CollectionBase):
                         # Validation to verify the sync_in_write_errors
                         # in doc_loader_task_2
                         failed_docs = doc_loader_task_2.fail
-                        if len(failed_docs.keys()) != 1:
+                        if len(list(failed_docs.keys())) != 1:
                             self.log_failure("Exception not seen for docs: %s"
                                              % failed_docs)
 
@@ -634,9 +635,9 @@ class CollectionDurabilityTests(CollectionBase):
 
         # Validate docs for update success or not
         if doc_ops[0] == "update":
-            for bucket, s_dict in doc_loading_task.loader_spec.items():
-                for s_name, c_dict in s_dict["scopes"].items():
-                    for c_name, c_meta in c_dict["collections"].items():
+            for bucket, s_dict in list(doc_loading_task.loader_spec.items()):
+                for s_name, c_dict in list(s_dict["scopes"].items()):
+                    for c_name, c_meta in list(c_dict["collections"].items()):
                         for op_type in c_meta:
                             read_task = self.task.async_load_gen_docs(
                                 self.cluster, self.bucket,
@@ -645,7 +646,7 @@ class CollectionDurabilityTests(CollectionBase):
                                 process_concurrency=1,
                                 timeout_secs=self.sdk_timeout)
                             self.task_manager.get_task_result(read_task)
-                            for key, doc_info in read_task.success.items():
+                            for key, doc_info in list(read_task.success.items()):
                                 if doc_info["cas"] != 0 \
                                         and json.loads(str(doc_info["value"])
                                                        )["mutated"] != 1:
@@ -704,7 +705,7 @@ class CollectionDurabilityTests(CollectionBase):
 
         target_vbs = replica_vbs
         if self.durability_level \
-                == Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
+                == SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
             target_vbs = active_vbs
             target_vbuckets = list()
             for target_node in target_nodes:
@@ -766,7 +767,7 @@ class CollectionDurabilityTests(CollectionBase):
         # This is to support both sync-write and non-sync-writes
         tem_durability = self.durability_level
         if self.with_non_sync_writes:
-            tem_durability = Bucket.DurabilityLevel.NONE
+            tem_durability = SDKConstants.DurabilityLevel.NONE
 
         # Perform specified action
         for node in target_nodes:
@@ -788,11 +789,11 @@ class CollectionDurabilityTests(CollectionBase):
         # Start the doc_loader_task
         self.sleep(10, "Wait for task_1 CRUDs to reach server")
 
-        for bucket, s_dict in doc_loading_task.loader_spec.items():
-            for s_name, c_dict in s_dict["scopes"].items():
-                for c_name, c_meta in c_dict["collections"].items():
+        for bucket, s_dict in list(doc_loading_task.loader_spec.items()):
+            for s_name, c_dict in list(s_dict["scopes"].items()):
+                for c_name, c_meta in list(c_dict["collections"].items()):
                     for op_type in c_meta:
-                        key, _ = c_meta[op_type]["doc_gen"].next()
+                        key, _ = next(c_meta[op_type]["doc_gen"])
                         expected_exception = amb_timeout
                         retry_reason = kv_sync_write_in_progress
                         if doc_ops == "create":
@@ -840,9 +841,9 @@ class CollectionDurabilityTests(CollectionBase):
 
         # Validate docs for update success or not
         if doc_ops == DocLoading.Bucket.DocOps.UPDATE:
-            for bucket, s_dict in doc_loading_task.loader_spec.items():
-                for s_name, c_dict in s_dict["scopes"].items():
-                    for c_name, c_meta in c_dict["collections"].items():
+            for bucket, s_dict in list(doc_loading_task.loader_spec.items()):
+                for s_name, c_dict in list(s_dict["scopes"].items()):
+                    for c_name, c_meta in list(c_dict["collections"].items()):
                         for op_type in c_meta:
                             c_meta[op_type]["doc_gen"].reset()
                             read_task = self.task.async_load_gen_docs(
@@ -853,7 +854,7 @@ class CollectionDurabilityTests(CollectionBase):
                                 process_concurrency=1,
                                 timeout_secs=self.sdk_timeout)
                             self.task_manager.get_task_result(read_task)
-                            for key, doc_info in read_task.success.items():
+                            for key, doc_info in list(read_task.success.items()):
                                 if doc_info["cas"] != 0 and \
                                         json.loads(str(doc_info["value"])
                                                    )["mutated"] != 2:

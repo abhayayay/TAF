@@ -219,9 +219,9 @@ class CollectionsRebalance(CollectionBase):
         for index in range(0, self.fts_indexes_to_create_drop):
             random_scope_collection = \
                 self.bucket_util.get_random_collections([bucket], 1, 1, 1)[bucket.name]["scopes"]
-            scope_name = random_scope_collection.keys()[0]
+            scope_name = list(random_scope_collection.keys())[0]
             col_name = \
-                random_scope_collection[scope_name]["collections"].keys()[0]
+                list(random_scope_collection[scope_name]["collections"].keys())[0]
             create_fts_index(bucket, index, scope_name, col_name)
             drop_fts_index(bucket.name, index)
 
@@ -906,7 +906,7 @@ class CollectionsRebalance(CollectionBase):
         num_zone = 1
         if self.cluster_util.is_enterprise_edition(self.cluster):
             nodes_in_zones = self.get_zone_info()
-            num_zone = len(nodes_in_zones.keys())
+            num_zone = len(list(nodes_in_zones.keys()))
 
             if num_zone > 1:
                 for bucket in self.cluster.buckets:
@@ -1033,9 +1033,9 @@ class CollectionsRebalance(CollectionBase):
         rest = RestConnection(serverinfo)
         for i in range(0, int(self.num_zone)):
             zone_name = "Group " + str(i + 1)
-            if rest.get_nodes_in_zone(zone_name).keys():
+            if list(rest.get_nodes_in_zone(zone_name).keys()):
                 nodes_in_zone[zone_name] = [x.encode('UTF8') for x in
-                                            rest.get_nodes_in_zone(zone_name).keys()]
+                                            list(rest.get_nodes_in_zone(zone_name).keys())]
         self.log.info("nodes in zone inside get_zone_info():{0}".format(nodes_in_zone))
         return nodes_in_zone
 
@@ -1338,7 +1338,7 @@ class CollectionsRebalance(CollectionBase):
 
         bucket_name = self.cluster.buckets[0]
         status, content = self.rest.fail_bucket_rebalance_at_bucket(bucket_name)
-        self.assertEquals("ok", content, msg="Error occurred while adding the test condition")
+        self.assertEqual("ok", content, msg="Error occurred while adding the test condition")
 
         add_nodes = self.cluster.servers[self.nodes_init:self.nodes_init + 1]
         operation = self.task.rebalance(self.cluster, add_nodes, [],
@@ -1349,7 +1349,7 @@ class CollectionsRebalance(CollectionBase):
             self.log.info("Rebalance failed as expected")
 
         status, content = self.rest.remove_fail_bucket_rebalance_at_bucket()
-        self.assertEquals("ok", content, msg="Error occurred while removing the test condition")
+        self.assertEqual("ok", content, msg="Error occurred while removing the test condition")
 
         operation = self.task.rebalance(self.cluster, [], [],
                                         retry_get_process_num=self.retry_get_process_num)

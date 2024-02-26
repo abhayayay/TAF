@@ -5,13 +5,13 @@ import json
 from BucketLib.bucket import Bucket
 from Cb_constants import DocLoading
 from cb_tools.cbstats import Cbstats
-from constants.sdk_constants.java_client import SDKConstants
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 from couchbase_helper.documentgenerator import doc_generator
 from epengine.durability_base import DurabilityTestsBase
 from error_simulation.cb_error import CouchbaseError
-from sdk_client3 import SDKClient
+from sirius_client import SiriusClient
 from remote.remote_util import RemoteMachineShellConnection
-from sdk_exceptions import SDKException
+from sdk_exceptions import SDKException, check_if_exception_exists
 from table_view import TableView
 
 
@@ -75,7 +75,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
             self.bucket_util._wait_for_stats_all_buckets(self.cluster,
                                                          self.cluster.buckets)
             self.bucket_util.verify_stats_all_buckets(self.cluster, 0)
-            self.assertTrue(len(d_create_task.fail.keys()) == self.num_items,
+            self.assertTrue(len(list(d_create_task.fail.keys())) == self.num_items,
                             msg=err_msg)
             if vb_info["init"] != vb_info["failure_stat"]:
                 self.log_failure(
@@ -125,9 +125,9 @@ class DurabilityFailureTests(DurabilityTestsBase):
         for task in tasks:
             self.task.jython_task_manager.get_task_result(task)
 
-            if len(task.fail.keys()) != self.num_items:
+            if len(list(task.fail.keys())) != self.num_items:
                 self.log_failure("Few keys have not received exceptions: {0}"
-                                 .format(task.fail.keys()))
+                                 .format(list(task.fail.keys())))
             validation_passed = \
                 self.durability_helper.validate_durability_exception(
                     task.fail,
@@ -253,7 +253,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
             start_task=False)
 
         # SDK client for performing individual ops
-        client = SDKClient([self.cluster.master], self.bucket)
+        client = SiriusClient([self.cluster.master], self.bucket)
 
         # Perform specified action
         for node in target_nodes:
@@ -267,7 +267,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
         # Perform specified CRUD operation on sync_write docs
         tem_gen = copy.deepcopy(gen_loader_2)
         while tem_gen.has_next():
-            key, value = tem_gen.next()
+            key, value = next(tem_gen)
             for retry_strategy in [SDKConstants.RetryStrategy.FAIL_FAST,
                                    SDKConstants.RetryStrategy.BEST_EFFORT]:
                 if self.with_non_sync_writes:
@@ -296,10 +296,10 @@ class DurabilityFailureTests(DurabilityTestsBase):
                     retry_reason = None
 
                 # Validate the returned error from the SDK
-                if expected_exception not in str(fail["error"]):
+                if not check_if_exception_exists(str(fail["error"]), expected_exception):
                     self.log_failure("Invalid exception for {0}: {1}"
                                      .format(key, fail["error"]))
-                if retry_reason and retry_reason not in str(fail["error"]):
+                if not retry_reason and retry_reason not in str(fail["error"]):
                     self.log_failure("Invalid retry reason for {0}: {1}"
                                      .format(key, fail["error"]))
 
@@ -330,7 +330,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
         if self.doc_ops[0] == "update":
             # Retry doc_op after reverting the induced error
             while gen_loader_2.has_next():
-                key, value = gen_loader_2.next()
+                key, value = next(gen_loader_2)
                 if self.with_non_sync_writes:
                     fail = client.crud(self.doc_ops[0], key,
                                        value=value, exp=0)
@@ -375,7 +375,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
                                    node=target_node)
 
         self.durability_level = \
-            Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE
+            SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE
 
         half_of_num_items = max(int(self.num_items/2), 1)
         # Override the crud_batch_size
@@ -423,10 +423,10 @@ class DurabilityFailureTests(DurabilityTestsBase):
         self.sleep(20, message="Wait for task_1 ops to reach the server")
 
         # SDK client for performing individual ops
-        client = SDKClient([self.cluster.master], self.bucket)
+        client = SiriusClient([self.cluster.master], self.bucket)
         # Perform specified CRUD operation on sync_write docs
         while gen_loader.has_next():
-            key, value = gen_loader.next()
+            key, value = next(gen_loader)
             if self.with_non_sync_writes:
                 fail = client.crud(self.doc_ops[1], key, value=value, exp=0)
             else:
@@ -559,7 +559,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
         # Verify cbstats for the affected vbuckets are not updated during CRUDs
         for vb in range(self.cluster.vbuckets):
             if vb in active_vb_numbers:
-                for stat_name in vb_info["withDiskIssue"][vb].keys():
+                for stat_name in list(vb_info["withDiskIssue"][vb].keys()):
                     stat_before_crud = vb_info["init"][vb][stat_name]
                     stat_after_crud = vb_info["withDiskIssue"][vb][stat_name]
                     if stat_before_crud != stat_after_crud:
@@ -598,7 +598,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
         error_sim.revert(self.simulate_error, self.bucket.name)
 
         # SDK client for performing retry operations
-        client = SDKClient([self.cluster.master], self.bucket)
+        client = SiriusClient([self.cluster.master], self.bucket)
         # Retry failed docs
         create_failed = self.durability_helper.retry_with_no_error(
             client, doc_errors["create"], "create")
@@ -759,7 +759,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
 
         # Validation to verify the sync_in_write_errors in doc_loader_task_2
         failed_docs = doc_loader_task_2.fail
-        if len(failed_docs.keys()) != expected_failed_doc_num:
+        if len(list(failed_docs.keys())) != expected_failed_doc_num:
             self.log_failure("Exception not seen for some docs: {0}"
                              .format(failed_docs))
 
@@ -778,7 +778,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
                 batch_size=self.crud_batch_size, process_concurrency=1,
                 timeout_secs=self.sdk_timeout)
             self.task_manager.get_task_result(read_task)
-            for key, doc_info in read_task.success.items():
+            for key, doc_info in list(read_task.success.items()):
                 if doc_info["cas"] != 0 \
                         and json.loads(str(doc_info["value"]))["mutated"] != 1:
                     self.log_failure("Update failed for key %s: %s"
@@ -812,7 +812,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
                                    node=shell_conn)
 
         self.durability_level = \
-            Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE
+            SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE
 
         # Override the crud_batch_size
         self.crud_batch_size = 5
@@ -895,7 +895,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
         self.task.jython_task_manager.get_task_result(doc_loader_task_1)
 
         # Create SDK Client
-        client = SDKClient([self.cluster.master], self.bucket)
+        client = SiriusClient([self.cluster.master], self.bucket)
 
         # Retry failed docs
         self.durability_helper.retry_with_no_error(client, error_docs,
@@ -972,7 +972,7 @@ class DurabilityFailureTests(DurabilityTestsBase):
                     timeout_secs=self.sdk_timeout)
                 self.task.jython_task_manager.get_task_result(task)
 
-                if len(task.fail.keys()) != 0:
+                if len(list(task.fail.keys())) != 0:
                     self.log_failure("Failure seen during doc_op: %s" % doc_op)
 
                 # Update verification dict for validation
@@ -1052,7 +1052,7 @@ class TimeoutTests(DurabilityTestsBase):
                                           mutate=1)
 
         # Create SDK Client
-        client = SDKClient([self.cluster.master], self.bucket)
+        client = SiriusClient([self.cluster.master], self.bucket)
 
         for op_type in ["create", "update", "read", "delete"]:
             self.log.info("Performing '%s' with timeout=%s"
@@ -1083,11 +1083,11 @@ class TimeoutTests(DurabilityTestsBase):
 
             self.task_manager.get_task_result(doc_load_task)
 
-            if len(doc_load_task.fail.keys()) != 0:
+            if len(list(doc_load_task.fail.keys())) != 0:
                 if op_type == "read":
                     self.log.warning("Read failed for %d keys: %s"
-                                     % (len(doc_load_task.fail.keys()),
-                                        doc_load_task.fail.keys()))
+                                     % (len(list(doc_load_task.fail.keys())),
+                                        list(doc_load_task.fail.keys())))
                 else:
                     self.log_failure("Failures during %s operation: %s"
                                      % (op_type, doc_load_task.fail))
@@ -1146,7 +1146,7 @@ class TimeoutTests(DurabilityTestsBase):
         vb_info = dict()
 
         self.durability_level = \
-            Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE
+            SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE
 
         curr_time = int(time.time())
         expected_timeout = curr_time + self.sdk_timeout
@@ -1209,7 +1209,7 @@ class TimeoutTests(DurabilityTestsBase):
         shell_conn.disconnect()
 
         # Create SDK Client
-        client = SDKClient([self.cluster.master], self.bucket)
+        client = SiriusClient([self.cluster.master], self.bucket)
 
         # Wait for document_loader tasks to complete and retry failed docs
         op_type = None
@@ -1278,7 +1278,7 @@ class TimeoutTests(DurabilityTestsBase):
             for tem_vb_num in range(self.cluster.vbuckets):
                 tem_vb_num = str(tem_vb_num)
                 if tem_vb_num not in affected_vbs:
-                    if tem_vb_num in vb_info["init"][node.ip].keys() \
+                    if tem_vb_num in list(vb_info["init"][node.ip].keys()) \
                             and vb_info["init"][node.ip][tem_vb_num] \
                             != vb_info["post_timeout"][node.ip][tem_vb_num]:
                         self.log_failure(
@@ -1287,7 +1287,7 @@ class TimeoutTests(DurabilityTestsBase):
                                vb_info["init"][node.ip][tem_vb_num],
                                vb_info["post_timeout"][node.ip][tem_vb_num]))
                 elif int(tem_vb_num) in target_nodes_vbuckets["active"]:
-                    if tem_vb_num in vb_info["init"][node.ip].keys() \
+                    if tem_vb_num in list(vb_info["init"][node.ip].keys()) \
                             and vb_info["init"][node.ip][tem_vb_num] \
                             != vb_info["post_timeout"][node.ip][tem_vb_num]:
                         self.log.warning(
@@ -1298,7 +1298,7 @@ class TimeoutTests(DurabilityTestsBase):
                                vb_info["init"][node.ip][tem_vb_num],
                                vb_info["post_timeout"][node.ip][tem_vb_num]))
                 elif int(tem_vb_num) in target_nodes_vbuckets["replica"]:
-                    if tem_vb_num in vb_info["init"][node.ip].keys() \
+                    if tem_vb_num in list(vb_info["init"][node.ip].keys()) \
                             and vb_info["init"][node.ip][tem_vb_num] \
                             == vb_info["post_timeout"][node.ip][tem_vb_num]:
                         retry_validation = True
@@ -1360,7 +1360,7 @@ class TimeoutTests(DurabilityTestsBase):
         curr_time = int(time.time())
         expected_timeout = curr_time + self.sdk_timeout
 
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             tasks[op_type] = self.task.async_load_gen_docs(
                 self.cluster, self.bucket, doc_gen[op_type], op_type, 0,
                 batch_size=1, process_concurrency=8,
@@ -1378,26 +1378,26 @@ class TimeoutTests(DurabilityTestsBase):
         self.sleep(10, "Wait for error_simulation to take effect")
 
         # Start the doc_ops tasks
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             self.task_manager.add_new_task(tasks[op_type])
 
         # Wait for document_loader tasks to complete
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             self.task.jython_task_manager.get_task_result(tasks[op_type])
 
             # Validate task failures
             if op_type == "read":
                 # Validation for read task
-                if len(tasks[op_type].fail.keys()) != 0:
+                if len(list(tasks[op_type].fail.keys())) != 0:
                     self.log_failure("Read failed for few docs: %s"
-                                     % tasks[op_type].fail.keys())
+                                     % list(tasks[op_type].fail.keys()))
             else:
                 # Validation of CRUDs - Update / Create / Delete
-                for doc_id, crud_result in tasks[op_type].fail.items():
+                for doc_id, crud_result in list(tasks[op_type].fail.items()):
                     vb_num = self.bucket_util.get_vbucket_num_for_key(
                         doc_id, self.cluster.vbuckets)
-                    if SDKException.DurabilityAmbiguousException \
-                            not in str(crud_result["error"]):
+                    if not check_if_exception_exists(str(crud_result["error"]),
+                                                     SDKException.DurabilityAmbiguousException):
                         self.log_failure(
                             "Invalid exception for doc %s, vb %s: %s"
                             % (doc_id, vb_num, crud_result))
@@ -1411,11 +1411,11 @@ class TimeoutTests(DurabilityTestsBase):
         if int(time.time()) < expected_timeout:
             self.log_failure("Timed-out before expected time")
 
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             if op_type == "read":
                 continue
             while doc_gen[op_type].has_next():
-                doc_id, _ = doc_gen[op_type].next()
+                doc_id, _ = next(doc_gen[op_type])
                 affected_vbs.append(
                     str(self.bucket_util.get_vbucket_num_for_key(
                         doc_id,
@@ -1442,18 +1442,18 @@ class TimeoutTests(DurabilityTestsBase):
         self.validate_test_failure()
 
         # SDK client for retrying AMBIGUOUS for unexpected keys
-        sdk_client = SDKClient([self.cluster.master], self.bucket)
+        sdk_client = SiriusClient([self.cluster.master], self.bucket)
 
         # Doc error validation
-        for op_type in doc_gen.keys():
+        for op_type in list(doc_gen.keys()):
             task = tasks[op_type]
 
             if self.nodes_init == 1 \
                     and op_type != "read" \
-                    and len(task.fail.keys()) != (doc_gen[op_type].end
+                    and len(list(task.fail.keys())) != (doc_gen[op_type].end
                                                   - doc_gen[op_type].start):
                 self.log_failure("Failed keys %d are less than expected %d"
-                                 % (len(task.fail.keys()),
+                                 % (len(list(task.fail.keys())),
                                     (doc_gen[op_type].end
                                      - doc_gen[op_type].start)))
 
@@ -1464,7 +1464,7 @@ class TimeoutTests(DurabilityTestsBase):
             ambiguous_table_view.set_headers(["Key", "vBucket"])
 
             # Iterate failed keys for validation
-            for doc_key, doc_info in task.fail.items():
+            for doc_key, doc_info in list(task.fail.items()):
                 vb_for_key = self.bucket_util.get_vbucket_num_for_key(doc_key)
 
                 ambiguous_table_view.add_row([doc_key, str(vb_for_key)])
@@ -1475,8 +1475,7 @@ class TimeoutTests(DurabilityTestsBase):
                     self.log_failure("%s failed in retry for %s"
                                      % (op_type, doc_key))
 
-                if SDKException.DurabilityAmbiguousException \
-                        not in str(doc_info["error"]):
+                if not check_if_exception_exists(str(doc_info["error"]), SDKException.DurabilityAmbiguousException):
                     table_view.add_row([doc_key, doc_info["error"]])
 
             # Display the tables (if any errors)

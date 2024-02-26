@@ -237,7 +237,7 @@ class APIBase(BaseTestCase):
                     break
         if failed_deletion:
             self.fail("Error while deleting API key for roles {}".format(
-                api_key_dict.keys()))
+                list(api_key_dict.keys())))
         self.log.info("All API keys were deleted")
         return failed_deletion
 

@@ -9,15 +9,13 @@ import sys
 import threading
 import time
 import unittest
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import xml.dom.minidom
 
 from optparse import OptionParser, OptionGroup
 from os.path import basename, splitext
 from pprint import pprint
 from threading import Thread, Event
-
-from java.lang import System
 
 sys.path = [".", "lib", "pytests", "pysystests", "couchbase_utils",
             "platform_utils", "connections", "constants"] + sys.path
@@ -29,7 +27,7 @@ from xunit import XUnitTestResult
 
 def usage(err=None):
     if err is not None:
-        print("Error: %s" % err)
+        print(("Error: %s" % err))
     print("""\
 Syntax: testrunner [options]
 
@@ -119,7 +117,7 @@ def parse_args(argv):
             sys.exit("ini file {0} was not found".format(options.ini))
 
     test_params['cluster_name'] = \
-        splitext(os.path.basename(options.ini))[0]
+    splitext(os.path.basename(options.ini))[0]
 
     if not options.testcase and not options.conf and not \
             options.globalsearch and not options.include_tests and \
@@ -169,9 +167,9 @@ def append_test(tests, name):
         Some tests carry special chars, need to skip it
     """
     if "test_restore_with_filter_regex" not in name and \
-            "test_restore_with_rbac" not in name and \
-            "test_backup_with_rbac" not in name and \
-            name.find('*') > 0:
+        "test_restore_with_rbac" not in name and \
+        "test_backup_with_rbac" not in name and \
+         name.find('*') > 0:
         for t in unittest.TestLoader().loadTestsFromName(name.rstrip('.*')):
             tests.append(prefix + '.' + t._testMethodName)
     else:
@@ -179,12 +177,12 @@ def append_test(tests, name):
 
 
 def locate_conf_file(filename):
-    print("Filename: %s" % filename)
+    print(("Filename: %s" % filename))
     if filename:
         if os.path.exists(filename):
-            return file(filename)
+            return open(filename)
         if os.path.exists("conf{0}{1}".format(os.sep, filename)):
-            return file("conf{0}{1}".format(os.sep, filename))
+            return open("conf{0}{1}".format(os.sep, filename))
         return None
 
 
@@ -220,7 +218,7 @@ def parse_conf_file(filename, tests, params):
             continue
         if stripped.endswith(":"):
             prefix = stripped.split(":")[0]
-            print("Prefix: %s" % prefix)
+            print(("Prefix: %s" % prefix))
             continue
         name = stripped
         if prefix and prefix.lower() == "params":
@@ -243,10 +241,10 @@ def parse_conf_file(filename, tests, params):
 
 
 def parse_global_conf_file(dirpath, tests, params):
-    print("dirpath=" + dirpath)
+    print(("dirpath=" + dirpath))
     if os.path.isdir(dirpath):
         dirpath = dirpath + os.sep + "**" + os.sep + "*.conf"
-        print("Global filespath=" + dirpath)
+        print(("Global filespath=" + dirpath))
 
     conf_files = glob.glob(dirpath)
     for file in conf_files:
@@ -259,7 +257,7 @@ def process_include_or_filter_exclude_tests(filtertype, option, tests,
 
         if option.startswith('failed') or option.startswith(
                 'passed') or option.startswith(
-            "http://") or option.startswith("https://"):
+                "http://") or option.startswith("https://"):
             passfail = option.split("=")
             tests_list = []
             if len(passfail) == 2:
@@ -323,28 +321,28 @@ def parse_testreport_result_xml(filepath=""):
             os.mkdir('logs')
         newfilepath = 'logs' + ''.join(os.sep) + '_'.join(
             jobnamebuild[-3:]) + "_testresult.xml"
-        print("Downloading " + url_path + " to " + newfilepath)
+        print(("Downloading " + url_path + " to " + newfilepath))
         try:
-            req = urllib2.Request(url_path)
-            filedata = urllib2.urlopen(req)
+            req = urllib.request.Request(url_path)
+            filedata = urllib.request.urlopen(req)
             datatowrite = filedata.read()
             filepath = newfilepath
             with open(filepath, 'wb') as f:
                 f.write(datatowrite)
         except Exception as ex:
-            print("Error:: " + str(
+            print(("Error:: " + str(
                 ex) + "! Please check if " + url_path + " URL is "
-                                                        "accessible!!")
+                                                        "accessible!!"))
             print("Running all the tests instead for now.")
             return None, None
     if filepath == "":
         filepath = "logs/**/*.xml"
-    print("Loading result data from " + filepath)
+    print(("Loading result data from " + filepath))
     xml_files = glob.glob(filepath)
     passed_tests = []
     failed_tests = []
     for xml_file in xml_files:
-        print("-- " + xml_file + " --")
+        print(("-- " + xml_file + " --"))
         doc = xml.dom.minidom.parse(xml_file)
         testresultelem = doc.getElementsByTagName("testResult")
         testsuitelem = testresultelem[0].getElementsByTagName("suite")
@@ -385,12 +383,12 @@ def parse_junit_result_xml(filepath=""):
         return parse_testreport_result_xml(filepath)
     if filepath == "":
         filepath = "logs/**/*.xml"
-    print("Loading result data from " + filepath)
+    print(("Loading result data from " + filepath))
     xml_files = glob.glob(filepath)
     passed_tests = []
     failed_tests = []
     for xml_file in xml_files:
-        print("-- " + xml_file + " --")
+        print(("-- " + xml_file + " --"))
         doc = xml.dom.minidom.parse(xml_file)
         testsuitelem = doc.getElementsByTagName("testsuite")
         for ts in testsuitelem:
@@ -548,46 +546,13 @@ def main():
     results = []
     case_number = 1
     if "GROUP" in runtime_test_params:
-        print("Only cases in GROUPs '%s' will be executed"
-              % runtime_test_params["GROUP"])
+        print(("Only cases in GROUPs '%s' will be executed"
+               % runtime_test_params["GROUP"]))
     if "EXCLUDE_GROUP" in runtime_test_params:
-        print("Cases from GROUPs '%s' will be excluded"
-              % runtime_test_params["EXCLUDE_GROUP"])
+        print(("Cases from GROUPs '%s' will be excluded"
+               % runtime_test_params["EXCLUDE_GROUP"]))
 
-    test_to_be_exec = []
     for name in names:
-        argument_split = [a.strip()
-                          for a in re.split("[,]?([^,=]+)=", name)[1:]]
-        params = dict(zip(argument_split[::2], argument_split[1::2]))
-        if "GROUP" in runtime_test_params \
-                and "ALL" not in runtime_test_params["GROUP"].split(";"):
-            # Params is the .conf file parameters.
-            if 'GROUP' not in params:
-                # this test is not in any groups, so we do not run it
-                print("Test '%s' skipped, group requested but test has no group"
-                      % name)
-                continue
-            else:
-                skip_test = False
-                tc_groups = params["GROUP"].split(";")
-                for run_group in runtime_test_params["GROUP"].split(";"):
-                    if run_group not in tc_groups:
-                        skip_test = True
-                        break
-                if skip_test:
-                    print("Test '{0}' skipped, GROUP not satisfied"
-                          .format(name))
-                    continue
-        if "EXCLUDE_GROUP" in runtime_test_params:
-            if 'GROUP' in params and \
-                    len(set(runtime_test_params["EXCLUDE_GROUP"].split(";"))
-                        & set(params["GROUP"].split(";"))) > 0:
-                print("Test '%s' skipped, is in an excluded group" % name)
-                continue
-        test_to_be_exec.append(name)
-    TestInputSingleton.input.test_params["no_of_test_identified"] = len(test_to_be_exec)
-
-    for name in test_to_be_exec:
         start_time = time.time()
 
         # Reset SDK/Shell connection counters
@@ -598,10 +563,36 @@ def main():
 
         argument_split = [a.strip()
                           for a in re.split("[,]?([^,=]+)=", name)[1:]]
-        params = dict(zip(argument_split[::2], argument_split[1::2]))
+        params = dict(list(zip(argument_split[::2], argument_split[1::2])))
 
         # Note that if ALL is specified at runtime then tests
         # which have no groups are still run - just being explicit on this
+
+        if "GROUP" in runtime_test_params \
+                and "ALL" not in runtime_test_params["GROUP"].split(";"):
+            # Params is the .conf file parameters.
+            if 'GROUP' not in params:
+                # this test is not in any groups so we do not run it
+                print(("Test '%s' skipped, group requested but test has no group"
+                       % name))
+                continue
+            else:
+                skip_test = False
+                tc_groups = params["GROUP"].split(";")
+                for run_group in runtime_test_params["GROUP"].split(";"):
+                    if run_group not in tc_groups:
+                        skip_test = True
+                        break
+                if skip_test:
+                    print(("Test '{0}' skipped, GROUP not satisfied"
+                           .format(name)))
+                    continue
+        if "EXCLUDE_GROUP" in runtime_test_params:
+            if 'GROUP' in params and \
+                    len(set(runtime_test_params["EXCLUDE_GROUP"].split(";"))
+                        & set(params["GROUP"].split(";"))) > 0:
+                print(("Test '%s' skipped, is in an excluded group" % name))
+                continue
 
         # Create Log Directory
         logs_folder = os.path.join(root_log_dir, "test_%s" % case_number)
@@ -611,10 +602,10 @@ def main():
                                                          "test.logging.conf"))
         create_log_file(log_config_filename, test_log_file, options.loglevel)
         logging.config.fileConfig(log_config_filename)
-        print("Logs will be stored at %s" % logs_folder)
-        print(
-            "\nguides/gradlew --refresh-dependencies testrunner -P jython=/opt/jython/bin/jython -P 'args=-i {0} {1} -t {2}'\n"
-            .format(arg_i or "", arg_p or "", name))
+        print(("Logs will be stored at %s" % logs_folder))
+        print((
+            "\npython{0} testrunner.py -i {1} -p {2} -t {3}\n"
+            .format(sys.version[0] or "", arg_i or "", arg_p or "", name)))
         name = name.split(",")[0]
 
         # Update the test params for each test
@@ -624,25 +615,25 @@ def main():
         TestInputSingleton.input.test_params["logs_folder"] = logs_folder
         if "rerun" not in TestInputSingleton.input.test_params:
             TestInputSingleton.input.test_params["rerun"] = False
-        print("Test Input params:\n%s"
-              % TestInputSingleton.input.test_params)
+        print(("Test Input params:\n%s"
+               % TestInputSingleton.input.test_params))
         try:
             suite = unittest.TestLoader().loadTestsFromName(name)
         except AttributeError as e:
-            print("Test %s was not found: %s" % (name, e))
+            print(("Test %s was not found: %s" % (name, e)))
             result = unittest.TextTestRunner(verbosity=2)._makeResult()
             result.errors = [(name, e.message)]
         except SyntaxError as e:
-            print("SyntaxError in %s: %s" % (name, e))
+            print(("SyntaxError in %s: %s" % (name, e)))
             result = unittest.TextTestRunner(verbosity=2)._makeResult()
             result.errors = [(name, e.message)]
         else:
             result = unittest.TextTestRunner(verbosity=2).run(suite)
             if TestInputSingleton.input.param("rerun") \
                     and (result.failures or result.errors):
-                print("#" * 60, "\n",
-                      "## \tTest Failed: Rerunning it one more time",
-                      "\n", "#" * 60)
+                print(("#" * 60, "\n",
+                       "## \tTest Failed: Rerunning it one more time",
+                       "\n", "#" * 60))
                 print("####### Running test with trace logs enabled #######")
                 TestInputSingleton.input.test_params["log_level"] = "debug"
                 result = unittest.TextTestRunner(verbosity=2).run(suite)
@@ -683,7 +674,7 @@ def main():
         # To make tests more readable
         params = ''
         if TestInputSingleton.input.test_params:
-            for key, value in TestInputSingleton.input.test_params.items():
+            for key, value in list(TestInputSingleton.input.test_params.items()):
                 if key and value:
                     params += "," + str(key) + "=" + str(value)
 
@@ -709,8 +700,8 @@ def main():
         xunit.write("%s%sreport-%s"
                     % (os.path.dirname(logs_folder), os.sep, str_time))
         xunit.print_summary()
-        print("testrunner logs, diags and results are available under %s"
-              % logs_folder)
+        print(("testrunner logs, diags and results are available under %s"
+               % logs_folder))
         case_number += 1
         if (result.failures or result.errors) and \
                 TestInputSingleton.input.param("stop-on-failure", False):
@@ -728,8 +719,8 @@ def main():
                 test_run_result = result["name"] + " pass"
             print(test_run_result)
         if fail_count > 0:
-            System.exit(1)
-    System.exit(0)
+            sys.exit(1)
+    sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ class DCPUtils(object):
         self.user = user
         self.pwd = pwd
         self.log = logger.get("test")
-        self.vbuckets = range(1024)
+        self.vbuckets = list(range(1024))
         self.filter_file = filter_file
         self.vb_retry = vb_retry
         self.failover_logging = failover_logging
@@ -163,7 +163,7 @@ class DCPUtils(object):
                 self.log.info("using localhost")
                 return 'localhost'
             else:
-                raise StandardError("Invalid host input", host, "Error origin:", errorOrigin)
+                raise Exception("Invalid host input", host, "Error origin:", errorOrigin)
 
     def add_streams(self, vbuckets, start, end, uuid, retry_limit=15, filter=None):
         self.vb_list = vbuckets
@@ -193,7 +193,7 @@ class DCPUtils(object):
         else:
             filter_json.append('')
         for f in filter_json:
-            for index in xrange(0, len(self.vb_list)):
+            for index in range(0, len(self.vb_list)):
                 if self.stream_req_info:
                     self.log.info('Stream to vbucket %s on node %s with seq no %s and uuid %s' \
                                   % (self.vb_list[index], self.get_node_of_dcp_client_connection(
@@ -502,7 +502,7 @@ class DCPUtils(object):
 
 
     def close_dcp_streams(self):
-        for client_stream in self.dcp_client_dict.values():
+        for client_stream in list(self.dcp_client_dict.values()):
             client_stream['stream'].close()
 
 class LogData(object):
@@ -534,7 +534,7 @@ class LogData(object):
     def setup_log_preset(self, vb_list):
         """ Used when --keep-logs is triggered, to move external data to dictstore """
         external_data = self.get_all_external(vb_list)
-        for key in external_data.keys():
+        for key in list(external_data.keys()):
             self.dictstore[str(key)] = external_data[key]
 
     def get_path(self, vb):
@@ -566,7 +566,7 @@ class LogData(object):
 
     def upsert_failover(self, vb, failover_log):
         """ Insert / update failover log """
-        if str(vb) in self.dictstore.keys():
+        if str(vb) in list(self.dictstore.keys()):
             self.dictstore[str(vb)]['failover_log'] = failover_log
         else:
             self.dictstore[str(vb)] = {'failover_log': failover_log}
@@ -584,9 +584,9 @@ class LogData(object):
 
     def upsert_sequence_no(self, vb, seq_no):
         """ Insert / update sequence number, and move old sequence number to appropriate list """
-        if str(vb) in self.dictstore.keys():
-            if 'seq_no' in self.dictstore[str(vb)].keys():
-                if 'old_seq_no' in self.dictstore[str(vb)].keys():
+        if str(vb) in list(self.dictstore.keys()):
+            if 'seq_no' in list(self.dictstore[str(vb)].keys()):
+                if 'old_seq_no' in list(self.dictstore[str(vb)].keys()):
                     old_seq_no = self.dictstore[str(vb)]['old_seq_no']
                 else:
                     old_seq_no = []
@@ -615,7 +615,7 @@ class LogData(object):
         """ Return a dictionary where keys are vbuckets and the data is the total JSON for that vbucket """
         read_dict = {}
         for vb in vb_list:
-            if str(vb) in self.dictstore.keys():
+            if str(vb) in list(self.dictstore.keys()):
                 read_dict[str(vb)] = self.dictstore[str(vb)]
 
         return read_dict

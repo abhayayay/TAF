@@ -5,8 +5,9 @@ Created on Sep 25, 2017
 """
 
 import json
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import requests
+import numbers
 
 from Cb_constants import CbServer
 from connections.Rest_Connection import RestConnection
@@ -16,14 +17,11 @@ from membase.api import httplib2
 class CBASHelper(RestConnection):
     def __init__(self, cbas_node):
         super(CBASHelper, self).__init__(cbas_node)
-        if cbas_node.type == "goldfish":
-            self.cbas_base_url = "https://{0}:{1}".format(
-                self.ip, cbas_node.nebula_rest_port)
-        else:
-            self.cbas_base_url = "http://{0}:{1}".format(self.ip, CbServer.cbas_port)
-            if CbServer.use_https:
-                self.cbas_base_url = "https://{0}:{1}".format(self.ip, CbServer.ssl_cbas_port)
-
+        self.cbas_base_url = "http://{0}:{1}".format(self.ip, CbServer.cbas_port)
+        if CbServer.use_https:
+            self.cbas_base_url = "https://{0}:{1}".format(self.ip, CbServer.ssl_cbas_port)
+        if cbas_node.type == "columnar":
+            self.cbas_base_url = "https://{0}:{1}".format(self.ip, cbas_node.cbas_port)
 
     def createConn(self, bucket, username, password):
         pass
@@ -79,6 +77,31 @@ class CBASHelper(RestConnection):
             self.log.error("/analytics/service status:{0}, content:{1}"
                            .format(status, content))
             raise Exception("Analytics Service API failed")
+
+    def get_json(self, content="", json_data=None):
+        if not json_data:
+            json_data = json.loads(content)
+
+        def _convert_json(parsed_json):
+            new_json = None
+            if isinstance(parsed_json, list):
+                new_json = []
+                for item in parsed_json:
+                    new_json.append(_convert_json(item))
+            elif isinstance(parsed_json, dict):
+                new_json = {}
+                for key, value in list(parsed_json.items()):
+                    key = str(key)
+                    new_json[key] = _convert_json(value)
+            elif isinstance(parsed_json, str):
+                new_json = str(parsed_json)
+            elif isinstance(parsed_json,
+                            (int, float, numbers.Real, numbers.Integral,
+                             str)):
+                new_json = parsed_json
+            return new_json
+
+        return _convert_json(json_data)
 
     def execute_parameter_statement_on_cbas(self, statement, mode, pretty=True,
                                             timeout=70, client_context_id=None,
@@ -176,12 +199,12 @@ class CBASHelper(RestConnection):
                 return eval(content)
 
             elif named_prepare and not encoded_plan:
-                params = 'prepared=' + urllib.quote(prepared, '~()')
+                params = 'prepared=' + urllib.parse.quote(prepared, '~()')
                 params = 'prepared="%s"'% named_prepare
             else:
                 prepared = json.dumps(query)
                 prepared = str(prepared.encode('utf-8'))
-                params = 'prepared=' + urllib.quote(prepared, '~()')
+                params = 'prepared=' + urllib.parse.quote(prepared, '~()')
             if 'creds' in query_params and query_params['creds']:
                 headers = self._create_headers_with_auth(
                     query_params['creds'][0]['user'].encode('utf-8'),
@@ -196,7 +219,7 @@ class CBASHelper(RestConnection):
                     query_params['creds'][0]['pass'].encode('utf-8'))
                 del query_params['creds']
             params.update(query_params)
-            params = urllib.urlencode(params)
+            params = urllib.parse.urlencode(params)
             if verbose:
                 self.log.info('Query params: {0}'.format(params))
             api = "%s/analytics/service?%s" % (self.cbas_base_url, params)
@@ -431,7 +454,7 @@ class CBASHelper(RestConnection):
             if not bucket:
                 raise Exception(
                     "Bucket name is not specified for bucket level backup api")
-            api += "/api/v1/bucket/{0}/backup".format(urllib.quote(bucket))
+            api += "/api/v1/bucket/{0}/backup".format(urllib.parse.quote(bucket))
         else:
             raise Exception("Un-known backup level")
         if include or exclude:
@@ -466,7 +489,7 @@ class CBASHelper(RestConnection):
             if not bucket:
                 raise Exception(
                     "Bucket name is not specified for bucket level backup api")
-            api += "/api/v1/bucket/{0}/backup".format(urllib.quote(bucket))
+            api += "/api/v1/bucket/{0}/backup".format(urllib.parse.quote(bucket))
         else:
             raise Exception("Un-known backup level")
         if include or exclude or remap:
@@ -566,7 +589,7 @@ class CBASHelper(RestConnection):
         if not password:
             password = rest_conn.password
 
-        api = rest_conn.baseUrl + "/settings/analytics"
+        api = rest_conn.baseUrl + "settings/analytics"
         headers = rest_conn._create_headers(username, password)
 
         try:
@@ -586,7 +609,7 @@ class CBASHelper(RestConnection):
                             if isinstance(content["errors"], list):
                                 errors.extend(content["errors"])
                             elif isinstance(content["errors"], dict):
-                                for v in content["errors"].values():
+                                for v in list(content["errors"].values()):
                                     errors.append(
                                         {"msg": v.encode("utf-8"), "code": 0})
                             else:

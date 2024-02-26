@@ -27,7 +27,7 @@ class Event(object):
                         Event.Fields.COMPONENT, Event.Fields.TIMESTAMP,
                         Event.Fields.SEVERITY, Event.Fields.DESCRIPTION]
             values = list()
-            for var_name in Event.Fields.__dict__.keys():
+            for var_name in list(Event.Fields.__dict__.keys()):
                 attr = getattr(Event.Fields, var_name)
                 if var_name.startswith("__") or callable(attr):
                     continue
@@ -51,7 +51,7 @@ class Event(object):
         @staticmethod
         def values():
             values = list()
-            for var_name in Event.Component.__dict__.keys():
+            for var_name in list(Event.Component.__dict__.keys()):
                 attr = getattr(Event.Component, var_name)
                 if var_name.startswith("__") or callable(attr):
                     continue
@@ -68,7 +68,7 @@ class Event(object):
         @staticmethod
         def values():
             values = list()
-            for var_name in Event.Severity.__dict__.keys():
+            for var_name in list(Event.Severity.__dict__.keys()):
                 attr = getattr(Event.Severity, var_name)
                 if var_name.startswith("__") or callable(attr):
                     continue
@@ -207,7 +207,7 @@ class EventHelper(object):
         """
         def extract_req_values(cluster_event, local_event):
             output_dict = dict()
-            for key in local_event.keys():
+            for key in list(local_event.keys()):
                 if key not in cluster_event:
                     continue
                 if type(local_event[key]) is dict:

@@ -46,7 +46,7 @@ def run(command, server):
         _ssh_client.disconnect()
         session.disconnect()
     except JSchException as e:
-        print("JSch exception on %s: %s" % (server, str(e)))
+        print(("JSch exception on %s: %s" % (server, str(e))))
     return output, error
 
 
@@ -60,7 +60,7 @@ def execute(cmd="df -h | grep data"):
     count = 1
     for server in result.rowsAsObject():
         server = server.get("id")
-        print("--+--+--+--+-- %s. SERVER: %s --+--+--+--+--" % (count, server))
+        print(("--+--+--+--+-- %s. SERVER: %s --+--+--+--+--" % (count, server)))
         count += 1
         output, error = run(cmd, server)
         if output:
@@ -84,4 +84,4 @@ except:
 
 if failed:
     for server in failed:
-        print("ssh failed: %s" % server)
+        print(("ssh failed: %s" % server))

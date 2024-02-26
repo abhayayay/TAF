@@ -1,7 +1,6 @@
 from random import randint
 from threading import Thread
 
-from BucketLib.bucket import Bucket
 from Cb_constants import DocLoading
 from cb_tools.cbepctl import Cbepctl
 from cb_tools.cbstats import Cbstats
@@ -11,7 +10,8 @@ from BucketLib.BucketOperations import BucketHelper
 from error_simulation.cb_error import CouchbaseError
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_client3 import SDKClient
-from sdk_exceptions import SDKException
+from sdk_exceptions import SDKException, check_if_exception_exists
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 from table_view import TableView
 
 
@@ -95,7 +95,8 @@ class ExpiryMaxTTL(ClusterSetup):
             durability=non_ttl_task_property["durability"],
             timeout_secs=self.sdk_timeout,
             compression=self.sdk_compression,
-            sdk_client_pool=self.sdk_client_pool)
+            sdk_client_pool=self.sdk_client_pool, retry_exception=[],
+            ignore_exceptions=[])
         ttl_task = self.task.async_load_gen_docs(
             self.cluster, bucket, ttl_gen,
             ttl_task_property["op_type"], self.maxttl,
@@ -105,7 +106,8 @@ class ExpiryMaxTTL(ClusterSetup):
             durability=ttl_task_property["durability"],
             timeout_secs=self.sdk_timeout,
             compression=self.sdk_compression, print_ops_rate=False,
-            sdk_client_pool=self.sdk_client_pool)
+            sdk_client_pool=self.sdk_client_pool, retry_exception=[],
+            ignore_exceptions=[])
         tasks_info[non_ttl_task] = self.bucket_util.get_doc_op_info_dict(
             bucket, non_ttl_task_property["op_type"], 0,
             replicate_to=non_ttl_task_property["replicate_to"],
@@ -140,10 +142,12 @@ class ExpiryMaxTTL(ClusterSetup):
         self.log.info("Calling compaction after expiry pager call")
         compact_tasks = []
         for bucket in self.cluster.buckets:
-            compact_tasks.append(self.task.async_compact_bucket(self.cluster.master, bucket))
+            compact_tasks.append(self.task.async_compact_bucket(
+                self.cluster.master, bucket))
         for task in compact_tasks:
             self.task.jython_task_manager.get_task_result(task)
-            self.assertTrue(task.result, "Compaction failed due to:" + str(task.exception))
+            self.assertTrue(task.result, "Compaction failed due to:"
+                                         + str(task.exception))
         self.sleep(20, "Waiting for item count to come down...")
 
         for bucket in self.cluster.buckets:
@@ -454,13 +458,13 @@ class ExpiryMaxTTL(ClusterSetup):
 
         # Max-TTL doc expiry validation
         self.log.info("Validating expiry of docs")
-        if len(ttl_task.success.keys()) != 0:
+        if len(list(ttl_task.success.keys())) != 0:
             self.fail("Items present after MaxTTL time: %s"
-                      % ttl_task.success.keys())
+                      % list(ttl_task.success.keys()))
 
         invalid_exception_tbl = TableView(self.log.info)
         invalid_exception_tbl.set_headers(["Doc_Key", "CAS"])
-        for doc_key, result in ttl_task.fail.items():
+        for doc_key, result in list(ttl_task.fail.items()):
             if result["cas"] != 0 and result["error"] is not None:
                 invalid_exception_tbl.add_row([doc_key, result["cas"]])
         invalid_exception_tbl.display("Invalid exceptions for following keys")
@@ -556,9 +560,9 @@ class ExpiryMaxTTL(ClusterSetup):
 
         self.log.info("7. Validating docs expired after TTL, "
                       "even before sync_write succeeds")
-        if len(doc_op_task.success.keys()) == self.num_items:
+        if len(list(doc_op_task.success.keys())) == self.num_items:
             self.fail("No docs deleted after MaxTTL time: %s"
-                      % doc_op_task.success.keys())
+                      % list(doc_op_task.success.keys()))
 
         self.sleep(10, "8. Waiting for all docs to be purged")
         # Read all expired docs to validate all keys present
@@ -570,13 +574,13 @@ class ExpiryMaxTTL(ClusterSetup):
         self.task.jython_task_manager.get_task_result(doc_op_task)
 
         self.log.info("9. Validating docs expired after TTL")
-        if len(doc_op_task.fail.keys()) != self.num_items:
+        if len(list(doc_op_task.fail.keys())) != self.num_items:
             self.fail("Items not deleted after MaxTTL time: %s"
-                      % doc_op_task.success.keys())
+                      % list(doc_op_task.success.keys()))
 
         # Validate cas for purged items
         keys_with_cas = list()
-        for key, result in doc_op_task.fail.items():
+        for key, result in list(doc_op_task.fail.items()):
             if result['cas'] != 0:
                 keys_with_cas.append(key)
         if len(keys_with_cas) != 0:
@@ -593,9 +597,9 @@ class ExpiryMaxTTL(ClusterSetup):
         self.task.jython_task_manager.get_task_result(doc_op_task)
 
         self.log.info("10. Validating docs exists after creation")
-        if len(doc_op_task.fail.keys()) != 0:
+        if len(list(doc_op_task.fail.keys())) != 0:
             self.fail("Doc recreate failed for keys: %s"
-                      % doc_op_task.fail.keys())
+                      % list(doc_op_task.fail.keys()))
 
         # Final doc_count validation
         self.bucket_util._wait_for_stats_all_buckets(self.cluster,
@@ -608,15 +612,17 @@ class ExpiryMaxTTL(ClusterSetup):
         1. Regular write with TTL 1 second for some key
         2. Disable expiry pager (to prevent raciness)
         3. Wait TTL period
-        4. Disable persistence on the node with the replica vBucket for that key
-        5. SyncWrite PersistMajority to active vBucket for that key (should hang)
+        4. Disable persistence on the node with the replica vb for that key
+        5. SyncWrite PersistMajority to active vBucket for that key
+           (should hang)
         6. Access key on other thread to trigger expiry
         7. Observe DCP connection being torn down without fix
         """
         def perform_sync_write():
-            client.crud(DocLoading.Bucket.DocOps.CREATE, key, {},
-                        durability=Bucket.DurabilityLevel.PERSIST_TO_MAJORITY,
-                        timeout=60)
+            client.crud(
+                DocLoading.Bucket.DocOps.CREATE, key, {},
+                durability=SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY,
+                timeout=60)
 
         doc_ttl = 5
         target_node = None
@@ -657,7 +663,7 @@ class ExpiryMaxTTL(ClusterSetup):
         self.log.info("Read key from another thread to trigger expiry")
         failure = None
         result = client.crud(DocLoading.Bucket.DocOps.READ, key)
-        if SDKException.DocumentNotFoundException not in str(result["error"]):
+        if not check_if_exception_exists(str(result["error"]), SDKException.DocumentNotFoundException):
             failure = "Invalid exception: %s" % result["error"]
 
         self.log.info("Resuming persistence on target node")

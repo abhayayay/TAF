@@ -259,7 +259,7 @@ class DoctorFTS:
         status = True
         for bucket in buckets:
             self.fts_helper = FtsHelper(bucket.serverless.nebula_endpoint)
-            for index_name, _ in bucket.ftsIndexes.items():
+            for index_name, _ in list(bucket.ftsIndexes.items()):
                 status = False
                 stop_time = time.time() + timeout
                 while time.time() < stop_time:
@@ -291,7 +291,7 @@ class DoctorFTS:
         return status
 
     def index_stats(self, dataplanes):
-        for dataplane in dataplanes.values():
+        for dataplane in list(dataplanes.values()):
             stat_monitor = threading.Thread(target=self.log_index_stats,
                                             kwargs=dict(dataplane=dataplane,
                                                         print_duration=60))
@@ -331,7 +331,7 @@ class DoctorFTS:
                                            "billableUnitsRate",
                                            "cpuPercent"
                                            ])
-            for node, fts_stat in defrag.items():
+            for node, fts_stat in list(defrag.items()):
                 self.defrag_table.add_row([node,
                                            fts_stat["memoryBytes"],
                                            fts_stat["diskBytes"],
@@ -454,13 +454,13 @@ class FTSQueryLoad:
         for thread in threads:
             thread.join()
 
-        if self.failed_count.next()-1 > 0 or self.error_count.next()-1 > 0:
+        if next(self.failed_count)-1 > 0 or next(self.error_count)-1 > 0:
             raise Exception("Queries Failed:%s , Queries Error Out:%s" %
                             (self.failed_count, self.error_count))
 
     def _run_query(self, validate_item_count=False, expected_count=0):
         while not self.stop_run:
-            index, queries = random.choice(self.bucket.ftsIndexes.items())
+            index, queries = random.choice(list(self.bucket.ftsIndexes.items()))
             query = random.choice(queries)
             start = time.time()
             e = ""
@@ -469,11 +469,11 @@ class FTSQueryLoad:
                 result = self.execute_fts_query("{}".format(index), query)
                 if validate_item_count:
                     if result.metaData().metrics().totalRows() != expected_count:
-                        self.failed_count.next()
+                        next(self.failed_count)
                     else:
-                        self.success_count.next()
+                        next(self.success_count)
                 else:
-                    self.success_count.next()
+                    next(self.success_count)
             except TimeoutException or AmbiguousTimeoutException or UnambiguousTimeoutException as e:
                 pass
             except RequestCanceledException as e:
@@ -485,11 +485,11 @@ class FTSQueryLoad:
             if str(e).find("TimeoutException") != -1\
                 or str(e).find("AmbiguousTimeoutException") != -1\
                     or str(e).find("UnambiguousTimeoutException") != -1:
-                self.timeout_count.next()
+                next(self.timeout_count)
             elif str(e).find("RequestCanceledException") != -1:
-                self.cancel_count.next()
+                next(self.cancel_count)
             elif str(e).find("CouchbaseException") != -1:
-                self.rejected_count.next()
+                next(self.rejected_count)
 
             if str(e).find("no more information available") != -1:
                 self.log.critical(query)

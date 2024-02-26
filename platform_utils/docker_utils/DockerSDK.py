@@ -25,7 +25,7 @@ class DockerClient:
                        str(CbServer.memcached_port): str(CbServer.memcached_port)}
         portMap.update(default_map)
         portBindings = {}
-        for hostPort in portMap.keys():
+        for hostPort in list(portMap.keys()):
             containerPort = portMap[hostPort]
             hostPorts = []
             hostPorts.append(PortBinding.of("0.0.0.0", hostPort))

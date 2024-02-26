@@ -364,7 +364,7 @@ class EventingUtils:
 
     def undeploy_delete_all_functions(self):
         content=self.eventing_helper.get_deployed_eventing_apps()
-        res = content.keys()
+        res = list(content.keys())
         self.log.info("all keys {}".format(res))
         for a in res:
             self.eventing_helper.undeploy_function(a)

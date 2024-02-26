@@ -191,7 +191,7 @@ class GoDocLoader(BaseTestCase):
 
         def validate_doc_thread(bucket_list, operation_type, body={}, header={}):
             seed_list = list()
-            for bucket in bucket_list.keys():
+            for bucket in list(bucket_list.keys()):
                 scopes_and_collection = bucket_list[bucket]
                 scope = scopes_and_collection['scope']
                 collection_list = scopes_and_collection['collection']
@@ -206,7 +206,7 @@ class GoDocLoader(BaseTestCase):
 
         def mutate_doc_thread(bucket_list, mutate_type, buildIndex=False):
             seed_list = list()
-            for bucket in bucket_list.keys():
+            for bucket in list(bucket_list.keys()):
                 scopes_and_collection = bucket_list[bucket]
                 scope = scopes_and_collection['scope']
                 collection_list = scopes_and_collection['collection']

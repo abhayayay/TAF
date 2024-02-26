@@ -14,14 +14,14 @@ from couchbase_helper.documentgenerator import doc_generator, SubdocDocumentGene
 from membase.api.rest_client import RestConnection
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_exceptions import SDKException
-from sdk_constants.java_client import SDKConstants
+from sdk_constants.sdk_client_constants import SDKConstants
 from com.couchbase.test.taskmanager import TaskManager
 from com.couchbase.test.sdk import SDKClient as NewSDKClient
 from com.couchbase.test.docgen import WorkLoadSettings,\
     DocumentGenerator
 from com.couchbase.test.sdk import Server
 from com.couchbase.test.loadgen import WorkLoadGenerate
-from Jython_tasks.task import PrintBucketStats
+from tasks.task import PrintBucketStats
 from java.util import HashMap
 from com.couchbase.test.docgen import DocRange
 from couchbase.test.docgen import DRConstants
@@ -167,7 +167,7 @@ class StorageBase(BaseTestCase):
                                               bucket,
                                               {"name": scope_name})
                 self.sleep(2)
-        self.scopes = self.buckets[0].scopes.keys()
+        self.scopes = list(self.buckets[0].scopes.keys())
         self.log.info("Scopes list is {}".format(self.scopes))
 
         collection_prefix = "FunctionCollection"
@@ -191,7 +191,7 @@ class StorageBase(BaseTestCase):
                                                                               bucket, scope_name,
                                                                               collection_name,
                                                                               "true")
-        self.collections = self.buckets[0].scopes[CbServer.default_scope].collections.keys()
+        self.collections = list(self.buckets[0].scopes[CbServer.default_scope].collections.keys())
         self.log.info("Collections list == {}".format(self.collections))
 
         if self.dcp_services and self.num_collections == 1:
@@ -311,24 +311,26 @@ class StorageBase(BaseTestCase):
         for bucket in buckets:
             loader_dict.update({bucket: dict()})
             loader_dict[bucket].update({"scopes": dict()})
-            for scope in bucket.scopes.keys():
+            for scope in list(bucket.scopes.keys()):
                 if scope == CbServer.system_scope:
                     continue
                 if skip_default:
                     if scope == "_default":
                         continue
                 loader_dict[bucket]["scopes"].update({scope: dict()})
-                loader_dict[bucket]["scopes"][scope].update({"collections":dict()})
-                for collection in bucket.scopes[scope].collections.keys():
-                    loader_dict[bucket]["scopes"][scope]["collections"].update({collection:dict()})
+                loader_dict[bucket]["scopes"][scope].update({"collections": dict()})
+                for collection in list(bucket.scopes[scope].collections.keys()):
+                    loader_dict[bucket]["scopes"][scope]["collections"].update({collection: dict()})
                     if self.gen_update is not None:
                         op_type = DocLoading.Bucket.DocOps.UPDATE
                         common_params.update({"doc_gen": self.gen_update})
-                        loader_dict[bucket]["scopes"][scope]["collections"][collection][op_type] = copy.deepcopy(common_params)
+                        loader_dict[bucket]["scopes"][scope]["collections"][collection][op_type] = copy.deepcopy(
+                            common_params)
                     if self.gen_create is not None:
                         op_type = DocLoading.Bucket.DocOps.CREATE
                         common_params.update({"doc_gen": self.gen_create})
-                        loader_dict[bucket]["scopes"][scope]["collections"][collection][op_type] = copy.deepcopy(common_params)
+                        loader_dict[bucket]["scopes"][scope]["collections"][collection][op_type] = copy.deepcopy(
+                            common_params)
                     if self.gen_delete is not None:
                         op_type = DocLoading.Bucket.DocOps.DELETE
                         common_params.update({"doc_gen": self.gen_delete})
@@ -385,11 +387,11 @@ class StorageBase(BaseTestCase):
     def _loader_dict_new(self, cmd={}, scopes=None, collections=None):
         self.loader_map = dict()
         for bucket in self.cluster.buckets:
-            scopes_keys = scopes or bucket.scopes.keys()
+            scopes_keys = scopes or list(bucket.scopes.keys())
             for scope in scopes_keys:
                 if scope == CbServer.system_scope or scope == "_default":
                     continue
-                collections_keys = collections or bucket.scopes[scope].collections.keys()
+                collections_keys = collections or list(bucket.scopes[scope].collections.keys())
                 for collection in collections_keys:
                     if collection == "_default" and scope == "_default":
                         continue
@@ -430,18 +432,20 @@ class StorageBase(BaseTestCase):
     def retry_failures(self, tasks, wait_for_stats=True):
         for task in tasks:
             task.result = True
-            for optype, failures in task.failedMutations.items():
+            for optype, failures in list(task.failedMutations.items()):
                 for failure in failures:
-                    print("Test Retrying {}: {} -> {}".format(optype, failure.id(), failure.err().getClass().getSimpleName()))
+                    print(("Test Retrying {}: {} -> {}".format(optype, failure.id(),
+                                                               failure.err().getClass().getSimpleName())))
                     try:
                         if optype == "create":
                             task.docops.insert(failure.id(), failure.document(), task.sdk.connection, task.setOptions)
                         if optype == "update":
-                            task.docops.upsert(failure.id(), failure.document(), task.sdk.connection, task.upsertOptions)
+                            task.docops.upsert(failure.id(), failure.document(), task.sdk.connection,
+                                               task.upsertOptions)
                         if optype == "delete":
                             task.docops.delete(failure.id(), task.sdk.connection, task.removeOptions)
                     except (ServerOutOfMemoryException, TimeoutException) as e:
-                        print("Retry {} failed for key: {} - {}".format(optype, failure.id(), e))
+                        print(("Retry {} failed for key: {} - {}".format(optype, failure.id(), e)))
                         task.result = False
                     except (DocumentNotFoundException, DocumentExistsException) as e:
                         pass
@@ -474,11 +478,11 @@ class StorageBase(BaseTestCase):
             self.task_manager.add_new_task(self.printOps)
         while i > 0:
             for bucket in self.cluster.buckets:
-                scopes_keys = scopes or bucket.scopes.keys()
+                scopes_keys = scopes or list(bucket.scopes.keys())
                 for scope in scopes_keys:
                     if scope == CbServer.system_scope or scope == "_default":
                         continue
-                    collections_keys = collections or bucket.scopes[scope].collections.keys()
+                    collections_keys = collections or list(bucket.scopes[scope].collections.keys())
                     for collection in collections_keys:
                         if collection == "_default" and scope == "_default":
                             continue
@@ -513,11 +517,11 @@ class StorageBase(BaseTestCase):
                             str(self.cluster.master.memcached_port))
             self.loader_map = dict()
             for bucket in self.cluster.buckets:
-                scopes_keys = scopes or bucket.scopes.keys()
+                scopes_keys = scopes or list(bucket.scopes.keys())
                 for scope in scopes_keys:
                     if scope == CbServer.system_scope:
                         continue
-                    collections_keys = collections or bucket.scopes[scope].collections.keys()
+                    collections_keys = collections or list(bucket.scopes[scope].collections.keys())
                     self.log.info("scope is {}".format(scope))
                     for collection in collections_keys:
                         self.log.info("collection is {}".format(collection))
@@ -565,8 +569,8 @@ class StorageBase(BaseTestCase):
             i = self.process_concurrency
             while i > 0:
                 for bucket in self.cluster.buckets:
-                    for scope in bucket.scopes.keys():
-                        for collection in bucket.scopes[scope].collections.keys():
+                    for scope in list(bucket.scopes.keys()):
+                        for collection in list(bucket.scopes[scope].collections.keys()):
                             if collection == "_default" and scope == "_default":
                                 continue
                             for op_type in doc_ops:
@@ -575,8 +579,10 @@ class StorageBase(BaseTestCase):
                                 client = NewSDKClient(master, bucket.name, scope, collection)
                                 client.initialiseSDK()
                                 self.sleep(1)
-                                taskName = "Validate_%s_%s_%s_%s_%s_%s" % (bucket.name, scope, collection, op_type, str(i), time.time())
-                                task = WorkLoadGenerate(taskName, self.loader_map[bucket.name+scope+collection+op_type],
+                                taskName = "Validate_%s_%s_%s_%s_%s_%s" % (
+                                bucket.name, scope, collection, op_type, str(i), time.time())
+                                task = WorkLoadGenerate(taskName,
+                                                        self.loader_map[bucket.name + scope + collection + op_type],
                                                         client, "NONE",
                                                         self.maxttl, self.time_unit,
                                                         self.track_failures, 0)
@@ -642,15 +648,15 @@ class StorageBase(BaseTestCase):
                     monitor_stats=self.monitor_stats,
                     track_failures=track_failures,
                     sdk_client_pool=self.sdk_client_pool)
-                tasks_info.update(task_info.items())
+                tasks_info.update(list(task_info.items()))
                 task_per_collection[collection] = list(task_info.keys())[0]
             if scope == CbServer.default_scope:
                 self.collections.remove(CbServer.default_collection)
             docs_per_scope[scope] = task_per_collection
-        for task in tasks_info.keys():
+        for task in list(tasks_info.keys()):
             self.task_manager.get_task_result(task)
         if self.active_resident_threshold < 100:
-            for task, _ in tasks_info.items():
+            for task, _ in list(tasks_info.items()):
                 docs_per_task[task] = task.doc_index
             self.log.info("docs_per_task : {}".format(docs_per_task))
             for scope in self.scopes:
@@ -871,7 +877,7 @@ class StorageBase(BaseTestCase):
                 sdk_client_pool=self.sdk_client_pool,
                 sdk_retry_strategy=sdk_retry_strategy,
                 iterations=iterations)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
         if "create" in doc_ops and self.gen_create is not None:
             tem_tasks_info = self.bucket_util._async_load_all_buckets(
                 self.cluster, self.gen_create, "create", 0,
@@ -891,7 +897,7 @@ class StorageBase(BaseTestCase):
                 track_failures=track_failures,
                 sdk_client_pool=self.sdk_client_pool,
                 sdk_retry_strategy=sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items += (self.gen_create.end - self.gen_create.start)
         if "expiry" in doc_ops and self.gen_expiry is not None and self.maxttl:
             tem_tasks_info = self.bucket_util._async_load_all_buckets(
@@ -913,7 +919,7 @@ class StorageBase(BaseTestCase):
                 track_failures=track_failures,
                 sdk_client_pool=self.sdk_client_pool,
                 sdk_retry_strategy=sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items -= (self.gen_expiry.end - self.gen_expiry.start)
         if "read" in doc_ops and self.gen_read is not None:
             read_tasks_info = self.bucket_util._async_validate_docs(
@@ -949,7 +955,7 @@ class StorageBase(BaseTestCase):
                 track_failures=track_failures,
                 sdk_client_pool=self.sdk_client_pool,
                 sdk_retry_strategy=sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items -= (self.gen_delete.end - self.gen_delete.start)
 
         if _sync:
@@ -964,7 +970,7 @@ class StorageBase(BaseTestCase):
         if read_task:
             # TODO: Need to converge read_tasks_info into tasks_info before
             #       itself to avoid confusions during _sync=False case
-            tasks_info.update(read_tasks_info.items())
+            tasks_info.update(list(read_tasks_info.items()))
             if _sync:
                 for task in read_tasks_info:
                     self.task_manager.get_task_result(task)
@@ -1070,7 +1076,7 @@ class StorageBase(BaseTestCase):
                 retry_exceptions=self.retry_exceptions,
                 ignore_exceptions=self.ignore_exceptions,
                 sdk_client_pool=self.sdk_client_pool)
-            validate_tasks_info.update(temp_tasks_info.items())
+            validate_tasks_info.update(list(temp_tasks_info.items()))
         if _sync:
             for task in validate_tasks_info:
                 self.task_manager.get_task_result(task)
@@ -1096,7 +1102,7 @@ class StorageBase(BaseTestCase):
         out = subprocess.Popen(['ps', 'v', '-p', str(os.getpid())], stdout=subprocess.PIPE).communicate()[0].split(b'\n')
         vsz_index = out[0].split().index(b'RSS')
         mem = float(out[1].split()[vsz_index]) / 1024
-        print("RAM FootPrint: %s" % str(mem))
+        print(("RAM FootPrint: %s" % str(mem)))
 
     def crash(self, nodes=None, kill_itr=1, graceful=False,
               wait=True, force_collect=False):
@@ -1123,7 +1129,7 @@ class StorageBase(BaseTestCase):
                        "Iteration:{} waiting for {} sec to kill memcached on all nodes".
                        format(self.loop_itr, sleep))
 
-            for node, shell in connections.items():
+            for node, shell in list(connections.items()):
                 if "kv" in node.services:
                     if graceful:
                         self.log.info("Restarting couchbase server on node {}".format(node.ip))
@@ -1161,7 +1167,7 @@ class StorageBase(BaseTestCase):
                             self.stop_crash = True
                             self.crash_failure = True
 
-        for _, shell in connections.items():
+        for _, shell in list(connections.items()):
             shell.disconnect()
 
     def compact_bucket(self):
@@ -1266,10 +1272,10 @@ class StorageBase(BaseTestCase):
             num_storage_threads=self.num_storage_threads)
 
     def PrintStep(self, msg=None):
-        print "\n"
-        print "\t", "#"*60
-        print "\t", "#"
-        print "\t", "#  %s" % msg
-        print "\t", "#"
-        print "\t", "#"*60
-        print "\n"
+        print("\n")
+        print(("\t", "#" * 60))
+        print(("\t", "#"))
+        print(("\t", "#  %s" % msg))
+        print(("\t", "#"))
+        print(("\t", "#" * 60))
+        print("\n")

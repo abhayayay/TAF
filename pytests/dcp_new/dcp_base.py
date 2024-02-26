@@ -11,7 +11,7 @@ from dcp_new.constants import *
 from memcacheConstants import *
 from dcp_bin_client import DcpClient
 from mc_bin_client import MemcachedClient as McdClient
-from dcp_data_persist import LogData
+from .dcp_data_persist import LogData
 import uuid
 from mc_bin_client import MemcachedError
 
@@ -34,7 +34,7 @@ class DCPBase(CollectionBase):
         self.enable_stream_id = self.input.param("enable_stream_id", False)
         #         vbuckets = self.input.param("vbuckets", 0)
         #         if len(vbuckets) == 1:
-        self.vbuckets = range(1024)
+        self.vbuckets = list(range(1024))
         #         else:
         #             self.vbuckets = vbuckets.split(",")
         self.start_seq_no_list = self.input.param("start", [0] * len(self.vbuckets))
@@ -437,7 +437,7 @@ class DCPBase(CollectionBase):
             filter_json.append('')
 
         for f in filter_json:
-            for index in xrange(0, len(self.vb_list)):
+            for index in range(0, len(self.vb_list)):
                 if self.stream_req_info:
                     self.log.info('Stream to vbucket %s on node %s with seq no %s and uuid %s' \
                                   % (self.vb_list[index], self.get_node_of_dcp_client_connection(
@@ -543,7 +543,7 @@ class DCPBase(CollectionBase):
                 self.log.info("using localhost")
                 return 'localhost'
             else:
-                raise StandardError("Invalid host input", host, "Error origin:", errorOrigin)
+                raise Exception("Invalid host input", host, "Error origin:", errorOrigin)
 
     def get_node_of_dcp_client_connection(self, vb):
         node_id = self.vb_map[vb][0]

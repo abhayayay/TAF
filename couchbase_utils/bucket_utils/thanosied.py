@@ -87,12 +87,12 @@ def parseArguments():
 
 class Document:
     def __init__(self, value, size):
-        year = range(2001,2018)
-        month = range(1,12)
-        day = range(1,28)
-        hr = range(0,24)
-        min = range(0,60)
-        sec = range(0,60)
+        year = list(range(2001,2018))
+        month = list(range(1,12))
+        day = list(range(1,28))
+        hr = list(range(0,24))
+        min = list(range(0,60))
+        sec = list(range(0,60))
         self.val = int(value)
         self.update = 0
 
@@ -359,7 +359,7 @@ class DocumentGenerator:
         result = self.get_items(connection, keys, replica=replica)
         if self.validate_expired > 0:
             if result:
-                for key in result.keys():
+                for key in list(result.keys()):
                     if replica:
                         self.missing_key_val_replica.append(key)
                         return
@@ -381,7 +381,7 @@ class DocumentGenerator:
                         self.missing_key_val.append(key)
                     continue
                 val = result[key].value
-                for k in value.keys():
+                for k in list(value.keys()):
                     if k in val and val[k] == value[k]:
                         continue
                     else:
@@ -484,25 +484,25 @@ class DocumentGenerator:
 
     def print_validation_stats(self):
         if self.missing_key_val:
-            print("Missing keys count: {}".format(self.missing_key_val.__len__()))
-            print("Missing keys: {}".format(self.missing_key_val.__str__()))
+            print(("Missing keys count: {}".format(self.missing_key_val.__len__())))
+            print(("Missing keys: {}".format(self.missing_key_val.__str__())))
         if self.wrong_keys:
-            print("Mismatch keys count: {}".format(self.wrong_keys.__len__()))
-            print("Mismatch keys: {}".format(self.wrong_keys.__str__()))
+            print(("Mismatch keys count: {}".format(self.wrong_keys.__len__())))
+            print(("Mismatch keys: {}".format(self.wrong_keys.__str__())))
         if self.replicate_to > 0 and self.missing_key_val_replica:
-            print("Missing keys count from replicas: {}".format(self.missing_key_val_replica.__len__()))
-            print("Missing keys from replicas: {}".format(self.missing_key_val_replica.__str__()))
+            print(("Missing keys count from replicas: {}".format(self.missing_key_val_replica.__len__())))
+            print(("Missing keys from replicas: {}".format(self.missing_key_val_replica.__str__())))
         if self.replicate_to > 0 and self.wrong_keys_replica:
-            print("Mismatch keys count from replicas: {}".format(self.wrong_keys_replica.__len__()))
-            print("Mismatch keys from replicas: {}".format(self.wrong_keys_replica.__str__()))
+            print(("Mismatch keys count from replicas: {}".format(self.wrong_keys_replica.__len__())))
+            print(("Mismatch keys from replicas: {}".format(self.wrong_keys_replica.__str__())))
         if not self.missing_key_val and not self.wrong_keys:
-            print("Validated documents: {}".format(self.num_items))
+            print(("Validated documents: {}".format(self.num_items)))
 
     def print_upsert_stats(self):
-        print("Upserted documents: {}".format(self.num_completed))
+        print(("Upserted documents: {}".format(self.num_completed)))
 
     def print_delete_stats(self):
-        print("Deleted documents: {}".format(self.num_completed))
+        print(("Deleted documents: {}".format(self.num_completed)))
 
     def generate(self):
         """

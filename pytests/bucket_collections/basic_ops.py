@@ -39,8 +39,8 @@ class BasicOps(CollectionBase):
 
         bucket = self.bucket_util.get_all_buckets(self.cluster)[0]
         for op_type in ["create", "update", "delete"]:
-            for _, scope in bucket.scopes.items():
-                for _, collection in scope.collections.items():
+            for _, scope in list(bucket.scopes.items()):
+                for _, collection in list(scope.collections.items()):
                     task = self.task.async_load_gen_docs(
                         self.cluster, bucket, gen_load, op_type, self.maxttl,
                         batch_size=20,
@@ -121,7 +121,7 @@ class BasicOps(CollectionBase):
             self.task_manager.get_task_result(task)
             if task.fail:
                 self.log_failure("Doc loading failed for keys: %s"
-                                 % task.fail.keys())
+                                 % list(task.fail.keys()))
 
         # Data validation
         self.bucket_util._wait_for_stats_all_buckets(self.cluster,
@@ -167,22 +167,23 @@ class BasicOps(CollectionBase):
                                                      self.cluster.buckets)
         # Prints bucket stats after doc_ops
         self.bucket_util.print_bucket_stats(self.cluster)
+        expected_collection_count = 0
+        for s_name, scope in list(self.bucket.scopes.items()):
+            for _, col in list(scope.collections.items()):
+                if not col.is_dropped:
+                    expected_collection_count += 1
         # Validate drop collection using cbstats
         for node in self.cluster_util.get_kv_nodes(self.cluster):
             cbstats = Cbstats(node)
             c_data = cbstats.get_collections(self.bucket)
-            expected_collection_count = \
-                len(self.bucket_util.get_active_collections(
-                    self.bucket,
-                    CbServer.default_scope,
-                    only_names=True))
             if c_data["count"] != expected_collection_count:
                 self.log_failure("%s - Expected collection count is '%s'. "
                                  "Actual: %s"
                                  % (node.ip,
                                     expected_collection_count,
                                     c_data["count"]))
-            if "_default" in c_data["_default"]:
+            if CbServer.default_scope in c_data \
+                    and CbServer.default_collection in c_data["_default"]:
                 self.log_failure("%s: _default collection exists in cbstats"
                                  % node.ip)
 
@@ -243,7 +244,7 @@ class BasicOps(CollectionBase):
         client = SDKClient([self.cluster.master], self.bucket,
                            compression_settings=self.sdk_compression)
         while create_gen.has_next():
-            key, val = create_gen.next()
+            key, val = next(create_gen)
             result = client.crud("create", key, val, exp=self.maxttl,
                                  durability=self.durability_level,
                                  timeout=self.sdk_timeout)
@@ -280,10 +281,15 @@ class BasicOps(CollectionBase):
             BucketUtils.create_scopes(self.cluster, self.bucket, num_scopes)
 
         # Validate drop collection using cbstats
+        expected_collection_count = 0
+        for s_name, scope in list(self.bucket.scopes.items()):
+            for _, col in list(scope.collections.items()):
+                if not col.is_dropped:
+                    expected_collection_count += 1
         for node in self.cluster_util.get_kv_nodes(self.cluster):
             cbstats = Cbstats(node)
             c_data = cbstats.get_collections(self.bucket)
-            if c_data["count"] != 1:
+            if c_data["count"] != expected_collection_count:
                 self.log_failure("%s - Expected scope count is '1'."
                                  "Actual: %s" % (node.ip, c_data["count"]))
             if "_default" not in c_data:
@@ -416,7 +422,7 @@ class BasicOps(CollectionBase):
                                collection=collection_name,
                                compression_settings=self.sdk_compression)
         while gen_add.has_next():
-            key, value = gen_add.next()
+            key, value = next(gen_add)
             result = sdk_client.crud("create", key, value,
                                      replicate_to=self.replicate_to,
                                      persist_to=self.persist_to,
@@ -478,9 +484,9 @@ class BasicOps(CollectionBase):
                            compression_settings=self.sdk_compression)
 
         while doc_gen.has_next():
-            key, value = doc_gen.next()
-            for _, scope in self.bucket.scopes.items():
-                for _, collection in scope.collections.items():
+            key, value = next(doc_gen)
+            for _, scope in list(self.bucket.scopes.items()):
+                for _, collection in list(scope.collections.items()):
                     client.select_collection(scope.name, collection.name)
                     result = client.crud("create", key, value, self.maxttl,
                                          durability=self.durability_level,
@@ -518,7 +524,7 @@ class BasicOps(CollectionBase):
         self.__dockey_data_ops(generic_key)
 
     def test_dockey_unicode_data_ops(self):
-        generic_key = "\u00CA"
+        generic_key = "\\u00CA"
         if self.key_size:
             self.key_size = self.key_size - len(generic_key)
             generic_key = generic_key + "é" * self.key_size
@@ -550,9 +556,9 @@ class BasicOps(CollectionBase):
 
         for doc_gen in [min_doc_gen, max_doc_gen]:
             while doc_gen.has_next():
-                key, value = doc_gen.next()
-                for _, scope in self.bucket.scopes.items():
-                    for _, collection in scope.collections.items():
+                key, value = next(doc_gen)
+                for _, scope in list(self.bucket.scopes.items()):
+                    for _, collection in list(scope.collections.items()):
                         client.select_collection(scope.name, collection.name)
                         result = client.crud("create", key, value, self.maxttl,
                                              durability=self.durability_level,
@@ -606,9 +612,9 @@ class BasicOps(CollectionBase):
 
         for doc_gen in [min_doc_size_gen, max_doc_size_gen]:
             while doc_gen.has_next():
-                key, value = doc_gen.next()
-                for _, scope in self.bucket.scopes.items():
-                    for _, collection in scope.collections.items():
+                key, value = next(doc_gen)
+                for _, scope in list(self.bucket.scopes.items()):
+                    for _, collection in list(scope.collections.items()):
                         client.select_collection(scope.name, collection.name)
                         result = client.crud("create", key, value, self.maxttl,
                                              durability=self.durability_level,
@@ -653,8 +659,8 @@ class BasicOps(CollectionBase):
                                          doc_size=1024 * 1024 * 1024 * 20,
                                          mix_key_size=False,
                                          randomize_doc_size=False)
-        for _, scope in self.bucket.scopes.items():
-            for _, collection in scope.collections.items():
+        for _, scope in list(self.bucket.scopes.items()):
+            for _, collection in list(scope.collections.items()):
                 tasks = list()
                 for doc_gen in [min_doc_size_gen, max_doc_size_gen]:
                     tasks.append(self.task.async_load_gen_docs(
@@ -677,24 +683,24 @@ class BasicOps(CollectionBase):
         collections = BucketUtils.get_random_collections(
             self.cluster.buckets, 10, 10, 1)
         # delete collection
-        for bucket_name, scope_dict in collections.iteritems():
+        for bucket_name, scope_dict in list(collections.items()):
             bucket = BucketUtils.get_bucket_obj(self.cluster.buckets,
                                                 bucket_name)
             scope_dict = scope_dict["scopes"]
-            for scope_name, collection_dict in scope_dict.items():
+            for scope_name, collection_dict in list(scope_dict.items()):
                 collection_dict = collection_dict["collections"]
-                for c_name, _ in collection_dict.items():
+                for c_name, _ in list(collection_dict.items()):
                     BucketUtils.drop_collection(self.cluster.master,
                                                 bucket,
                                                 scope_name, c_name)
         # recreate collection
-        for bucket_name, scope_dict in collections.iteritems():
+        for bucket_name, scope_dict in list(collections.items()):
             bucket = BucketUtils.get_bucket_obj(self.cluster.buckets,
                                                 bucket_name)
             scope_dict = scope_dict["scopes"]
-            for scope_name, collection_dict in scope_dict.items():
+            for scope_name, collection_dict in list(scope_dict.items()):
                 collection_dict = collection_dict["collections"]
-                for c_name, _ in collection_dict.items():
+                for c_name, _ in list(collection_dict.items()):
                     # Cannot create a _default collection
                     if c_name == CbServer.default_collection:
                         continue
@@ -715,10 +721,10 @@ class BasicOps(CollectionBase):
         bucket_dict = BucketUtils.get_random_scopes(
             self.cluster.buckets, "all", 1)
         # Delete scopes
-        for bucket_name, scope_dict in bucket_dict.items():
+        for bucket_name, scope_dict in list(bucket_dict.items()):
             bucket = BucketUtils.get_bucket_obj(self.cluster.buckets,
                                                 bucket_name)
-            for scope_name, _ in scope_dict["scopes"].items():
+            for scope_name, _ in list(scope_dict["scopes"].items()):
                 if scope_name == CbServer.default_scope:
                     scope_drop_fails = True
                 try:
@@ -734,10 +740,10 @@ class BasicOps(CollectionBase):
                         raise drop_exception
 
         # Recreate scopes
-        for bucket_name, scope_dict in bucket_dict.items():
+        for bucket_name, scope_dict in list(bucket_dict.items()):
             bucket = BucketUtils.get_bucket_obj(self.cluster.buckets,
                                                 bucket_name)
-            for scope_name, _ in scope_dict["scopes"].items():
+            for scope_name, _ in list(scope_dict["scopes"].items()):
                 # Cannot create a _default scope
                 if scope_name == CbServer.default_collection:
                     continue
@@ -752,13 +758,13 @@ class BasicOps(CollectionBase):
         collections = BucketUtils.get_random_collections(
             self.cluster.buckets, 10, 10, 1)
         # Delete collection
-        for self.bucket_name, scope_dict in collections.iteritems():
+        for self.bucket_name, scope_dict in list(collections.items()):
             bucket = BucketUtils.get_bucket_obj(self.cluster.buckets,
                                                 self.bucket_name)
             scope_dict = scope_dict["scopes"]
-            for scope_name, collection_dict in scope_dict.items():
+            for scope_name, collection_dict in list(scope_dict.items()):
                 collection_dict = collection_dict["collections"]
-                for c_name, c_data in collection_dict.items():
+                for c_name, c_data in list(collection_dict.items()):
                     BucketUtils.drop_collection(self.cluster.master, bucket,
                                                 scope_name, c_name)
         # Trigger compaction
@@ -943,11 +949,11 @@ class BasicOps(CollectionBase):
             [self.bucket], 1, "all", "all", exclude_from=exclude_dict)
         scope_name = collection_name = None
         scope_dict = bucket_dict[self.bucket.name]["scopes"]
-        for t_scope, scope_data in scope_dict.items():
-            print(scope_data["collections"])
+        for t_scope, scope_data in list(scope_dict.items()):
+            print((scope_data["collections"]))
             if scope_data["collections"]:
                 scope_name = t_scope
-                collection_name = scope_data["collections"].keys()[0]
+                collection_name = list(scope_data["collections"].keys())[0]
                 break
 
         self.num_items = \
@@ -997,8 +1003,8 @@ class BasicOps(CollectionBase):
     def test_item_count_collections(self):
         bucket = self.cluster.buckets[0]
         # verify items count for each collection
-        for _, scope in bucket.scopes.items():
-            for _, collection in scope.collections.items():
+        for _, scope in list(bucket.scopes.items()):
+            for _, collection in list(scope.collections.items()):
                 expected_item_count = collection.num_items
                 actual_item_count = \
                     self.bucket_util.get_total_items_count_in_a_collection(
@@ -1013,8 +1019,8 @@ class BasicOps(CollectionBase):
         # Flush bucket and verify items count of each coll goes to 0
         self.bucket_util.flush_bucket(self.cluster, bucket)
         self.sleep(30)
-        for _, scope in bucket.scopes.items():
-            for _, collection in scope.collections.items():
+        for _, scope in list(bucket.scopes.items()):
+            for _, collection in list(scope.collections.items()):
                 expected_item_count = 0
                 actual_item_count = \
                     self.bucket_util.get_total_items_count_in_a_collection(

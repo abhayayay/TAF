@@ -24,7 +24,7 @@ class CBASHighAvailability(CBASBaseTest):
         super(CBASHighAvailability, self).setUp()
 
         # Since all the test cases are being run on 1 cluster only
-        self.cluster = self.cb_clusters.values()[0]
+        self.cluster = list(self.cb_clusters.values())[0]
 
         self.security_util = SecurityUtils(self.log)
         self.rebalance_util = CBASRebalanceUtil(
@@ -387,7 +387,7 @@ class CBASHighAvailability(CBASBaseTest):
             for j in x:
                 if (j.ip in y) and (j.ip in z) and (j.ip not in c):
                     c[j.ip] = j
-            return c.values()
+            return list(c.values())
 
     def test_analytics_replica(self):
         self.log.info("Test started")
@@ -1584,11 +1584,11 @@ class CBASHighAvailability(CBASBaseTest):
                         break
 
         selected_node_rest_conns = list()
-        for node in selected_nodes.values():
+        for node in list(selected_nodes.values()):
             selected_node_rest_conns.append(RestConnection(node))
 
         server_stopped = self.wait_for_rebalance_to_start_before_killing_server(
-            self.cluster, selected_nodes.values())
+            self.cluster, list(selected_nodes.values()))
 
         if not server_stopped:
             self.fail("Error while stopping couchbase server on one of the "
@@ -1605,7 +1605,7 @@ class CBASHighAvailability(CBASBaseTest):
 
             server_started = True
             self.log.info("Restarting the server and rebalancing again")
-            for node in selected_nodes.values():
+            for node in list(selected_nodes.values()):
                 self.log.info("Starting Couchbase server on {0}".format(
                     node.ip))
                 try:

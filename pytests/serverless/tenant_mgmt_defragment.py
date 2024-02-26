@@ -42,7 +42,7 @@ class TenantManagementOnPremDefragment(ServerlessOnPremBaseTest):
 
     def verify_de_fragmentation(self, target_node):
         util_map_post_rebal = self.rest.get_utilisation_map()
-        for server in util_map_post_rebal.keys():
+        for server in list(util_map_post_rebal.keys()):
             self.assertTrue(util_map_post_rebal[server]["weight"] > 0,
                             "Some nodes not getting utilised")
             if str(target_node["server"].ip) in str(server):
@@ -93,7 +93,7 @@ class TenantManagementOnPremDefragment(ServerlessOnPremBaseTest):
                     node_zone_bucket[server]["buckets"] = [bucket]
                 else:
                     node_zone_bucket[server]["buckets"].append(bucket)
-                for zone in zone_map.keys():
+                for zone in list(zone_map.keys()):
                     if server.ip in zone_map[zone]:
                         node_zone_bucket[server]["zone"] = zone
         return node_zone_bucket, zone_map
@@ -119,7 +119,7 @@ class TenantManagementOnPremDefragment(ServerlessOnPremBaseTest):
                     server_bucket_map[server].append(bucket)
 
         node_weight = 0
-        for server in server_bucket_map.keys():
+        for server in list(server_bucket_map.keys()):
             target_node["server"] = server
             for buckets in server_bucket_map[server]:
                 nodes_of_buckets[buckets] = buckets.servers
@@ -173,10 +173,10 @@ class TenantManagementOnPremDefragment(ServerlessOnPremBaseTest):
         add_to_nodes = dict()
         defrag_option["defragmentZones"] = []
         defrag_option["knownNodes"] = [nodes.ip for nodes in
-                                       zone_bucket_map.keys()]
+                                       list(zone_bucket_map.keys())]
         for node in nodes_in:
             defrag_option["knownNodes"].append(node.ip)
-        for zone in zone_map.keys():
+        for zone in list(zone_map.keys()):
             defrag_option["defragmentZones"].append(zone)
             add_to_nodes[zone] = self.nodes_in/3
         rebalance_task = self.task.async_rebalance(self.cluster, nodes_in, [],

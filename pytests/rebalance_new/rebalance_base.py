@@ -14,7 +14,6 @@ from membase.api.rest_client import RestConnection
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_exceptions import SDKException
 
-from java.lang import Exception as Java_base_exception
 
 retry_exceptions = list([SDKException.AmbiguousTimeoutException,
                          SDKException.DurabilityImpossibleException,
@@ -88,8 +87,6 @@ class RebalanceBaseTest(BaseTestCase):
         if self.spec_name is not None:
             try:
                 self.collection_setup()
-            except Java_base_exception as exception:
-                self.handle_setup_exception(exception)
             except Exception as exception:
                 self.handle_setup_exception(exception)
         else:
@@ -348,7 +345,7 @@ class RebalanceBaseTest(BaseTestCase):
             collection=self.collection_name,
             sdk_client_pool=self.sdk_client_pool)
         if self.active_resident_threshold < 100:
-            for task, _ in tasks_info.items():
+            for task, _ in list(tasks_info.items()):
                 self.num_items = task.doc_index
         self.assertTrue(self.bucket_util.doc_ops_tasks_status(tasks_info),
                         "Doc_ops failed in rebalance_base._load_all_buckets")
@@ -411,7 +408,7 @@ class RebalanceBaseTest(BaseTestCase):
                     sync=sync, defer=self.defer): None})
 
         if task_verification:
-            for task in tasks_info.keys():
+            for task in list(tasks_info.keys()):
                 self.task.jython_task_manager.get_task_result(task)
 
         return tasks_info
@@ -431,7 +428,7 @@ class RebalanceBaseTest(BaseTestCase):
                 ignore_exceptions=ignore_exceptions,
                 scope=self.scope_name, collection=self.collection_name,
                 sdk_client_pool=self.sdk_client_pool)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
         if "create" in self.doc_ops:
             tem_tasks_info = self.bucket_util._async_load_all_buckets(
                 self.cluster, self.gen_create, "create", 0,
@@ -444,7 +441,7 @@ class RebalanceBaseTest(BaseTestCase):
                 ignore_exceptions=ignore_exceptions,
                 scope=self.scope_name, collection=self.collection_name,
                 sdk_client_pool=self.sdk_client_pool)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items += (self.gen_create.end - self.gen_create.start)
             for bucket in self.cluster.buckets:
                 bucket \
@@ -463,7 +460,7 @@ class RebalanceBaseTest(BaseTestCase):
                 ignore_exceptions=ignore_exceptions,
                 scope=self.scope_name, collection=self.collection_name,
                 sdk_client_pool=self.sdk_client_pool)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             for bucket in self.cluster.buckets:
                 bucket \
                     .scopes[self.scope_name] \
@@ -638,7 +635,7 @@ class RebalanceBaseTest(BaseTestCase):
             cb_collect_response = rest.ns_server_tasks("clusterLogsCollection")
             per_node_data = cb_collect_response["perNode"]
             skip_node_ips = list()
-            for node, reason in known_failures.items():
+            for node, reason in list(known_failures.items()):
                 if reason in ["in_node", "out_node"]:
                     skip_node_ips.append(node)
                     continue

@@ -354,15 +354,15 @@ class SecurityTest(BaseTestCase):
             }
         ]
         for payload in payloads:
-            if payload["params"].has_key("cidr"):
+            if "cidr" in payload["params"]:
                 cidr = payload["params"]["cidr"]
             else:
                 cidr = None
-            if payload["params"].has_key("comment"):
+            if "comment" in payload["params"]:
                 comment = payload["params"]["comment"]
             else:
                 comment = ""
-            if payload["params"].has_key("expiresAt"):
+            if "expiresAt" in payload["params"]:
                 expiresAt = payload["params"]["expiresAt"]
             else:
                 expiresAt = ""

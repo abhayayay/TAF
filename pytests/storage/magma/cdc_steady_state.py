@@ -1,5 +1,5 @@
 import random
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from remote.remote_util import RemoteMachineShellConnection
 
 
@@ -59,7 +59,7 @@ class SteadyStateTests(MagmaBaseTest):
             history_start_seq_stats = self.get_history_start_seq_for_each_vb()
             for bucket in self.cluster.buckets:
                 self.log.info("history_start_seq_stats {}".format(history_start_seq_stats[bucket]))
-                for key in history_start_seq_stats[bucket].keys():
+                for key in list(history_start_seq_stats[bucket].keys()):
                     msg = "{} vbucket {} has start seq number {}".format(bucket.name, key,
                                                                          history_start_seq_stats[bucket][key]["active"]["history_start_seqno"])
                     self.assertEqual(init_history_start_seq[bucket][key]["active"]["history_start_seqno"],
@@ -89,7 +89,7 @@ class SteadyStateTests(MagmaBaseTest):
             history_start_seq_stats = self.get_history_start_seq_for_each_vb()
             for bucket in self.cluster.buckets:
                 self.log.info("history_start_seq_stats after wiping history {}".format(history_start_seq_stats[bucket]))
-                for key in history_start_seq_stats[bucket].keys():
+                for key in list(history_start_seq_stats[bucket].keys()):
                     msg = "curr_history_start_seq {} for  bucket {} and vbucket {} is non zero ".format(history_start_seq_stats[bucket][key]["active"]["history_start_seqno"],
                                                                                                         bucket.name, key)
                     self.assertNotEqual(0 , history_start_seq_stats[bucket][key]["active"]["history_start_seqno"], msg)
@@ -109,7 +109,7 @@ class SteadyStateTests(MagmaBaseTest):
             history_start_seq_stats = self.get_history_start_seq_for_each_vb()
             for bucket in self.cluster.buckets:
                 self.log.info(" New history_start_seq_stats {}".format(history_start_seq_stats[bucket]))
-                for key in history_start_seq_stats[bucket].keys():
+                for key in list(history_start_seq_stats[bucket].keys()):
                     msg = "init_history_start_seq {} > curr_history_start_seq {} for  bucket {} and vbucket {} ".format(init_history_start_seq[bucket][key]["active"]["history_start_seqno"],
                                                                                                                     history_start_seq_stats[bucket][key]["active"]["history_start_seqno"], 
                                                                                                                     bucket.name, key)
@@ -171,7 +171,7 @@ class SteadyStateTests(MagmaBaseTest):
             history_start_seq_stats = self.get_history_start_seq_for_each_vb()
             for bucket in self.cluster.buckets:
                 self.log.info("history_start_seq_stats {}".format(history_start_seq_stats[bucket]))
-                for key in history_start_seq_stats[bucket].keys():
+                for key in list(history_start_seq_stats[bucket].keys()):
                     msg = "{} vbucket {} has start seq number {}".format(bucket.name, key,
                                                                          history_start_seq_stats[bucket][key]["active"]["history_start_seqno"])
                     self.assertEqual(init_history_start_seq[bucket][key]["active"]["history_start_seqno"],
@@ -226,7 +226,7 @@ class SteadyStateTests(MagmaBaseTest):
             history_start_seq_stats = self.get_history_start_seq_for_each_vb()
             for bucket in self.cluster.buckets:
                 self.log.info("history_start_seq_stats after wiping history {}".format(history_start_seq_stats[bucket]))
-                for key in history_start_seq_stats[bucket].keys():
+                for key in list(history_start_seq_stats[bucket].keys()):
                     msg = "curr_history_start_seq {} for  bucket {} and vbucket {} is non zero ".format(history_start_seq_stats[bucket][key]["active"]["history_start_seqno"],
                                                                                                         bucket.name, key)
                     self.assertNotEqual(0 , history_start_seq_stats[bucket][key]["active"]["history_start_seqno"], msg)
@@ -246,7 +246,7 @@ class SteadyStateTests(MagmaBaseTest):
             history_start_seq_stats = self.get_history_start_seq_for_each_vb()
             for bucket in self.cluster.buckets:
                 self.log.info(" New history_start_seq_stats {}".format(history_start_seq_stats[bucket]))
-                for key in history_start_seq_stats[bucket].keys():
+                for key in list(history_start_seq_stats[bucket].keys()):
                     msg = "init_history_start_seq {} > curr_history_start_seq {} for  bucket {} and vbucket {} ".format(init_history_start_seq[bucket][key]["active"]["history_start_seqno"],
                                                                                                                     history_start_seq_stats[bucket][key]["active"]["history_start_seqno"], 
                                                                                                                     bucket.name, key)
@@ -282,7 +282,7 @@ class SteadyStateTests(MagmaBaseTest):
             history_start_seq_stats = self.get_history_start_seq_for_each_vb()
             for bucket in self.cluster.buckets:
                 self.log.info("history_start_seq_stats {}".format(history_start_seq_stats[bucket]))
-                for key in history_start_seq_stats[bucket].keys():
+                for key in list(history_start_seq_stats[bucket].keys()):
                     msg = "{} vbucket {} has start seq number {}".format(bucket.name, key,
                                                                          history_start_seq_stats[bucket][key]["active"]["history_start_seqno"])
                     self.assertEqual(init_history_start_seq[bucket][key]["active"]["history_start_seqno"],
@@ -320,7 +320,7 @@ class SteadyStateTests(MagmaBaseTest):
             history_start_seq_stats = self.get_history_start_seq_for_each_vb()
             for bucket in self.cluster.buckets:
                 self.log.info("history_start_seq_stats after wiping history {}".format(history_start_seq_stats[bucket]))
-                for key in history_start_seq_stats[bucket].keys():
+                for key in list(history_start_seq_stats[bucket].keys()):
                     msg = "curr_history_start_seq {} for  bucket {} and vbucket {} is non zero ".format(history_start_seq_stats[bucket][key]["active"]["history_start_seqno"],
                                                                                                         bucket.name, key)
                     self.assertEqual(0 , history_start_seq_stats[bucket][key]["active"]["history_start_seqno"], msg)
@@ -340,7 +340,7 @@ class SteadyStateTests(MagmaBaseTest):
             history_start_seq_stats = self.get_history_start_seq_for_each_vb()
             for bucket in self.cluster.buckets:
                 self.log.info(" New history_start_seq_stats {}".format(history_start_seq_stats[bucket]))
-                for key in history_start_seq_stats[bucket].keys():
+                for key in list(history_start_seq_stats[bucket].keys()):
                     msg = "init_history_start_seq {} > curr_history_start_seq {} for  bucket {} and vbucket {} ".format(init_history_start_seq[bucket][key]["active"]["history_start_seqno"],
                                                                                                                     history_start_seq_stats[bucket][key]["active"]["history_start_seqno"],
                                                                                                                     bucket.name, key)

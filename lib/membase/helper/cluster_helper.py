@@ -1,5 +1,5 @@
 import time
-import Queue
+import queue
 from threading import Thread
 
 from Cb_constants import constants
@@ -103,7 +103,7 @@ class ClusterOperationHelper(object):
     def persistence_verification(servers, bucket, timeout_in_seconds=1260):
         verification_threads = []
         log = logger.get("infra")
-        queue = Queue.Queue()
+        queue = queue.Queue()
         rest = RestConnection(servers[0])
         nodes = rest.get_nodes()
         nodes_ip = []
@@ -231,7 +231,7 @@ class ClusterOperationHelper(object):
                  .format(server, key, val, bucket))
         # Workaround for CBQE-249, ideally this should be node.version
         index_path = node.storage[0].get_index_path()
-        if index_path is '':
+        if index_path == '':
             # Indicates non 2.0 build
             rv = mc.set_flush_param(key, str(val))
         else:

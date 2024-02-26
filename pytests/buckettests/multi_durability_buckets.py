@@ -2,6 +2,7 @@ from basetestcase import BaseTestCase
 from BucketLib.bucket import Bucket
 from couchbase_helper.documentgenerator import doc_generator
 from membase.api.rest_client import RestConnection
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 
 
 class MultiDurabilityTests(BaseTestCase):
@@ -65,7 +66,7 @@ class MultiDurabilityTests(BaseTestCase):
             self.bucket_dict[index]["object"] = bucket
 
         raise_exception = None
-        for bucket, task in tasks.items():
+        for bucket, task in list(tasks.items()):
             self.task_manager.get_task_result(task)
             if task.result:
                 self.sleep(2)
@@ -122,7 +123,7 @@ class MultiDurabilityTests(BaseTestCase):
             # Verify doc load count
             self.bucket_util._wait_for_stats_all_buckets(self.cluster,
                                                          self.cluster.buckets)
-            for _, tem_bucket in bucket_info.items():
+            for _, tem_bucket in list(bucket_info.items()):
                 self.bucket_util.verify_stats_for_bucket(
                     self.cluster,
                     tem_bucket["object"],
@@ -194,15 +195,15 @@ class MultiDurabilityTests(BaseTestCase):
         # First-set of ops on multi-buckets
         dict_updater(
             0, self.bucket_dict, gen_create, "create",
-            durability=Bucket.DurabilityLevel.MAJORITY,
+            durability=SDKConstants.DurabilityLevel.MAJORITY,
             sdk_timeout=30)
         dict_updater(
             1, self.bucket_dict, gen_update, "update",
-            durability=Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
+            durability=SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
             sdk_timeout=30)
         dict_updater(
             2, self.bucket_dict, gen_delete, "delete",
-            durability=Bucket.DurabilityLevel.PERSIST_TO_MAJORITY,
+            durability=SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY,
             sdk_timeout=60)
         dict_updater(3, self.bucket_dict, gen_update, "update",
                      persist_to=1, replicate_to=replicate_to,
@@ -224,15 +225,15 @@ class MultiDurabilityTests(BaseTestCase):
                      sdk_timeout=30)
         dict_updater(
             1, self.bucket_dict, gen_delete, "delete",
-            durability=Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
+            durability=SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
             sdk_timeout=30)
         dict_updater(
             2, self.bucket_dict, gen_create, "create",
-            durability=Bucket.DurabilityLevel.PERSIST_TO_MAJORITY,
+            durability=SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY,
             sdk_timeout=60)
         dict_updater(
             3, self.bucket_dict, gen_delete, "delete",
-            durability=Bucket.DurabilityLevel.MAJORITY,
+            durability=SDKConstants.DurabilityLevel.MAJORITY,
             sdk_timeout=10)
         dict_updater(4, self.bucket_dict, gen_update, "update",
                      sdk_timeout=10)

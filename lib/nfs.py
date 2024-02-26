@@ -89,7 +89,7 @@ class NfsServer:
         # Fetch uid, gid dynamically
         uid, gid = self.fetch_id('couchbase', id_type='u'), self.fetch_id('couchbase', id_type='g')
 
-        for host, privilege in privileges.items():
+        for host, privilege in list(privileges.items()):
             self.remote_shell.execute_command("echo '{} {}({},sync,all_squash,anonuid={},anongid={},fsid=1)' >> {} && exportfs -a".format(
                 directory_to_share, host, privilege, uid, gid, NfsServer.exports_directory))
 

@@ -3,7 +3,7 @@ import time
 
 from BucketLib.bucket import Bucket
 from Cb_constants import DocLoading, CbServer
-from Jython_tasks.task import AutoFailoverNodesFailureTask, NodeDownTimerTask
+from tasks.task import AutoFailoverNodesFailureTask, NodeDownTimerTask
 from basetestcase import ClusterSetup
 from cb_tools.cbstats import Cbstats
 from couchbase_cli import CouchbaseCLI
@@ -14,8 +14,6 @@ from remote.remote_util import RemoteMachineShellConnection
 
 from pytests.bucket_collections.collections_base import CollectionBase
 from sdk_client3 import SDKClient
-
-from java.lang import Exception as Java_base_exception
 
 
 class AutoFailoverBaseTest(ClusterSetup):
@@ -57,8 +55,6 @@ class AutoFailoverBaseTest(ClusterSetup):
             try:
                 self.collection_setup()
                 CollectionBase.setup_collection_history_settings(self)
-            except Java_base_exception as exception:
-                self.handle_setup_exception(exception)
             except Exception as exception:
                 self.handle_setup_exception(exception)
         else:
@@ -374,7 +370,7 @@ class AutoFailoverBaseTest(ClusterSetup):
         self.task_manager.add_new_task(task)
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
 
     def disable_firewall(self):
@@ -391,7 +387,7 @@ class AutoFailoverBaseTest(ClusterSetup):
         self.task_manager.add_new_task(task)
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
 
     def restart_couchbase_server(self):
@@ -413,7 +409,7 @@ class AutoFailoverBaseTest(ClusterSetup):
         # self.sleep(30, "Waiting for couchbase-server to come up")
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
 
     def stop_couchbase_server(self):
@@ -451,7 +447,7 @@ class AutoFailoverBaseTest(ClusterSetup):
         self.task_manager.add_new_task(task)
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
 
     def stop_restart_network(self):
@@ -474,7 +470,7 @@ class AutoFailoverBaseTest(ClusterSetup):
         self.task_manager.add_new_task(task)
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
 
     def restart_machine(self):
@@ -496,7 +492,7 @@ class AutoFailoverBaseTest(ClusterSetup):
         self.task_manager.add_new_task(task)
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
         finally:
             for node in self.server_to_fail:
@@ -532,7 +528,7 @@ class AutoFailoverBaseTest(ClusterSetup):
         self.task_manager.add_new_task(task)
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
         finally:
             task = AutoFailoverNodesFailureTask(
@@ -560,7 +556,7 @@ class AutoFailoverBaseTest(ClusterSetup):
         self.task_manager.add_new_task(task)
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
         self.disable_firewall()
 
@@ -651,7 +647,7 @@ class AutoFailoverBaseTest(ClusterSetup):
                     shell.update_dist_type()
                 shell.disconnect()
             self.sleep(10)
-        except Exception, ex:
+        except Exception as ex:
             self.log.info(ex)
 
     failover_actions = {
@@ -666,7 +662,7 @@ class AutoFailoverBaseTest(ClusterSetup):
 
     def _auto_failover_message_present_in_logs(self, ipaddress):
         return any("Rebalance interrupted due to auto-failover of nodes ['ns_1@{0}']."
-                   .format(ipaddress) in d.values() for d in self.rest.get_logs(10))
+                   .format(ipaddress) in list(d.values()) for d in self.rest.get_logs(10))
 
     def wait_for_failover_or_assert(self, expected_failover_count, timeout):
         time_start = time.time()
@@ -826,7 +822,7 @@ class AutoFailoverBaseTest(ClusterSetup):
                 sdk_client_pool=self.sdk_client_pool)
             self.task.jython_task_manager.get_task_result(task)
             # Verify there is not failed docs in the task
-            if len(task.fail.keys()) != 0:
+            if len(list(task.fail.keys())) != 0:
                 self.log_failure("Some CRUD failed after autofailover")
 
 
@@ -888,8 +884,6 @@ class DiskAutoFailoverBasetest(AutoFailoverBaseTest):
         else:
             try:
                 self.collection_setup()
-            except Java_base_exception as exception:
-                self.handle_setup_exception(exception)
             except Exception as exception:
                 self.handle_setup_exception(exception)
 
@@ -1000,7 +994,7 @@ class DiskAutoFailoverBasetest(AutoFailoverBaseTest):
         self.task_manager.add_new_task(task)
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
 
     def fail_disk_via_disk_full(self):
@@ -1018,7 +1012,7 @@ class DiskAutoFailoverBasetest(AutoFailoverBaseTest):
         self.task_manager.add_new_task(task)
         try:
             self.task_manager.get_task_result(task)
-        except Exception, e:
+        except Exception as e:
             self.fail("Exception: {}".format(e))
 
     def bring_back_failed_nodes_up(self):
@@ -1034,7 +1028,7 @@ class DiskAutoFailoverBasetest(AutoFailoverBaseTest):
             self.task_manager.add_new_task(task)
             try:
                 self.task_manager.get_task_result(task)
-            except Exception, e:
+            except Exception as e:
                 self.fail("Exception: {}".format(e))
         elif self.failover_action == "disk_full":
             task = AutoFailoverNodesFailureTask(
@@ -1048,7 +1042,7 @@ class DiskAutoFailoverBasetest(AutoFailoverBaseTest):
             self.task_manager.add_new_task(task)
             try:
                 self.task_manager.get_task_result(task)
-            except Exception, e:
+            except Exception as e:
                 self.fail("Exception: {}".format(e))
         else:
             super(DiskAutoFailoverBasetest, self).bring_back_failed_nodes_up()

@@ -6,10 +6,10 @@ import time
 from Cb_constants.CBServer import CbServer
 from cb_tools.cbepctl import Cbepctl
 from cb_tools.cbstats import Cbstats
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_client3 import SDKClient
-from sdk_constants.java_client import SDKConstants
+from sdk_constants.sdk_client_constants import SDKConstants
 from sdk_exceptions import SDKException
 
 
@@ -104,7 +104,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
                 timeout=self.sdk_timeout, time_unit="seconds",
                 ignore_exceptions=ignore_exceptions,
                 retry_exceptions=retry_exceptions)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
         if "create" in doc_ops and self.gen_create is not None:
             task = self.bucket_util.async_load_bucket(
                 self.cluster, bucket, self.gen_create, "create", 0,
@@ -129,7 +129,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
                 timeout=self.sdk_timeout, time_unit="seconds",
                 ignore_exceptions=ignore_exceptions,
                 retry_exceptions=retry_exceptions)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items += (self.gen_create.end - self.gen_create.start)
         if "expiry" in doc_ops and self.gen_expiry is not None and self.maxttl:
             task = self.bucket_util.async_load_bucket(
@@ -155,7 +155,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
                 timeout=self.sdk_timeout, time_unit="seconds",
                 ignore_exceptions=ignore_exceptions,
                 retry_exceptions=retry_exceptions)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items -= (self.gen_expiry.end - self.gen_expiry.start)
         if "read" in doc_ops and self.gen_read is not None:
             read_tasks_info = self.bucket_util.async_validate_docs(
@@ -192,7 +192,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
                 timeout=self.sdk_timeout, time_unit="seconds",
                 ignore_exceptions=ignore_exceptions,
                 retry_exceptions=retry_exceptions)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items -= (self.gen_delete.end - self.gen_delete.start)
 
         if _sync:
@@ -206,7 +206,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
         if read_task:
             # TODO: Need to converge read_tasks_info into tasks_info before
             #       itself to avoid confusions during _sync=False case
-            tasks_info.update(read_tasks_info.items())
+            tasks_info.update(list(read_tasks_info.items()))
             if _sync:
                 for task in read_tasks_info:
                     self.task_manager.get_task_result(task)
@@ -268,7 +268,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
                 doc_ops=self.doc_ops,
                 track_failures=False,
                 sdk_retry_strategy=SDKConstants.RetryStrategy.FAIL_FAST)
-            tasks_info.update(task_info.items())
+            tasks_info.update(list(task_info.items()))
 
         self.flush_th = threading.Thread(target=self.bucket_flush,
                                          kwargs=dict(sigkill=self.sigkill))
@@ -292,17 +292,17 @@ class MagmaFlushBucketTests(MagmaBaseTest):
 
         self.gen_update = self.genrate_docs_basic(start=0, end=1)
 
-        key, val = self.gen_update.next()
+        key, val = next(self.gen_update)
 
         def upsert_doc(start_num, end_num, key_obj, val_obj):
-            print threading.currentThread().getName(), 'Starting'
+            print((threading.currentThread().getName(), 'Starting'))
             for i in range(start_num, end_num):
                 val_obj.put("mutated", i)
                 self.client.upsert(key_obj, val_obj)
             if threading.currentThread().getName() == 't'+str(self.num_threads):
                 self.bucket_util.flush_bucket(self.cluster, self.cluster.buckets[0])
 
-            print threading.currentThread().getName(), 'Exiting'
+            print((threading.currentThread().getName(), 'Exiting'))
 
         while count < self.test_itr:
             self.log.info("Iteration : {}".format(count))
@@ -541,7 +541,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
                                                                       collection=collection,
                                                                       _sync=False,
                                                                       doc_ops=self.doc_ops)
-                    tasks_info.update(tem_tasks_info.items())
+                    tasks_info.update(list(tem_tasks_info.items()))
             '''
             Step 2
              -- Start flushing the buckets
@@ -582,7 +582,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
                                                                       collection=collection,
                                                                       _sync=False,
                                                                       doc_ops="create")
-                    tasks_info.update(tem_tasks_info.items())
+                    tasks_info.update(list(tem_tasks_info.items()))
             self.sleep(30, "Ensuring doc loading for 30 seconds")
 
             self.flush_th = threading.Thread(target=self.bucket_flush,
@@ -646,7 +646,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
                                                                  collection=collection,
                                                                  _sync=False,
                                                                  doc_ops="create")
-                    task_info.update(tem_task_info.items())
+                    task_info.update(list(tem_task_info.items()))
 
             for task in task_info:
                 self.task_manager.get_task_result(task)
@@ -678,7 +678,7 @@ class MagmaFlushBucketTests(MagmaBaseTest):
                         doc_ops=self.doc_ops,
                         track_failures=False,
                         sdk_retry_strategy=SDKConstants.RetryStrategy.FAIL_FAST)
-                    tasks_info.update(task_info.items())
+                    tasks_info.update(list(task_info.items()))
             for task in tasks_info:
                 self.task_manager.get_task_result(task)
             for shell in self.shell_conn:

@@ -15,7 +15,7 @@ class RecreateBucketTests(ClusterSetup):
         super(RecreateBucketTests, self).tearDown()
 
     def _generate_load(self, bucket):
-        age = range(5)
+        age = list(range(5))
         first = ['james', 'sharon']
         template = '{{ "age": {0}, "first_name": "{1}" }}'
         gen_create = DocumentGenerator('test_docs', template, age, first,
@@ -30,7 +30,7 @@ class RecreateBucketTests(ClusterSetup):
         self.task.jython_task_manager.get_task_result(task)
 
     def _validate_load(self, bucket):
-        age = range(5)
+        age = list(range(5))
         first = ['james', 'sharon']
         template = '{{ "age": {0}, "first_name": "{1}" }}'
         gen_create = DocumentGenerator('test_docs', template, age, first,

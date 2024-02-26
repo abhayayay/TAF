@@ -337,7 +337,7 @@ class audit:
         for items in data['modules']:
             for particulars in items['events']:
                 if particulars['id'] == eventNumber:
-                    for key, value in particulars.items():
+                    for key, value in list(particulars.items()):
                         if (key not in fields):
                             defaultFields[key] = value
                         elif key == 'mandatory_fields':
@@ -345,7 +345,7 @@ class audit:
                                 mandatoryFields.append(items)
                                 if (isinstance((particulars['mandatory_fields'][items.encode('utf-8')]), dict)):
                                     tempStr = items
-                                    for secLevel in particulars['mandatory_fields'][items].items():
+                                    for secLevel in list(particulars['mandatory_fields'][items].items()):
                                         tempStr = tempStr + ":" + secLevel[0]
                                     mandatorySecLevel.append(tempStr)
                         elif key == 'optional_fields':
@@ -353,7 +353,7 @@ class audit:
                                 optionalFields.append(items)
                                 if (isinstance((particulars['optional_fields'][items.encode('utf-8')]), dict)):
                                     tempStr = items
-                                    for secLevel in particulars['optional_fields'][items].items():
+                                    for secLevel in list(particulars['optional_fields'][items].items()):
                                         tempStr = tempStr + ":" + secLevel[0]
                                     optionalSecLevel.append(tempStr)
 
@@ -447,10 +447,10 @@ class audit:
                 if (isinstance(data[items], dict)):
                     for seclevel in data[items]:
                         tempLevel = items + ":" + seclevel
-                        if (tempLevel in expectedResult.keys()):
+                        if (tempLevel in list(expectedResult.keys())):
                             tempValue = expectedResult[tempLevel]
                         else:
-                            if seclevel in expectedResult.keys():
+                            if seclevel in list(expectedResult.keys()):
                                 tempValue = expectedResult[seclevel]
                             else:
                                 ignore = True
@@ -540,7 +540,7 @@ class audit:
                     self.log.info("Mis-match in values for timestamp - time")
                     return False
 
-        except Exception, e:
+        except Exception as e:
             self.log.info ("Value of execption is {0}".format(e))
             return False
 
@@ -558,7 +558,7 @@ class audit:
         actualEvent = self.returnEvent(self.eventID)
         fieldVerification = self.validateFieldActualLog(actualEvent, self.eventID, 'ns_server', self.defaultFields, mandatoryFields, \
                                                     mandatorySecLevel, optionalFields, optionalSecLevel, self.method, n1ql_audit)
-        expectedResults = dict(defaultField.items() + expectedResults.items())
+        expectedResults = dict(list(defaultField.items()) + list(expectedResults.items()))
         valueVerification = self.validateData(actualEvent, expectedResults)
         return fieldVerification, valueVerification
 

@@ -115,19 +115,19 @@ class BackupTasks:
 
     def create_predefined_plans(self):
         """ Loads all predefined plans defined in `PrefinedPlans` """
-        for plan in PredefinedPlans.plans.values():
+        for plan in list(PredefinedPlans.plans.values()):
             self.backup_service.api.create_plan(plan)
 
         plans = set(plan.name for plan in self.backup_service.api.get_plans())
 
         log.info("Created {}".format(plans))
 
-        for plan in PredefinedPlans.plans.values():
+        for plan in list(PredefinedPlans.plans.values()):
             assert plan.name in plans
 
     def create_predefined_repos(self):
         """ Creates a repository for each of the predefined plans """
-        for plan in PredefinedPlans.plans.values():
+        for plan in list(PredefinedPlans.plans.values()):
             self.backup_service.api.create_repository("repo-{}".format(plan.name), plan.name,
                                                       "{}/archive-{}".format(self.backup_service.directory_to_mount, plan.name))
 
@@ -135,7 +135,7 @@ class BackupTasks:
 
         log.info("Created {}".format(repos))
 
-        for plan in PredefinedPlans.plans.values():
+        for plan in list(PredefinedPlans.plans.values()):
             assert "repo-{}".format(plan.name) in repos
 
 
@@ -204,7 +204,7 @@ class BackupServiceAPI:
         """ Returns true if the backup service is running.
         """
         rest = RestConnection(self.server)
-        return 'backupAPI' in json.loads(rest._http_request(rest.baseUrl + "pools/default/nodeServices")[1])['nodesExt'][0]['services'].keys()
+        return 'backupAPI' in list(json.loads(rest._http_request(rest.baseUrl + "pools/default/nodeServices")[1])['nodesExt'][0]['services'].keys())
 
     def delete_all_plans(self):
         """ Deletes all plans.
@@ -257,10 +257,10 @@ class BackupServiceAPI:
         for repo in self.repository_api.cluster_self_repository_state_get('active'):
             repository = self.repository_api.cluster_self_repository_state_id_get('active', repo.id)
             if repository.running_one_off:
-                for key, task in repository.running_one_off.items():
+                for key, task in list(repository.running_one_off.items()):
                     self.delete_task('active', repo.id, 'one-off', task.task_name)
             if repository.running_tasks:
-                for key, task in repository.running_tasks.items():
+                for key, task in list(repository.running_tasks.items()):
                     self.delete_task('active', repo.id, 'scheduled', task.task_name)
 
     def get_plans(self):
@@ -299,9 +299,7 @@ class BackupServiceAPI:
         return self.repository_api.cluster_self_repository_state_id_task_history_get(state, repo_name)
 
 
-class AbstractConfigurationFactory:
-    __metaclass__ = ABCMeta
-
+class AbstractConfigurationFactory(metaclass=ABCMeta):
     def __init__(self, server, hints=None):
         self.hints, self.server = hints, server
 

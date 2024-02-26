@@ -46,7 +46,7 @@ def main():
         "project_id": project_id,
         "region": args["region"]
     }
-    print(json.dumps(user_info))
+    print((json.dumps(user_info)))
 
 if __name__ == '__main__':
     main()

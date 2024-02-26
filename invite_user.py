@@ -56,7 +56,7 @@ def main():
         "capella_pwd": password
     }
     # print(f"{email} {password} {user_id}")
-    print(json.dumps(user_info))
+    print((json.dumps(user_info)))
 
 
 if __name__ == '__main__':

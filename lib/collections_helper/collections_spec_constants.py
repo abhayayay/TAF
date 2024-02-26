@@ -15,7 +15,7 @@ class MetaConstants(object):
     @staticmethod
     def get_params():
         param_list = list()
-        for param, value in vars(MetaConstants).items():
+        for param, value in list(vars(MetaConstants).items()):
             if not (param.startswith("_")
                     or callable(getattr(MetaConstants, param))):
                 param_list.append(value)

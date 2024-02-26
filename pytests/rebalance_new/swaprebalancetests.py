@@ -3,7 +3,7 @@ import datetime
 from Cb_constants import DocLoading
 from cb_tools.cbstats import Cbstats
 from couchbase_helper.documentgenerator import doc_generator
-from rebalance_base import RebalanceBaseTest
+from .rebalance_base import RebalanceBaseTest
 from membase.api.rest_client import RestConnection
 from membase.helper.rebalance_helper import RebalanceHelper
 from custom_exceptions.exception import RebalanceFailedException
@@ -46,7 +46,7 @@ class SwapRebalanceBase(RebalanceBaseTest):
                           .format(self.cluster.master))
             self.enable_diag_eval_on_non_local_hosts(self.cluster.master)
             self.log_on_cluster("started")
-        except Exception, e:
+        except Exception as e:
             self.fail(e)
 
         self.creds = self.input.membase_settings
@@ -248,7 +248,7 @@ class SwapRebalanceBase(RebalanceBaseTest):
                 self.loaders, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(self.loaders)
-            for task, task_info in self.loaders.items():
+            for task, task_info in list(self.loaders.items()):
                 self.assertFalse(
                     task_info["ops_failed"],
                     "Doc ops failed for task: {}".format(task.thread_name))
@@ -317,7 +317,7 @@ class SwapRebalanceBase(RebalanceBaseTest):
             times = 2
             if self.cluster_run:
                 times = 20
-            for _ in xrange(times):
+            for _ in range(times):
                 try:
                     shell = RemoteMachineShellConnection(self.cluster.master)
                     pid = shell.get_memcache_pid()
@@ -372,7 +372,7 @@ class SwapRebalanceBase(RebalanceBaseTest):
                 self.loaders, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(self.loaders)
-            for task, task_info in self.loaders.items():
+            for task, task_info in list(self.loaders.items()):
                 self.assertFalse(
                     task_info["ops_failed"],
                     "Doc ops failed for task: %s" % task.thread_name)
@@ -466,7 +466,7 @@ class SwapRebalanceBase(RebalanceBaseTest):
                 self.loaders, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(self.loaders)
-            for task, task_info in self.loaders.items():
+            for task, task_info in list(self.loaders.items()):
                 self.assertFalse(
                     task_info["ops_failed"],
                     "Doc ops failed for task: %s" % task.thread_name)
@@ -529,7 +529,7 @@ class SwapRebalanceBase(RebalanceBaseTest):
                 self.loaders, self.cluster,
                 sdk_client_pool=self.sdk_client_pool)
             self.bucket_util.log_doc_ops_task_failures(self.loaders)
-            for task, task_info in self.loaders.items():
+            for task, task_info in list(self.loaders.items()):
                 self.assertFalse(
                     task_info["ops_failed"],
                     "Doc ops failed for task: {}".format(task.thread_name))

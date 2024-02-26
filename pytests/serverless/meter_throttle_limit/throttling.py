@@ -4,7 +4,7 @@ import json
 
 from Cb_constants import DocLoading
 from sdk_client3 import SDKClient
-from LMT_base import LMT
+from .LMT_base import LMT
 from couchbase_helper.documentgenerator import \
     doc_generator
 
@@ -50,7 +50,7 @@ class ServerlessThrottling(LMT):
         self.generate_data_for_vbuckets(target_vbucket)
 
         for op_type in ["create", "update", "replace"]:
-            for key, value in self.key_value.iteritems():
+            for key, value in list(self.key_value.items()):
                 result = self.client.crud(op_type, key, value,
                                               durability=self.durability_level)
                 if throttle_limit == 0 and result["status"] is False:
@@ -64,7 +64,7 @@ class ServerlessThrottling(LMT):
             self.sleep(10)
             num_throttled, ru, wu = self.get_stat(self.bucket)
             if self.bucket_throttling_limit != 0:
-                expected_wu += (write_units * len(self.key_value.keys()))
+                expected_wu += (write_units * len(list(self.key_value.keys())))
             self.compare_ru_wu_stat(ru, wu, 0, expected_wu)
             if num_throttled > 0:
                 if num_throttled < (expected_num_throttled - 10):
@@ -87,7 +87,7 @@ class ServerlessThrottling(LMT):
         self.generate_data_for_vbuckets(target_vbucket)
 
         # create the documents
-        for key, value in self.key_value.iteritems():
+        for key, value in list(self.key_value.items()):
             result = self.client.crud(DocLoading.Bucket.DocOps.CREATE, key, value,
                                           durability=self.durability_level)
             if result["status"] is False:
@@ -102,7 +102,7 @@ class ServerlessThrottling(LMT):
 
         for sub_doc_op in ["subdoc_insert", "subdoc_upsert", "subdoc_replace"]:
             value = random.choice(string.ascii_letters) * self.sub_doc_size
-            for key in self.key_value.keys():
+            for key in list(self.key_value.keys()):
                 _, failed_items = self.client.crud(sub_doc_op, key,
                                                    [sub_doc_key, value],
                                                    durability=self.durability_level,
@@ -116,7 +116,7 @@ class ServerlessThrottling(LMT):
 
             self.sleep(5)
             num_throttled, ru, wu = self.get_stat(self.bucket)
-            expected_wu += (write_units * len(self.key_value.keys()))
+            expected_wu += (write_units * len(list(self.key_value.keys())))
             self.compare_ru_wu_stat(ru, wu, expected_ru, expected_wu)
 
             if num_throttled > 0:

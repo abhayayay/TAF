@@ -19,7 +19,7 @@ class CommonUtil(object):
                                    doc_key, ["doc_counter", 1],
                                    create_path=True,
                                    store_semantics=StoreSemantics.UPSERT)
-        return result[doc_key]['value'].contentAs(0, long)
+        return result[doc_key]['value'].contentAs(0, int)
 
     @staticmethod
     def get_current_date(scope_name):

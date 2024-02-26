@@ -1,5 +1,5 @@
 import json
-import urllib
+import urllib.request, urllib.parse, urllib.error
 
 import requests
 from copy import deepcopy
@@ -45,7 +45,7 @@ class SystemEventRestHelper:
         """
         def get_str(dict_obj):
             str_data = "{"
-            for k, v in dict_obj.items():
+            for k, v in list(dict_obj.items()):
                 kv_format = "\"%s\":"
                 if isinstance(v, dict):
                     v = get_str(v)
@@ -127,7 +127,7 @@ class SystemEventRestHelper:
         """
         rest = self.get_rest_object(rest, server, username, password)
         api = rest.baseUrl + "internalSettings"
-        params = urllib.urlencode({'eventLogsLimit': max_event_count})
+        params = urllib.parse.urlencode({'eventLogsLimit': max_event_count})
         status, content, _ = rest._http_request(
             api, RestConnection.POST, params=params,
             headers=rest.get_headers_for_content_type_json())

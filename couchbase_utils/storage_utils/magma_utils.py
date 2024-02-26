@@ -40,7 +40,7 @@ class MagmaUtils:
         units_to_flag = {'mb': '-cm', 'kb': '-ck', 'b': '-cb'}
 
         if units not in units_to_flag:
-            raise ValueError("The units must be in {}".format(units_to_flag.keys()))
+            raise ValueError("The units must be in {}".format(list(units_to_flag.keys())))
 
         flag = units_to_flag[units]
 

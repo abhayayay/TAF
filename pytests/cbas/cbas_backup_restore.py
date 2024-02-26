@@ -1,11 +1,11 @@
 import random
 
 from cbas.cbas_base import CBASBaseTest
-from Jython_tasks.task import CreateDatasetsTask, DropDatasetsTask, \
+from tasks.task import CreateDatasetsTask, DropDatasetsTask, \
     CreateSynonymsTask, DropSynonymsTask, DropDataversesTask, \
     CreateCBASIndexesTask, DropCBASIndexesTask, CreateUDFTask, DropUDFTask
 from cbas_utils.cbas_utils import BackupUtils
-import urllib
+import urllib.request, urllib.parse, urllib.error
 
 
 class BackupRestoreTest(CBASBaseTest):
@@ -24,7 +24,7 @@ class BackupRestoreTest(CBASBaseTest):
         self.ds_per_collection = self.input.param("ds_per_collection", 1)
 
         # Since all the test cases are being run on 1 cluster only
-        self.cluster = self.cb_clusters.values()[0]
+        self.cluster = list(self.cb_clusters.values())[0]
 
         self.synonyms_per_ds = int(self.input.param("synonyms_per_ds", 1))
         self.overlap_path = self.input.param("overlap_path", False)
@@ -53,53 +53,49 @@ class BackupRestoreTest(CBASBaseTest):
                          original_bucket, original_scope, original_collection,
                          remap_bucket, remap_scope, remap_collection,
                          level="cluster"):
-        dv_after_restore = self.cbas_util.get_dataverses(self.cluster)
+        dv_after_restore = self.cbas_util.get_dataverses(self.cluster, retries=1)
         ds_after_restore = self.cbas_util.get_datasets(
             self.cluster, retries=1, fields=self.ds_fields)
-        syn_after_restore = self.cbas_util.get_synonyms(self.cluster)
-        idx_after_restore = self.cbas_util.get_indexes(self.cluster)
+        syn_after_restore = self.cbas_util.get_synonyms(self.cluster, retries=1)
+        idx_after_restore = self.cbas_util.get_indexes(self.cluster, retries=1)
         if include:
             if not isinstance(include, list):
-                include = urllib.quote(include).split(",")
-            self.assertEquals(len(ds_after_restore), len(include))
-            self.assertEquals(len(idx_after_restore), len(include) * 2)
+                include = urllib.parse.quote(include).split(",")
+            self.assertEqual(len(ds_after_restore), len(include))
+            self.assertEqual(len(idx_after_restore), len(include) * 2)
         elif exclude:
             if not isinstance(exclude, list):
-                exclude = urllib.quote(exclude).split(",")
-            self.assertEquals(len(ds_after_restore),
-                              len(ds_before_backup) - len(exclude))
-            self.assertEquals(len(idx_after_restore),
-                              len(idx_before_backup) - (len(exclude) * 2))
+                exclude = urllib.parse.quote(exclude).split(",")
+            self.assertEqual(len(ds_after_restore),
+                             len(ds_before_backup) - len(exclude))
+            self.assertEqual(len(idx_after_restore),
+                             len(idx_before_backup) - (len(exclude) * 2))
         else:
-            self.assertEquals(len(ds_after_restore), len(ds_before_backup))
-            self.assertEquals(len(idx_after_restore), len(idx_before_backup))
+            self.assertEqual(len(ds_after_restore), len(ds_before_backup))
+            self.assertEqual(len(idx_after_restore), len(idx_before_backup))
         if level == "cluster":
-            self.assertEquals(len(dv_after_restore), len(dv_before_backup))
-            self.assertEquals(len(syn_after_restore), len(syn_before_backup))
+            self.assertEqual(len(dv_after_restore), len(dv_before_backup))
+            self.assertEqual(len(syn_after_restore), len(syn_before_backup))
         if remap_bucket or remap_scope or remap_collection:
             original_ds = list(
-                filter(
-                    lambda ds:
-                    ds['BucketName'] == original_bucket.name
-                    and
-                    ds['ScopeName'] == original_scope.name
-                    and
-                    ds['CollectionName'] == original_collection.name,
-                    ds_before_backup))
+                [ds for ds in ds_before_backup if ds['BucketName'] == original_bucket.name
+                 and
+                 ds['ScopeName'] == original_scope.name
+                 and
+                 ds['CollectionName'] == original_collection.name])
             for ds_restored in ds_after_restore:
                 backed_up_ds = list(
-                    filter(
-                        lambda ds: ds['DatasetName'] == \
-                                   ds_restored['DatasetName'] and \
-                                   ds['DataverseName'] == \
-                                   ds_restored['DataverseName'], original_ds))
+                    [ds for ds in original_ds if ds['DatasetName'] == \
+                     ds_restored['DatasetName'] and \
+                     ds['DataverseName'] == \
+                     ds_restored['DataverseName']])
                 if backed_up_ds:
-                    self.assertEquals(ds_restored['BucketName'],
-                                      remap_bucket.name)
-                    self.assertEquals(ds_restored['ScopeName'],
-                                      remap_scope.name)
-                    self.assertEquals(ds_restored['CollectionName'],
-                                      remap_collection.name)
+                    self.assertEqual(ds_restored['BucketName'],
+                                     remap_bucket.name)
+                    self.assertEqual(ds_restored['ScopeName'],
+                                     remap_scope.name)
+                    self.assertEqual(ds_restored['CollectionName'],
+                                     remap_collection.name)
 
     def create_datasets(self,
                         creation_methods=["cbas_collection", "cbas_dataset"]):
@@ -166,7 +162,7 @@ class BackupRestoreTest(CBASBaseTest):
                 self.task_manager.get_task_result(create_udf_task)
 
     def drop_all_udfs(self):
-        for dv in self.cbas_util.dataverses.values():
+        for dv in list(self.cbas_util.dataverses.values()):
             drop_udf_task = DropUDFTask(self.cluster, self.cbas_util, dv)
             self.task_manager.add_new_task(drop_udf_task)
             self.task_manager.get_task_result(drop_udf_task)
@@ -234,16 +230,16 @@ class BackupRestoreTest(CBASBaseTest):
         status, restore, response = self.backup_util.rest_restore_cbas(
             self.cluster, level="cluster", backup=backup)
         self.assertTrue(status)
-        syn_after_restore = self.cbas_util.get_synonyms(self.cluster)
-        dv_after_restore = self.cbas_util.get_dataverses(self.cluster)
-        ds_after_restore = self.cbas_util.get_datasets(self.cluster)
-        idx_after_restore = self.cbas_util.get_indexes(self.cluster)
-        self.assertEquals(len(syn_before_backup), len(syn_after_restore))
-        self.assertEquals(len(dv_before_backup), len(dv_after_restore))
+        syn_after_restore = self.cbas_util.get_synonyms(self.cluster, retries=1)
+        dv_after_restore = self.cbas_util.get_dataverses(self.cluster, retries=1)
+        ds_after_restore = self.cbas_util.get_datasets(self.cluster, retries=1)
+        idx_after_restore = self.cbas_util.get_indexes(self.cluster, retries=1)
+        self.assertEqual(len(syn_before_backup), len(syn_after_restore))
+        self.assertEqual(len(dv_before_backup), len(dv_after_restore))
         if self.drop_datasets:
-            self.assertEquals(len(ds_after_restore), 0)
+            self.assertEqual(len(ds_after_restore), 0)
         if self.drop_indexes:
-            self.assertEquals(len(idx_after_restore), 0)
+            self.assertEqual(len(idx_after_restore), 0)
         self.log.debug("test_cluster_level_backup finished")
 
     def test_bucket_level_backup(self):
@@ -276,7 +272,7 @@ class BackupRestoreTest(CBASBaseTest):
         path = scope.name + "." + collection.name
         if self.overlap_path:
             path = scope.name + "," + path
-        path = urllib.quote(path)
+        path = urllib.parse.quote(path)
         if include:
             include = path
         else:
@@ -344,33 +340,29 @@ class BackupRestoreTest(CBASBaseTest):
         if self.remap_bucket:
             remap_bucket = random.choice(
                 list(
-                    filter(
-                        lambda b:
-                        b.name != original_bucket.name,
-                        self.cluster.buckets)))
+                    [b for b in self.cluster.buckets if b.name != original_bucket.name]))
         else:
             remap_bucket = original_bucket
         remap_scope = random.choice(
-            list(filter(lambda scope: scope.name != original_scope.name,
-                        self.bucket_util.get_active_scopes(
-                            remap_bucket))))
+            list([scope for scope in self.bucket_util.get_active_scopes(
+                remap_bucket) if scope.name != original_scope.name]))
         remap_collection = random.choice(
             self.bucket_util.get_active_collections(remap_bucket,
                                                     remap_scope.name))
-        remap = urllib.quote("{0}.{1}:{2}.{3}".format(original_scope.name,
-                                         original_collection.name,
-                                         remap_scope.name,
-                                         remap_collection.name))
+        remap = urllib.parse.quote("{0}.{1}:{2}.{3}".format(original_scope.name,
+                                                            original_collection.name,
+                                                            remap_scope.name,
+                                                            remap_collection.name))
         if self.overlap_path:
-            remap += urllib.quote(",{0}:{1}".format(
+            remap += urllib.parse.quote(",{0}:{1}".format(
                 original_scope.name, remap_scope.name))
         if include:
-            include = urllib.quote("{0}.{1}".format(
+            include = urllib.parse.quote("{0}.{1}".format(
                 original_scope.name, original_collection.name))
         else:
             include = ""
         if exclude:
-            exclude = urllib.quote("{0}.{1}".format(
+            exclude = urllib.parse.quote("{0}.{1}".format(
                 original_scope.name, original_collection.name))
         else:
             exclude = ""
@@ -490,15 +482,12 @@ class BackupRestoreTest(CBASBaseTest):
         if self.remap_bucket:
             remap_bucket = random.choice(
                 list(
-                    filter(
-                        lambda b:
-                        b.name != original_bucket.name,
-                        self.cluster.buckets)))
+                    [b for b in self.cluster.buckets if b.name != original_bucket.name]))
         else:
             remap_bucket = original_bucket
         remap_scope = random.choice(
-            list(filter(lambda scope: scope.name != original_scope.name,
-                        self.bucket_util.get_active_scopes(remap_bucket))))
+            list([scope for scope in self.bucket_util.get_active_scopes(remap_bucket) if
+                  scope.name != original_scope.name]))
         remap_collection = random.choice(
             self.bucket_util.get_active_collections(remap_bucket, remap_scope.name))
         mappings = ["{0}.{1}.{2}={3}.{4}.{5}".format(

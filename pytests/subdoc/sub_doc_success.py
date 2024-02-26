@@ -1,4 +1,3 @@
-from BucketLib.bucket import Bucket
 from Cb_constants import DocLoading
 from cb_tools.cbstats import Cbstats
 from couchbase_helper.documentgenerator import doc_generator, \
@@ -6,6 +5,7 @@ from couchbase_helper.documentgenerator import doc_generator, \
     sub_doc_generator_for_edit
 from couchbase_helper.durability_helper import DurabilityHelper
 from epengine.durability_base import DurabilityTestsBase
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 from error_simulation.cb_error import CouchbaseError
 from membase.api.rest_client import RestConnection
 from remote.remote_util import RemoteMachineShellConnection
@@ -81,7 +81,7 @@ class BasicOps(DurabilityTestsBase):
                                                      self.cluster.buckets)
 
         # The documents that could not be inserted
-        insert_failures = len(task.fail.keys())
+        insert_failures = len(list(task.fail.keys()))
 
         # Update verification_dict and validate
         verification_dict["ops_update"] += self.num_items - insert_failures
@@ -101,7 +101,7 @@ class BasicOps(DurabilityTestsBase):
         self.bucket_util.verify_stats_all_buckets(self.cluster, self.num_items)
 
         self.log.info("Creating doc_generator for doc_op")
-        num_item_start_for_crud = int(self.num_items / 2)
+        num_item_start_for_crud = int(self.num_items // 2)
 
         template_index = 0
         if doc_op == DocLoading.Bucket.SubDocOps.REMOVE:
@@ -126,7 +126,7 @@ class BasicOps(DurabilityTestsBase):
             self.task.jython_task_manager.get_task_result(task)
 
             # The documents keys for which the update failed
-            update_failures = len(task.fail.keys())
+            update_failures = len(list(task.fail.keys()))
 
             verification_dict["ops_update"] += \
                 num_item_start_for_crud - update_failures
@@ -154,11 +154,11 @@ class BasicOps(DurabilityTestsBase):
 
             # If the values of attributes does not match the
             # expected value, append op to list of failed ops.
-            for key, value in task.success.items():
+            for key, value in list(task.success.items()):
                 if expected_values != set(value["value"]):
                     op_failed_tbl.add_row([key, value["value"]])
 
-            op_failed_tbl.display("Update failed for keys:")
+            # op_failed_tbl.display("Update failed for keys:")
             # Expect the non-updated values to match the update failures
             self.assertEqual(len(op_failed_tbl.rows), update_failures, "")
         elif doc_op == DocLoading.Bucket.SubDocOps.REMOVE:
@@ -172,7 +172,7 @@ class BasicOps(DurabilityTestsBase):
             self.task.jython_task_manager.get_task_result(task)
 
             # The number of documents that could not be removed
-            remove_failures = len(task.fail.keys())
+            remove_failures = len(list(task.fail.keys()))
 
             verification_dict["ops_update"] += \
                 num_item_start_for_crud - remove_failures
@@ -195,10 +195,10 @@ class BasicOps(DurabilityTestsBase):
             op_failed_tbl.set_headers(["Delete failed key", "Value"])
 
             # Collect read operations that failed
-            for key, value in task.fail.items():
+            for key, value in list(task.fail.items()):
                 op_failed_tbl.add_row([key, value["error"]])
 
-            op_failed_tbl.display("Delete succeeded for keys:")
+            # op_failed_tbl.display("Delete succeeded for keys:")
 
             # Expect the reads to have failed indicating the sub-documents are
             # no longer accessible.
@@ -399,8 +399,8 @@ class BasicOps(DurabilityTestsBase):
         doc_gen = dict()
         sub_doc_gen = dict()
         tasks = list()
-        insert_end_index = self.num_items/3
-        upsert_end_index = (self.num_items/3) * 2
+        insert_end_index = self.num_items // 3
+        upsert_end_index = (self.num_items // 3) * 2
         def_bucket = self.cluster.buckets[0]
 
         # Stat validation reference variables
@@ -543,8 +543,8 @@ class BasicOps(DurabilityTestsBase):
         """
 
         if self.durability_level.upper() in [
-                Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
-                Bucket.DurabilityLevel.PERSIST_TO_MAJORITY]:
+                SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
+                SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY]:
             self.log.critical("Test not valid for persistence durability")
             return
 
@@ -559,8 +559,8 @@ class BasicOps(DurabilityTestsBase):
         vb_info_info["init"] = dict()
         vb_info_info["afterCrud"] = dict()
         def_bucket = self.cluster.buckets[0]
-        insert_end_index = self.num_items / 3
-        upsert_end_index = (self.num_items / 3) * 2
+        insert_end_index = self.num_items // 3
+        upsert_end_index = (self.num_items // 3) * 2
 
         self.log.info("Selecting nodes to simulate error condition")
         target_nodes = self.getTargetNodes()
@@ -570,8 +570,8 @@ class BasicOps(DurabilityTestsBase):
             # Create shell_connections
             shell_conn[node.ip] = RemoteMachineShellConnection(node)
             cbstat_obj[node.ip] = Cbstats(node)
-            active_vbs = cbstat_obj[node.ip] .vbucket_list(def_bucket.name,
-                                                           "active")
+            active_vbs = cbstat_obj[node.ip].vbucket_list(def_bucket.name,
+                                                          "active")
             active_vbs_in_target_nodes += active_vbs
             vb_info_info["init"][node.ip] = cbstat_obj[node.ip].vbucket_seqno(
                 def_bucket.name)
@@ -662,7 +662,7 @@ class BasicOps(DurabilityTestsBase):
         for task in tasks:
             self.task.jython_task_manager.get_task_result(task)
             # Verify there is not failed docs in the task
-            if len(task.fail.keys()) != 0:
+            if len(list(task.fail.keys())) != 0:
                 self.log_failure("Some CRUD failed for {0}".format(task.fail))
 
         # Revert the induced error condition
@@ -682,8 +682,18 @@ class BasicOps(DurabilityTestsBase):
                 cbstat_obj[node.ip].failover_stats(def_bucket.name)
 
             # Failover validation
-            val = failover_info["init"][node.ip] \
-                != failover_info["afterCrud"][node.ip]
+            val = True
+            for vb, stat in list(failover_info["init"][node.ip].items()):
+                if len(list(failover_info["init"][node.ip].keys())) \
+                        != len(list(failover_info["afterCrud"][node.ip].keys())):
+                    val = False
+                    self.log.error("Some fo-vb stats are missing after crud")
+                    break
+                stat_2 = failover_info["afterCrud"][node.ip][vb]
+                if stat != stat_2:
+                    val = False
+                    self.log.error("Mismatch in failover stats, vb::%s,\n  "
+                                   "%s\n  %s" % (vb, stat, stat_2))
             self.assertTrue(val, msg="Failover stats got updated")
 
             # Seq_no validation (High level)
@@ -721,7 +731,7 @@ class BasicOps(DurabilityTestsBase):
         cbstat_obj = dict()
         failover_info = dict()
         vb_info_info = dict()
-        target_vbuckets = range(0, self.cluster.vbuckets)
+        target_vbuckets = list(range(0, self.cluster.vbuckets))
         active_vbs_in_target_nodes = list()
         failover_info["init"] = dict()
         failover_info["afterCrud"] = dict()
@@ -748,7 +758,7 @@ class BasicOps(DurabilityTestsBase):
         # Load sub_docs for upsert/remove mutation to work
         sub_doc_gen = sub_doc_generator(self.key,
                                         start=0,
-                                        end=self.num_items/2,
+                                        end=self.num_items // 2,
                                         key_size=self.key_size,
                                         doc_size=self.sub_doc_size)
         task = self.task.async_load_gen_sub_docs(
@@ -778,20 +788,20 @@ class BasicOps(DurabilityTestsBase):
         gen = dict()
         gen["insert"] = sub_doc_generator(
             self.key,
-            self.num_items/2,
+            self.num_items // 2,
             self.crud_batch_size,
             key_size=self.key_size,
             target_vbucket=target_vbuckets)
         gen["read"] = sub_doc_generator_for_edit(
             self.key,
-            self.num_items/4,
+            self.num_items // 4,
             50,
             key_size=self.key_size,
             template_index=0,
             target_vbucket=target_vbuckets)
         gen["upsert"] = sub_doc_generator_for_edit(
             self.key,
-            self.num_items/4,
+            self.num_items // 4,
             50,
             key_size=self.key_size,
             template_index=0,
@@ -838,7 +848,7 @@ class BasicOps(DurabilityTestsBase):
             timeout_secs=self.sdk_timeout)
 
         # Wait for document_loader tasks to complete
-        for _, task in tasks.items():
+        for _, task in list(tasks.items()):
             self.task_manager.get_task_result(task)
 
         # Revert the induced error condition
@@ -858,14 +868,14 @@ class BasicOps(DurabilityTestsBase):
         self.task_manager.get_task_result(reader_task)
 
         # Validation for each CRUD task
-        for op_type, task in tasks.items():
-            if len(task.success.keys()) != len(gen[op_type].doc_keys):
+        for op_type, task in list(tasks.items()):
+            if len(list(task.success.keys())) != len(gen[op_type].doc_keys):
                 self.log_failure("Failure during %s operation" % op_type)
-            elif len(task.fail.keys()) != 0:
+            elif len(list(task.fail.keys())) != 0:
                 self.log_failure("Some CRUD failed during %s: %s"
                                  % (op_type, task.fail))
 
-            for doc_key, crud_result in task.success.items():
+            for doc_key, crud_result in list(task.success.items()):
                 if crud_result["cas"] == 0:
                     self.log_failure("%s failed for %s: %s"
                                      % (op_type, doc_key, crud_result))
@@ -959,17 +969,18 @@ class BasicOps(DurabilityTestsBase):
         rest.set_indexer_storage_mode()
         self.log.info("Creating 2i on the bucket")
         client.cluster.query("CREATE PRIMARY INDEX %s ON %s"
-                             % (index_name, bucket.name))
+                             % (index_name, bucket.name)).execute()
         self.sleep(2, "Wait for primary index to be created")
         while not index_created and index_retry != 0:
             state = client.cluster \
                 .query("SELECT state FROM system:indexes "
-                       "WHERE name='%s'" % index_name) \
-                .rowsAsObject()[0].get("state")
-            if state == "online":
+                       "WHERE name='%s'" % index_name).execute()
+
+            if state[0]['state'] == 'online':
                 index_created = True
-            else:
-                index_retry -= 1
-                self.sleep(1, "Retrying.. Index not yet online")
+                break
+
+            index_retry -= 1
+            self.sleep(1, "Retrying.. Index not yet online")
 
         client.close()

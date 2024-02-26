@@ -32,7 +32,7 @@ class SystemEventLogs(ClusterSetup):
             return events
 
     def generic_fields_check(self, event):
-        event_keys = event.keys()
+        event_keys = list(event.keys())
         for param in [Event.Fields.TIMESTAMP, Event.Fields.UUID]:
             if param not in event_keys:
                 self.fail("%s key missing in event" % param)
@@ -63,7 +63,7 @@ class SystemEventLogs(ClusterSetup):
             event = self.get_event_from_cluster()
 
             # Test NON Extra Attributes fields & NON generic fields
-            for param, value in user_event.items():
+            for param, value in list(user_event.items()):
                 if param == Event.Fields.EXTRA_ATTRS:
                     continue
                 if event[param] != value:
@@ -98,7 +98,7 @@ class SystemEventLogs(ClusterSetup):
             event = self.get_event_from_cluster()
 
             # Test NON Extra Attributes fields & NON generic fields
-            for param, value in user_event.items():
+            for param, value in list(user_event.items()):
                 if param == Event.Fields.EXTRA_ATTRS:
                     continue
                 if event[param] != value:
@@ -134,7 +134,7 @@ class SystemEventLogs(ClusterSetup):
                                                             new_settings["must_present"])
 
         # Test NON Extra Attributes fields & NON generic fields
-        for param, value in user_event.items():
+        for param, value in list(user_event.items()):
             if param == Event.Fields.EXTRA_ATTRS:
                 continue
             if event[param] != value:
@@ -163,12 +163,12 @@ class SystemEventLogs(ClusterSetup):
             new_settings_copy["clientTLSCert"] = "redacted"
             new_settings_copy["cacert"] = "redacted"
             new_settings_copy["bindDN"] = "redacted"
-            for key, val in old_settings_copy.items():
+            for key, val in list(old_settings_copy.items()):
                 if val == "false":
                     old_settings_copy[key] = False
                 elif val == "true":
                     old_settings_copy[key] = True
-            for key, val in new_settings_copy.items():
+            for key, val in list(new_settings_copy.items()):
                 if val == "false":
                     new_settings_copy[key] = False
                 elif val == "true":
@@ -179,7 +179,7 @@ class SystemEventLogs(ClusterSetup):
                                                             old_settings_copy, new_settings_copy)
 
             # Test NON Extra Attributes fields & NON generic fields
-            for param, value in user_event.items():
+            for param, value in list(user_event.items()):
                 if param == Event.Fields.EXTRA_ATTRS:
                     continue
                 if event[param] != value:
@@ -230,7 +230,7 @@ class SystemEventLogs(ClusterSetup):
 
         def validate_saslauthd_event(event, user_event):
             # Test NON Extra Attributes fields & NON generic fields
-            for param, value in user_event.items():
+            for param, value in list(user_event.items()):
                 if param == Event.Fields.EXTRA_ATTRS:
                     continue
                 if event[param] != value:
@@ -293,7 +293,7 @@ class SystemEventLogs(ClusterSetup):
                                                             old_settings, new_settings)
 
         # Test NON Extra Attributes fields & NON generic fields
-        for param, value in user_event.items():
+        for param, value in list(user_event.items()):
             if param == Event.Fields.EXTRA_ATTRS:
                 continue
             if event[param] != value:
@@ -333,7 +333,7 @@ class SystemEventLogs(ClusterSetup):
                                                   rotate_interval=86400,
                                                   rotate_size=20971520)
         # Test NON Extra Attributes fields & NON generic fields
-        for param, value in user_event.items():
+        for param, value in list(user_event.items()):
             if param == Event.Fields.EXTRA_ATTRS:
                 continue
             if event[param] != value:
@@ -346,7 +346,7 @@ class SystemEventLogs(ClusterSetup):
         # Test Extra Attributes fields
         # check if mandatory keys in new settings are present
         for param in ["enabled_audit_ids", "log_path", "rotate_interval", "rotate_size"]:
-            if param not in event[Event.Fields.EXTRA_ATTRS]["new_settings"].keys():
+            if param not in list(event[Event.Fields.EXTRA_ATTRS]["new_settings"].keys()):
                 self.fail("Param: {0} not present in new settings".format(param))
 
     def test_audit_disabled_event(self):
@@ -372,7 +372,7 @@ class SystemEventLogs(ClusterSetup):
                                                    rotate_size=524288000,
                                                    sync=[])
         # Test NON Extra Attributes fields & NON generic fields
-        for param, value in user_event.items():
+        for param, value in list(user_event.items()):
             if param == Event.Fields.EXTRA_ATTRS:
                 continue
             if event[param] != value:
@@ -385,7 +385,7 @@ class SystemEventLogs(ClusterSetup):
         # Test Extra Attributes fields
         # check if mandatory keys in old settings are present
         for param in ["enabled_audit_ids", "log_path", "rotate_interval", "rotate_size", "sync"]:
-            if param not in event[Event.Fields.EXTRA_ATTRS]["old_settings"].keys():
+            if param not in list(event[Event.Fields.EXTRA_ATTRS]["old_settings"].keys()):
                 self.fail("Param: {0} not present in new settings".format(param))
 
     def test_audit_config_changed_event(self):
@@ -415,7 +415,7 @@ class SystemEventLogs(ClusterSetup):
                                                           new_rotate_interval=172800,
                                                           new_rotate_size="")
         # Test NON Extra Attributes fields & NON generic fields
-        for param, value in user_event.items():
+        for param, value in list(user_event.items()):
             if param == Event.Fields.EXTRA_ATTRS:
                 continue
             if event[param] != value:

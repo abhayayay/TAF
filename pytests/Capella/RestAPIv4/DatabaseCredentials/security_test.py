@@ -86,7 +86,7 @@ class SecurityTest(BaseTestCase):
         resp = self.capellaAPI.cluster_ops_apis.list_buckets(organizationId=self.tenant_id, projectId=self.project_id,
                                                              clusterId=self.cluster_id)
 
-        beer_sample = filter(lambda x: x['name'] == self.bucket_name, resp.json()['data'])
+        beer_sample = [x for x in resp.json()['data'] if x['name'] == self.bucket_name]
 
         self.api_keys_list = self.rbac_roles_generator_wrapper()
 

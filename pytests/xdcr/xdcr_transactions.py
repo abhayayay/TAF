@@ -5,7 +5,7 @@ from java.util.concurrent import ExecutionException
 
 from couchbase_helper.documentgenerator import doc_generator
 from membase.api.rest_client import RestConnection
-from xdcrbasetest import XDCRNewBaseTest
+from .xdcrbasetest import XDCRNewBaseTest
 from xdcr_utils.xdcr_ready_functions import XDCRUtils
 
 

@@ -252,8 +252,8 @@ class CbCollectInfoTests(CollectionBase):
 
         # Create required indexes on the bucket
         client = self.sdk_client_pool.get_client_for_bucket(def_bucket)
-        for scope, s_data in def_bucket.scopes.items():
-            for collection in s_data.collections.keys():
+        for scope, s_data in list(def_bucket.scopes.items()):
+            for collection in list(s_data.collections.keys()):
                 client.cluster.query(
                     "CREATE PRIMARY INDEX index_primary on `%s`.`%s`.`%s`"
                     % (def_bucket.name, scope, collection))

@@ -6,10 +6,9 @@ import random
 import re
 import string
 
-from documentgenerator import DocumentGenerator
-from data import COUNTRIES, COUNTRY_CODE, FIRST_NAMES, LAST_NAMES
+from .documentgenerator import DocumentGenerator
+from .data import COUNTRIES, COUNTRY_CODE, FIRST_NAMES, LAST_NAMES
 
-from com.couchbase.client.java.json import JsonObject
 
 
 class TuqGenerators(object):
@@ -19,41 +18,41 @@ class TuqGenerators(object):
         self.query = None
         self.type_args = {}
         self.nests = self._all_nested_objects(full_set[0])
-        self.type_args['str'] = [attr[0] for attr in full_set[0].iteritems()
-                            if isinstance(attr[1], unicode)]
-        self.type_args['int'] = [attr[0] for attr in full_set[0].iteritems()
+        self.type_args['str'] = [attr[0] for attr in list(full_set[0].items())
+                            if isinstance(attr[1], str)]
+        self.type_args['int'] = [attr[0] for attr in list(full_set[0].items())
                             if isinstance(attr[1], int)]
-        self.type_args['float'] = [attr[0] for attr in full_set[0].iteritems()
+        self.type_args['float'] = [attr[0] for attr in list(full_set[0].items())
                             if isinstance(attr[1], float)]
-        self.type_args['bool'] = [attr[0] for attr in full_set[0].iteritems()
+        self.type_args['bool'] = [attr[0] for attr in list(full_set[0].items())
                             if isinstance(attr[1], bool)]
-        self.type_args['list_str'] = [attr[0] for attr in full_set[0].iteritems()
-                            if isinstance(attr[1], list) and isinstance(attr[1][0], unicode)]
-        self.type_args['list_int'] = [attr[0] for attr in full_set[0].iteritems()
+        self.type_args['list_str'] = [attr[0] for attr in list(full_set[0].items())
+                            if isinstance(attr[1], list) and isinstance(attr[1][0], str)]
+        self.type_args['list_int'] = [attr[0] for attr in list(full_set[0].items())
                             if isinstance(attr[1], list) and isinstance(attr[1][0], int)]
-        self.type_args['list_obj'] = [attr[0] for attr in full_set[0].iteritems()
+        self.type_args['list_obj'] = [attr[0] for attr in list(full_set[0].items())
                             if isinstance(attr[1], list) and isinstance(attr[1][0], dict)]
-        self.type_args['obj'] = [attr[0] for attr in full_set[0].iteritems()
+        self.type_args['obj'] = [attr[0] for attr in list(full_set[0].items())
                              if isinstance(attr[1], dict)]
         for obj in self.type_args['obj']:
-            self.type_args['_obj%s_str' % (self.type_args['obj'].index(obj))] = [attr[0] for attr in full_set[0][obj].iteritems()
+            self.type_args['_obj%s_str' % (self.type_args['obj'].index(obj))] = [attr[0] for attr in list(full_set[0][obj].items())
                                                                                     if isinstance(attr[1], str)]
-            self.type_args['_obj%s_int'% (self.type_args['obj'].index(obj))] = [attr[0] for attr in full_set[0][obj].iteritems()
+            self.type_args['_obj%s_int'% (self.type_args['obj'].index(obj))] = [attr[0] for attr in list(full_set[0][obj].items())
                                                                                     if isinstance(attr[1], int)]
         for obj in self.type_args['list_obj']:
-            self.type_args['_list_obj%s_str' % (self.type_args['list_obj'].index(obj))] = [attr[0] for attr in full_set[0][obj][0].iteritems()
-                                                                                    if isinstance(attr[1], str) or isinstance(attr[1], unicode)]
-            self.type_args['_list_obj%s_int'% (self.type_args['list_obj'].index(obj))] = [attr[0] for attr in full_set[0][obj][0].iteritems()
+            self.type_args['_list_obj%s_str' % (self.type_args['list_obj'].index(obj))] = [attr[0] for attr in list(full_set[0][obj][0].items())
+                                                                                    if isinstance(attr[1], str) or isinstance(attr[1], str)]
+            self.type_args['_list_obj%s_int'% (self.type_args['list_obj'].index(obj))] = [attr[0] for attr in list(full_set[0][obj][0].items())
                                                                                     if isinstance(attr[1], int)]
-        for i in xrange(2, 5):
+        for i in range(2, 5):
             self.type_args['nested_%sl' % i] = [attr for attr in self.nests if len(attr.split('.')) == i]
-        for i in xrange(2, 5):
-            self.type_args['nested_list_%sl' % i] = [attr[0] for attr in self.nests.iteritems() if len(attr[0].split('.')) == i and isinstance(attr[1], list)]
+        for i in range(2, 5):
+            self.type_args['nested_list_%sl' % i] = [attr[0] for attr in list(self.nests.items()) if len(attr[0].split('.')) == i and isinstance(attr[1], list)]
         self._clear_current_query()
 
     def generate_query(self, template):
         query = template
-        for name_type, type_arg in self.type_args.iteritems():
+        for name_type, type_arg in list(self.type_args.items()):
             for attr_type_arg in type_arg:
                 query = query.replace('$%s%s' % (name_type, type_arg.index(attr_type_arg)), attr_type_arg)
         for expr in [' where ', ' select ', ' from ', ' order by', ' limit ', 'end',
@@ -85,9 +84,9 @@ class TuqGenerators(object):
 
     def _all_nested_objects(self, d):
         def items():
-            for key, value in d.items():
+            for key, value in list(d.items()):
                 if isinstance(value, dict):
-                    for subkey, subvalue in self._all_nested_objects(value).items():
+                    for subkey, subvalue in list(self._all_nested_objects(value).items()):
                         yield key + "." + subkey, subvalue
                 else:
                     yield key, value
@@ -144,7 +143,7 @@ class TuqGenerators(object):
             else:
                 conditions += '' + satisfy_expr
         if from_clause and from_clause.find('.') != -1:
-            sub_attrs = [att for name, group in self.type_args.iteritems()
+            sub_attrs = [att for name, group in list(self.type_args.items())
                          for att in group if att not in attributes]
             for attr in sub_attrs:
                 conditions = conditions.replace(' %s ' % attr, ' doc["%s"] ' % attr)
@@ -348,7 +347,7 @@ class TuqGenerators(object):
             result = self._group_results(result)
         if self.aggr_fns:
             if not self._create_groups()[0] or len(result) == 0:
-                for fn_name, params in self.aggr_fns.iteritems():
+                for fn_name, params in list(self.aggr_fns.items()):
                     if fn_name == 'COUNT':
                         result = [{params['alias'] : len(result)}]
         return result
@@ -360,7 +359,7 @@ class TuqGenerators(object):
         order_clause = order_clause.replace(',"', '"')
         diff = set(order_clause.split(',')) - set(re.compile('doc\["[\w\']+"\]').findall(select_clause))
         diff = [attr.replace(",",'"') for attr in diff if attr != '']
-        for k, v in self.aliases.iteritems():
+        for k, v in list(self.aliases.items()):
             if k.endswith(','):
                 self.aliases[k[:-1]] = v
                 del self.aliases[k]
@@ -383,7 +382,7 @@ class TuqGenerators(object):
         order_attrs = order_clause.split(',')
         for attr_s in order_attrs:
             attr = attr_s.split()
-            if attr[0] in self.aliases.itervalues():
+            if attr[0] in iter(list(self.aliases.values())):
                     condition += 'doc["%s"],' % (self.get_alias_for(attr[0]))
                     continue
             if attr[0].find('MIN') != -1:
@@ -430,12 +429,12 @@ class TuqGenerators(object):
                 if len(attr) == 2 and attr[1].upper() == 'DESC':
                     reverse = True
             for att_name in re.compile('"[\w\']+"').findall(order_clause):
-                if att_name[1:-1] in self.aliases.itervalues():
+                if att_name[1:-1] in iter(list(self.aliases.values())):
                     order_clause = order_clause.replace(att_name[1:-1],
                                                         self.get_alias_for(att_name[1:-1]))
-                if self.aggr_fns and att_name[1:-1] in [params['field'] for params in self.aggr_fns.itervalues()]:
+                if self.aggr_fns and att_name[1:-1] in [params['field'] for params in list(self.aggr_fns.values())]:
                     order_clause = order_clause.replace(att_name[1:-1],
-                                                        [params['alias'] for params in self.aggr_fns.itervalues()
+                                                        [params['alias'] for params in list(self.aggr_fns.values())
                                                          if params['field'] == att_name[1:-1]][0])
             if order_clause.find(',"') != -1:
                 order_clause = order_clause.replace(',"', '"')
@@ -491,7 +490,7 @@ class TuqGenerators(object):
 
     def _group_results(self, result):
         attrs, groups = self._create_groups()
-        for fn_name, params in self.aggr_fns.iteritems():
+        for fn_name, params in list(self.aggr_fns.items()):
             if fn_name == 'COUNT':
                 result = [{attrs[0] : group[0], attrs[1] : group[1],
                                 params['alias'] : len([doc for doc in result
@@ -505,7 +504,7 @@ class TuqGenerators(object):
                                     if doc[attrs[0]]==group[0] and doc[attrs[1]]==group[1]])}
                               for group in groups]
                 else:
-                    if attrs[0] in self.aliases.itervalues():
+                    if attrs[0] in iter(list(self.aliases.values())):
                         attrs[0] = self.get_alias_for(attrs[0]).replace(',', '')
                     result = [{attrs[0] : group,
                                 params['alias'] : min([doc[params['alias']] for doc in result
@@ -516,13 +515,13 @@ class TuqGenerators(object):
         return result
 
     def get_alias_for(self, value_search):
-        for key, value in self.aliases.iteritems():
+        for key, value in list(self.aliases.items()):
             if value == value_search:
                 return key
         return ''
 
     def get_all_attributes(self):
-        return [att for name, group in self.type_args.iteritems()
+        return [att for name, group in list(self.type_args.items())
                 for att in group if not name.startswith('_')]
 
     def _is_parent_selected(self, clause, diff):
@@ -579,8 +578,8 @@ class JsonGenerator:
         types = ['Engineer', 'Sales', 'Support']
         skills = ['Python', 'Java', 'C++', 'Testing', 'Development']
         join_yr = [2010, 2011,2012,2013,2014,2015,2016]
-        join_mo = xrange(1, 12 + 1)
-        join_day = xrange(1, 28 + 1)
+        join_mo = list(range(1, 12 + 1))
+        join_day = list(range(1, 28 + 1))
         templates = []
         for i in range(start, docs_per_day):
             random.seed(i)
@@ -600,7 +599,7 @@ class JsonGenerator:
             template.put("join_day" , random.choice(join_day))
             template.put("email" , email)
             template.put("job_title" , random.choice(types))
-            template.put("test_rate" , range(1, 10))
+            template.put("test_rate" , list(range(1, 10)))
             template.put("skills" , random.sample(skills, 2))
             template.put("vms" , [vms])
             templates.append(template)
@@ -629,11 +628,11 @@ class JsonGenerator:
                             "Spanish", "French", "Nepalese", "Dutch", "Vietnamese", "Arabic",
                             "Japanese"]
         join_yr = [2010, 2011,2012,2013,2014,2015,2016]
-        join_mo = xrange(1, 12 + 1)
-        join_day = xrange(1, 28 + 1)
+        join_mo = list(range(1, 12 + 1))
+        join_day = list(range(1, 28 + 1))
         is_manager = [True,False]
-        salary = range(10000, 200000)
-        emp_id = range(0, 10000)
+        salary = list(range(10000, 200000))
+        emp_id = list(range(0, 10000))
         count = 1
         templates = []
 #             languanges_known = {}
@@ -692,8 +691,8 @@ class JsonGenerator:
         sport = ['Badminton','Cricket','Football','Basketball','American Football','ski']
         dance = ['classical','bollywood','salsa','hip hop','contemporary','bhangra']
         join_yr = [2010, 2011,2012,2013,2014,2015,2016]
-        join_mo = xrange(1, 12 + 1)
-        join_day = xrange(1, 28 + 1)
+        join_mo = list(range(1, 12 + 1))
+        join_day = list(range(1, 28 + 1))
         engineer = ["Query","Search","Indexing","Storage","Android","IOS"]
         marketing = ["East","West","North","South","International"]
         cities = ['Mumbai','Delhi','New York','San Francisco']
@@ -754,9 +753,9 @@ class JsonGenerator:
         all_airports = ["ABR", "ABI", "ATL","BOS", "BUR", "CHI", "MDW", "DAL", "SFO", "SAN", "SJC", "LGA", "JFK", "MSP",
                         "MSQ", "MIA", "LON", "DUB"]
         dests = [all_airports[i] for i in indexes]
-        join_yr = self._shuffle(xrange(2010, 2010 + years), isShuffle)
-        join_mo = self._shuffle(xrange(1, 12 + 1),isShuffle)
-        join_day = self._shuffle(xrange(1, 28 + 1),isShuffle)
+        join_yr = self._shuffle(list(range(2010, 2010 + years)), isShuffle)
+        join_mo = self._shuffle(list(range(1, 12 + 1)),isShuffle)
+        join_day = self._shuffle(list(range(1, 28 + 1)),isShuffle)
         count = 1
         templates = []
         for i in range(start, docs_per_day):
@@ -889,8 +888,8 @@ class JsonGenerator:
     def generate_docs_sales(self, key_prefix = "sales_dataset", test_data_type = True, start=0, docs_per_day=None, isShuffle = False):
         end = docs_per_day
         join_yr = [2010, 2011,2012,2013,2014,2015,2016]
-        join_mo = xrange(1, 12 + 1)
-        join_day = xrange(1, 28 + 1)
+        join_mo = list(range(1, 12 + 1))
+        join_day = list(range(1, 28 + 1))
         is_support = ['true', 'false']
         is_priority = ['true', 'false']
         count = 1
@@ -928,7 +927,7 @@ class JsonGenerator:
                               start=0, docs_per_day=1, end=None):
         if end is None:
             end = docs_per_day
-        age = range(start, end)
+        age = list(range(start, end))
         name = ['a' * value_size]
         template = JsonObject.create()
         template.put("age", age)
@@ -943,9 +942,9 @@ class JsonGenerator:
     def generate_docs_simple(self, key_prefix="simple_dataset", start=0,
                              docs_per_day=1000, isShuffle=False):
         end = docs_per_day
-        age = self._shuffle(range(start, end), isShuffle)
+        age = self._shuffle(list(range(start, end)), isShuffle)
         name = [key_prefix + '-' + str(i)
-                for i in self._shuffle(xrange(start, end), isShuffle)]
+                for i in self._shuffle(list(range(start, end)), isShuffle)]
         template = JsonObject.create()
         template.put("age", age)
         template.put("name", name)
@@ -1027,9 +1026,9 @@ class JsonGenerator:
                     "Mindanao, Philippines", "Philippine Islands region", "Halmahera, Indonesia",
                     "Newberry Caldera area, Oregon", "south of Africa", "south of the Mariana Islands", "Ascension Island region"]
         Magnitude = [1.1, 1.9, 2.3, 4, 6, 7.2, 5.3, 3.7, 9.2, 7.1, 6.3, 6.7, 6.5]
-        Depth = range(10, 40)
-        Version = range(3)
-        NST = range(1, 10)
+        Depth = list(range(10, 40))
+        Version = list(range(3))
+        NST = list(range(1, 10))
         templates = []
         for i in range(start, end):
             random.seed(i)
@@ -1144,11 +1143,11 @@ class JsonGenerator:
         data_sets = self._shuffle([sys_admin_info, ui_eng_info, senior_arch_info],isShuffle)
         if end is None:
             end = self.docs_per_day
-        join_yr = self._shuffle(range(2008, 2008 + self.years),isShuffle)
-        join_mo = self._shuffle(range(1, self.months + 1),isShuffle)
-        join_day = self._shuffle(range(1, self.days + 1),isShuffle)
-        name = ["employee-%s-%s" % (key_prefix, str(i)) for i in xrange(start, end)]
-        email = ["%s-mail@couchbase.com" % str(i) for i in xrange(start, end)]
+        join_yr = self._shuffle(list(range(2008, 2008 + self.years)),isShuffle)
+        join_mo = self._shuffle(list(range(1, self.months + 1)),isShuffle)
+        join_day = self._shuffle(list(range(1, self.days + 1)),isShuffle)
+        name = ["employee-%s-%s" % (key_prefix, str(i)) for i in range(start, end)]
+        email = ["%s-mail@couchbase.com" % str(i) for i in range(start, end)]
         template = '{{ "name":"{0}", "join_yr":{1}, "join_mo":{2}, "join_day":{3},'
         template += ' "email":"{4}", "job_title":"{5}", "type":"{6}", "desc":"{7}"}}'
         for info in data_sets:

@@ -5,7 +5,7 @@ from castest.cas_base import CasBaseTest
 from couchbase_helper.documentgenerator import doc_generator
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_client3 import SDKClient
-from sdk_exceptions import SDKException
+from sdk_exceptions import SDKException, check_if_exception_exists
 
 
 class OpsChangeCasTests(CasBaseTest):
@@ -49,7 +49,7 @@ class OpsChangeCasTests(CasBaseTest):
             client = SDKClient([self.cluster.master], bucket)
             gen = generator
             while gen.has_next():
-                key, value = gen.next()
+                key, value = next(gen)
                 vb_of_key = self.bucket_util.get_vbucket_num_for_key(key)
                 active_node_ip = None
                 for node in nodes:
@@ -146,8 +146,7 @@ class OpsChangeCasTests(CasBaseTest):
                                          cas=old_cas)
                     if result["status"] is True:
                         self.log_failure("The item should already be deleted")
-                    if SDKException.DocumentNotFoundException \
-                            not in result["error"]:
+                    if not check_if_exception_exists(result["error"], SDKException.DocumentNotFoundException):
                         self.log_failure("Invalid Exception: %s" % result)
                     if result["cas"] != 0:
                         self.log_failure("Delete returned invalid cas: %s, "
@@ -164,7 +163,7 @@ class OpsChangeCasTests(CasBaseTest):
                     else:
                         self.log_failure("Touch operation failed")
 
-                    self.sleep(self.expire_time+1, "Wait for item to expire")
+                    self.sleep(self.expire_time + 1, "Wait for item to expire")
                     result = client.crud("replace", key, "test",
                                          durability=self.durability_level,
                                          timeout=self.sdk_timeout,
@@ -172,8 +171,7 @@ class OpsChangeCasTests(CasBaseTest):
                     if result["status"] is True:
                         self.log_failure("Able to mutate %s with old cas: %s"
                                          % (key, old_cas))
-                    if SDKException.DocumentNotFoundException \
-                            not in result["error"]:
+                    if not check_if_exception_exists(result["error"], SDKException.DocumentNotFoundException):
                         self.log_failure("Invalid error after expiry: %s"
                                          % result)
 
@@ -190,10 +188,10 @@ class OpsChangeCasTests(CasBaseTest):
 
         gen_load = doc_generator('nosql', 0, self.num_items,
                                  doc_size=self.doc_size)
-        gen_update = doc_generator('nosql', 0, self.num_items/2,
+        gen_update = doc_generator('nosql', 0, self.num_items / 2,
                                    doc_size=self.doc_size)
         gen_delete = doc_generator('nosql',
-                                   self.num_items/2,
+                                   self.num_items / 2,
                                    (self.num_items * 3 / 4),
                                    doc_size=self.doc_size)
         gen_expire = doc_generator('nosql',
@@ -212,7 +210,7 @@ class OpsChangeCasTests(CasBaseTest):
             self.vb_details[node.ip] = dict()
             self.vb_details[node.ip]["active"] = list()
             self.vb_details[node.ip]["replica"] = list()
-        
+
             self.cb_stat[node.ip] = Cbstats(node)
             self.vb_details[node.ip]["active"] = \
                 self.cb_stat[node.ip].vbucket_list(self.bucket.name, "active")
@@ -244,7 +242,7 @@ class OpsChangeCasTests(CasBaseTest):
 
         self.log.info("2. Loading bucket into DGM")
         dgm_gen = doc_generator(
-            self.key, self.num_items, self.num_items+1)
+            self.key, self.num_items, self.num_items + 1)
         dgm_task = self.task.async_load_gen_docs(
             self.cluster, self.cluster.buckets[0], dgm_gen, "create", 0,
             persist_to=self.persist_to,
@@ -261,7 +259,7 @@ class OpsChangeCasTests(CasBaseTest):
         client = SDKClient([self.cluster.master],
                            self.cluster.buckets[0])
         while load_gen.has_next():
-            key, _ = load_gen.next()
+            key, _ = next(load_gen)
             result = client.crud("touch", key,
                                  durability=self.durability_level,
                                  timeout=self.sdk_timeout)
@@ -373,11 +371,12 @@ class OpsChangeCasTests(CasBaseTest):
     then requested sometimes returns key exists with different CAS instead of
     key not exists error, this test only requires one node
     """
+
     def key_not_exists_test(self):
         client = SDKClient([self.cluster.master], self.bucket)
         load_gen = doc_generator(self.key, 0, 1,
                                  doc_size=256)
-        key, val = load_gen.next()
+        key, val = next(load_gen)
 
         for _ in range(1500):
             result = client.crud("create", key, val,
@@ -400,8 +399,7 @@ class OpsChangeCasTests(CasBaseTest):
                                  timeout=self.sdk_timeout)
             if result["status"] is True:
                 self.log_failure("Read succeeded after delete: %s" % result)
-            elif SDKException.DocumentNotFoundException \
-                    not in str(result["error"]):
+            elif not check_if_exception_exists(result["error"], SDKException.DocumentNotFoundException):
                 self.log_failure("Invalid exception during read "
                                  "for non-exists key: %s" % result)
 
@@ -412,8 +410,7 @@ class OpsChangeCasTests(CasBaseTest):
                                  cas=create_cas)
             if result["status"] is True:
                 self.log_failure("Replace succeeded after delete: %s" % result)
-            if SDKException.DocumentNotFoundException \
-                    not in str(result["error"]):
+            if not check_if_exception_exists(result["error"], SDKException.DocumentNotFoundException):
                 self.log_failure("Invalid exception during read "
                                  "for non-exists key: %s" % result)
 

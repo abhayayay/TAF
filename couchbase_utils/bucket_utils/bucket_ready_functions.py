@@ -11,13 +11,12 @@ import os.path
 import re
 import threading
 import datetime
-from random import sample, choice
+from random import sample, choice, randint
 from time import time
 
 import requests
 import concurrent.futures
 
-import exceptions
 import json
 import random
 import string
@@ -30,7 +29,7 @@ import mc_bin_client
 import memcacheConstants
 from BucketLib.BucketOperations import BucketHelper
 from Cb_constants import CbServer, DocLoading, ClusterRun
-from Jython_tasks.task import \
+from tasks.task import \
     BucketCreateTask, \
     BucketCreateFromSpecTask, \
     ViewCreateTask, \
@@ -53,7 +52,6 @@ from couchbase_helper.data_analysis_helper import DataCollector, DataAnalyzer, \
 from couchbase_helper.document import View
 from couchbase_helper.documentgenerator import doc_generator, \
     sub_doc_generator, sub_doc_generator_for_edit
-from couchbase_helper.durability_helper import BucketDurability
 from error_simulation.cb_error import CouchbaseError
 from global_vars import logger
 
@@ -70,20 +68,12 @@ from table_view import TableView
 from testconstants import MAX_COMPACTION_THRESHOLD, \
     MIN_COMPACTION_THRESHOLD
 from sdk_client3 import SDKClient
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 from couchbase_helper.tuq_generators import JsonGenerator
 from StatsLib.StatsOperations import StatsHelper
 
-from com.couchbase.client.core.error import DocumentExistsException, \
-    TimeoutException, DocumentNotFoundException, ServerOutOfMemoryException
-from com.couchbase.test.docgen import \
-    WorkLoadSettings, DocumentGenerator, DocRange
-from com.couchbase.test.loadgen import WorkLoadGenerate
-from com.couchbase.test.sdk import Server
-from com.couchbase.test.sdk import SDKClient as NewSDKClient
-from com.couchbase.test.sdk import SDKClientPool
-from couchbase.test.docgen import DRConstants
-
-from java.util import HashMap
+from sirius_client import SiriusClient, IDENTIFIER_TOKEN
+from sdk_exceptions import check_if_exception_exists
 
 """
 Create a set of bucket_parameters to be sent to all bucket_creation methods
@@ -162,7 +152,7 @@ class DocLoaderUtils(object):
                           generic_key, mutation_num=0,
                           target_vbuckets="all", type="default",
                           doc_size=256, randomize_value=False,
-                          randomize_doc_size=False):
+                          randomize_doc_size=False, key_size=8):
         """
         Create doc generators based on op_type provided
         :param op_type: CRUD type
@@ -219,7 +209,8 @@ class DocLoaderUtils(object):
                                      mutation_type=op_type,
                                      mutate=mutation_num,
                                      randomize_value=randomize_value,
-                                     randomize_doc_size=randomize_doc_size)
+                                     randomize_doc_size=randomize_doc_size,
+                                     key_size=key_size)
         else:
             json_generator = JsonGenerator()
             if type == "employee":
@@ -308,7 +299,7 @@ class DocLoaderUtils(object):
         :return: List of doc_loading tasks
         """
         loader_spec = dict()
-        for bucket_name, scope_dict in crud_spec.items():
+        for bucket_name, scope_dict in list(crud_spec.items()):
             bucket = BucketUtils.get_bucket_obj(buckets, bucket_name)
             loader_spec[bucket] = scope_dict
         task = task_manager.async_load_gen_docs_from_spec(
@@ -340,13 +331,13 @@ class DocLoaderUtils(object):
                              sub_doc_gen=False,
                              is_xattr_test=False,
                              collection_recreated=False):
-            for b_name, s_dict in spec.items():
+            for b_name, s_dict in list(spec.items()):
                 s_dict = s_dict["scopes"]
                 if b_name not in crud_spec:
                     crud_spec[b_name] = dict()
                     crud_spec[b_name]["scopes"] = dict()
                 bucket = BucketUtils.get_bucket_obj(buckets, b_name)
-                for s_name, c_dict in s_dict.items():
+                for s_name, c_dict in list(s_dict.items()):
                     if s_name not in crud_spec[b_name]["scopes"]:
                         crud_spec[b_name]["scopes"][s_name] = dict()
                         crud_spec[b_name]["scopes"][
@@ -354,7 +345,7 @@ class DocLoaderUtils(object):
 
                     c_dict = c_dict["collections"]
                     scope = bucket.scopes[s_name]
-                    for c_name, _ in c_dict.items():
+                    for c_name, _ in list(c_dict.items()):
                         if c_name not in crud_spec[b_name]["scopes"][
                             s_name]["collections"]:
                             crud_spec[b_name]["scopes"][
@@ -424,7 +415,8 @@ class DocLoaderUtils(object):
                                         mutation_num=mutation_num,
                                         type=c_crud_data[op_type]["doc_gen_type"],
                                         randomize_value=randomize_value,
-                                        randomize_doc_size=randomize_doc_size)
+                                        randomize_doc_size=randomize_doc_size,
+                                        key_size=doc_key_size)
                             else:
                                 c_crud_data[op_type]["xattr_test"] = \
                                     is_xattr_test
@@ -448,7 +440,7 @@ class DocLoaderUtils(object):
             MetaCrudParams.BUCKETS_CONSIDERED_FOR_CRUD, 1)
 
         # Create dict if not provided by user
-        if "doc_crud" not in input_spec.keys():
+        if "doc_crud" not in list(input_spec.keys()):
             input_spec["doc_crud"] = dict()
         if "subdoc_crud" not in input_spec:
             input_spec["subdoc_crud"] = dict()
@@ -459,6 +451,7 @@ class DocLoaderUtils(object):
         # Fetch doc_size to use for doc_loading
         doc_size = input_spec["doc_crud"].get(
             MetaCrudParams.DocCrud.DOC_SIZE, 256)
+        doc_key_size = input_spec["doc_crud"].get(MetaCrudParams.DocCrud.DOC_KEY_SIZE, 8)
         # Fetch randomize_value to use for doc_loading
         randomize_value = input_spec["doc_crud"].get(
             MetaCrudParams.DocCrud.RANDOMIZE_VALUE, False)
@@ -523,28 +516,32 @@ class DocLoaderUtils(object):
         spec_percent_data["lookup"] = input_spec["subdoc_crud"].get(
             MetaCrudParams.SubDocCrud.LOOKUP_PER_COLLECTION, 0)
 
-        for op_type in spec_percent_data.keys():
+        for op_type in list(spec_percent_data.keys()):
             if isinstance(spec_percent_data[op_type], int):
                 spec_percent_data[op_type] = (spec_percent_data[op_type], 1)
-
+        exclude_dict = dict()
+        if 'skip_dict' in input_spec:
+            exclude_dict = input_spec['skip_dict']
         doc_crud_spec = BucketUtils.get_random_collections(
             buckets,
             num_collection_to_load,
             num_scopes_to_consider,
-            num_buckets_to_consider)
+            num_buckets_to_consider,
+            exclude_from=exclude_dict)
         sub_doc_crud_spec = BucketUtils.get_random_collections(
             buckets,
             num_collection_to_load,
             num_scopes_to_consider,
-            num_buckets_to_consider)
+            num_buckets_to_consider,
+            exclude_from=exclude_dict)
 
         create_load_gens(doc_crud_spec)
 
         # Add new num_items for newly added collections
-        for bucket_name, scope_dict in op_details["collections_added"].items():
+        for bucket_name, scope_dict in list(op_details["collections_added"].items()):
             b_obj = BucketUtils.get_bucket_obj(buckets, bucket_name)
-            for scope_name, col_dict in scope_dict["scopes"].items():
-                for col_name, _ in col_dict["collections"].items():
+            for scope_name, col_dict in list(scope_dict["scopes"].items()):
+                for col_name, _ in list(col_dict["collections"].items()):
                     b_obj.scopes[
                         scope_name].collections[
                         col_name].num_items = num_items_for_new_collections
@@ -582,14 +579,14 @@ class DocLoaderUtils(object):
                 bucket, scope_name, collection_name)
         doc_data = dict()
         subdoc_data = dict()
-        for op_type, op_data in c_data.items():
+        for op_type, op_data in list(c_data.items()):
             if op_type in DocLoading.Bucket.DOC_OPS:
                 doc_data[op_type] = op_data
             else:
                 subdoc_data[op_type] = op_data
         for data in [doc_data, subdoc_data]:
-            for op_type, op_data in data.items():
-                failed_keys = op_data["fail"].keys()
+            for op_type, op_data in list(data.items()):
+                failed_keys = list(op_data["fail"].keys())
 
                 # New dicts to filter failures based on retry strategy
                 op_data["unwanted"] = dict()
@@ -600,7 +597,7 @@ class DocLoaderUtils(object):
                 op_data["retried"]["success"] = dict()
 
                 if failed_keys:
-                    for key, failed_doc in op_data["fail"].items():
+                    for key, failed_doc in list(op_data["fail"].items()):
                         is_key_to_ignore = False
                         exception = failed_doc["error"]
                         initial_exception = re.match(exception_pattern,
@@ -742,9 +739,9 @@ class DocLoaderUtils(object):
         c_validation_threads = list()
         crud_validation_function = \
             DocLoaderUtils.validate_crud_task_per_collection
-        for bucket_obj, scope_dict in doc_loading_task.loader_spec.items():
-            for s_name, collection_dict in scope_dict["scopes"].items():
-                for c_name, c_dict in collection_dict["collections"].items():
+        for bucket_obj, scope_dict in list(doc_loading_task.loader_spec.items()):
+            for s_name, collection_dict in list(scope_dict["scopes"].items()):
+                for c_name, c_dict in list(collection_dict["collections"].items()):
                     c_thread = threading.Thread(
                         target=crud_validation_function,
                         args=[bucket_obj, s_name, c_name, c_dict])
@@ -757,10 +754,10 @@ class DocLoaderUtils(object):
 
         # Set doc_loading result based on the retry outcome
         doc_loading_task.result = True
-        for _, scope_dict in doc_loading_task.loader_spec.items():
-            for _, collection_dict in scope_dict["scopes"].items():
-                for _, c_dict in collection_dict["collections"].items():
-                    for op_type, op_data in c_dict.items():
+        for _, scope_dict in list(doc_loading_task.loader_spec.items()):
+            for _, collection_dict in list(scope_dict["scopes"].items()):
+                for _, c_dict in list(collection_dict["collections"].items()):
+                    for op_type, op_data in list(c_dict.items()):
                         if op_data["fail"]:
                             doc_loading_task.result = False
                             break
@@ -782,12 +779,12 @@ class DocLoaderUtils(object):
         BucketUtils.log.debug(
             "Updating collection's num_items as per TTL settings")
         if ttl_level == "document":
-            for bucket, scope_dict in doc_loading_task.loader_spec.items():
-                for s_name, c_dict in scope_dict["scopes"].items():
+            for bucket, scope_dict in list(doc_loading_task.loader_spec.items()):
+                for s_name, c_dict in list(scope_dict["scopes"].items()):
                     num_items_updated = False
-                    for c_name, c_data in c_dict["collections"].items():
+                    for c_name, c_data in list(c_dict["collections"].items()):
                         c_obj = bucket.scopes[s_name].collections[c_name]
-                        for op_type, op_data in c_data.items():
+                        for op_type, op_data in list(c_data.items()):
                             if op_data["doc_ttl"] > doc_expiry_time:
                                 doc_expiry_time = op_data["doc_ttl"]
 
@@ -820,8 +817,8 @@ class DocLoaderUtils(object):
                                     c_obj.num_items -= affected_items
         elif ttl_level == "collection":
             for bucket in buckets:
-                for _, scope in bucket.scopes.items():
-                    for _, collection in scope.collections.items():
+                for _, scope in list(bucket.scopes.items()):
+                    for _, collection in list(scope.collections.items()):
                         if collection.maxTTL > doc_expiry_time:
                             doc_expiry_time = collection.maxTTL
                             collection.num_items = 0
@@ -829,8 +826,8 @@ class DocLoaderUtils(object):
             for bucket in buckets:
                 if bucket.maxTTL > doc_expiry_time:
                     doc_expiry_time = bucket.maxTTL
-                for _, scope in bucket.scopes.items():
-                    for _, collection in scope.collections.items():
+                for _, scope in list(bucket.scopes.items()):
+                    for _, collection in list(scope.collections.items()):
                         collection.num_items = 0
         else:
             DocLoaderUtils.log.error("Unsupported ttl_level value: %s"
@@ -951,7 +948,7 @@ class DocLoaderUtils(object):
 
     @staticmethod
     def perform_doc_loading(task_manager, loader_map, cluster, buckets=None,
-                            durability_level=Bucket.DurabilityLevel.NONE,
+                            durability_level=SDKConstants.DurabilityLevel.NONE,
                             maxttl=0, ttl_time_unit="seconds",
                             process_concurrency=1,
                             track_failures=True,
@@ -973,7 +970,7 @@ class DocLoaderUtils(object):
                             str(cluster.master.memcached_port))
         tasks = list()
         while process_concurrency > 0:
-            for loader_map_key, dg in loader_map.items():
+            for loader_map_key, dg in list(loader_map.items()):
                 bucket_name, scope, collection = loader_map_key.split(":")
                 bucket = get_bucket_obj(bucket_name)
                 task_name = "Loader_%s_%s_%s_%s_%s" \
@@ -1026,7 +1023,7 @@ class DocLoaderUtils(object):
             task.result = True
             unique_str = "%s:%s:%s:" % (task.sdk.bucket, task.sdk.scope,
                                         task.sdk.collection)
-            for optype, failures in task.failedMutations.items():
+            for optype, failures in list(task.failedMutations.items()):
                 for failure in failures:
                     if failure is not None:
                         log.error("Test Retrying {}: {}{} -> {}".format(optype, unique_str, failure.id(), failure.err().getClass().getSimpleName()))
@@ -1096,7 +1093,7 @@ class DocLoaderUtils(object):
         buckets = cluster.buckets if buckets is None else buckets
         log = DocLoaderUtils.log
         log.info("Creating doc_gens for running validations")
-        for loader_map_key, doc_gen in loader_map.items():
+        for loader_map_key, doc_gen in list(loader_map.items()):
             bucket_name, scope, collection = loader_map_key.split(":")
             workload_setting = doc_gen.get_work_load_settings()
             doc_range = workload_setting.dr
@@ -1125,7 +1122,7 @@ class DocLoaderUtils(object):
 
         tasks = list()
         while process_concurrency > 0:
-            for map_key, doc_gen in validation_map.items():
+            for map_key, doc_gen in list(validation_map.items()):
                 bucket_name, scope, collection, op_type = map_key.split(":")
                 bucket = get_bucket_obj(bucket_name)
 
@@ -1176,6 +1173,35 @@ class DocLoaderUtils(object):
 
 class CollectionUtils(DocLoaderUtils):
     @staticmethod
+    def get_range_scan_results(range_scan_result, expect_failure, log):
+        """ segregates range scan count fails with exception and visualise
+        them in tabular format accepts list of dict in following format
+        [failure_map = {
+            "failure_in_scan": Bool,
+            "prefix_scan": dict,
+            "sampling_scan":dict,
+            "range_scan": dict,
+            "exception": list}]
+        """
+        log.debug("range scan result %s" % str(range_scan_result))
+        if len(range_scan_result) == 0:
+            return True
+        table = TableView(log.info)
+        table.set_headers(["Type", "Scan Detail"])
+        for result in range_scan_result:
+            if len(result["prefix_scan"]) > 0:
+                table.add_row(["prefix_scan", result["prefix_scan"]])
+            if len(result["range_scan"]) > 0:
+                table.add_row(["range_scan", result["range_scan"]])
+            if len(result["sampling_scan"]) > 0:
+                table.add_row(["sampling_scan", result["sampling_scan"]])
+
+        table.display("Range scan results")
+        if expect_failure:
+            return True
+        return False
+
+    @staticmethod
     def get_collection_obj(scope, collection_name):
         """
         Fetch the target collection object under the given scope object
@@ -1184,7 +1210,7 @@ class CollectionUtils(DocLoaderUtils):
         :param collection_name: Target collection name to fetch the object
         """
         collection = None
-        if collection_name in scope.collections.keys():
+        if collection_name in list(scope.collections.keys()):
             collection = scope.collections[collection_name]
         return collection
 
@@ -1201,7 +1227,7 @@ class CollectionUtils(DocLoaderUtils):
         collections = list()
         scope = ScopeUtils.get_scope_obj(bucket, scope_name)
 
-        for collection_name, collection in scope.collections.items():
+        for collection_name, collection in list(scope.collections.items()):
             if not collection.is_dropped:
                 if only_names:
                     collections.append(collection_name)
@@ -1225,7 +1251,7 @@ class CollectionUtils(DocLoaderUtils):
         collection = CollectionUtils.get_collection_obj(scope, collection_name)
 
         # If collection already dropped with same name use it or create one
-        if "history" not in collection_spec.keys():
+        if "history" not in list(collection_spec.keys()):
             collection_spec["history"] = \
                 bucket.historyRetentionCollectionDefault \
                     if bucket.storageBackend == Bucket.StorageBackend.magma else "false"
@@ -1425,7 +1451,7 @@ class CollectionUtils(DocLoaderUtils):
                                               created_collections)
 
                 collection_already_exists = \
-                    col_name in target_scope.collections.keys() \
+                    col_name in list(target_scope.collections.keys()) \
                     and target_scope.collections[col_name].is_dropped is False
 
                 try:
@@ -1464,7 +1490,7 @@ class ScopeUtils(CollectionUtils):
         :param scope_name: Target scope name to fetch the object
         """
         scope = None
-        if scope_name in bucket.scopes.keys():
+        if scope_name in list(bucket.scopes.keys()):
             scope = bucket.scopes[scope_name]
         return scope
 
@@ -1478,7 +1504,7 @@ class ScopeUtils(CollectionUtils):
                            instead of objects
         """
         scopes = list()
-        for scope_name, scope in bucket.scopes.items():
+        for scope_name, scope in list(bucket.scopes.items()):
             if not scope.is_dropped:
                 if only_names:
                     scopes.append(scope_name)
@@ -1517,7 +1543,7 @@ class ScopeUtils(CollectionUtils):
         scope = ScopeUtils.get_scope_obj(bucket, scope_name)
 
         # Mark all collection under the scope as dropped
-        for collection_name, _ in scope.collections.items():
+        for collection_name, _ in list(scope.collections.items()):
             CollectionUtils.mark_collection_as_dropped(bucket,
                                                        scope.name,
                                                        collection_name)
@@ -1601,7 +1627,7 @@ class ScopeUtils(CollectionUtils):
                     curr_scope_name = BucketUtils.get_random_name(
                         max_length=CbServer.max_scope_name_len)
                 scope_already_exists = \
-                    curr_scope_name in bucket.scopes.keys() \
+                    curr_scope_name in list(bucket.scopes.keys()) \
                     and \
                     bucket.scopes[curr_scope_name].is_dropped is False
                 try:
@@ -1652,7 +1678,7 @@ class BucketUtils(ScopeUtils):
         else:
             msg = "{0} is not true".format(expr)
         if not expr:
-            raise (Exception(msg))
+            raise Exception
 
     def assertFalse(self, expr, msg=None):
         if msg:
@@ -1660,7 +1686,7 @@ class BucketUtils(ScopeUtils):
         else:
             msg = "{0} is false".format(expr)
         if expr:
-            raise (Exception(msg))
+            raise Exception
 
     @staticmethod
     def get_random_name(invalid_name=False,
@@ -1703,15 +1729,15 @@ class BucketUtils(ScopeUtils):
         return rand_name
 
     @staticmethod
-    def get_supported_durability_levels(minimum_level=Bucket.DurabilityLevel.NONE):
+    def get_supported_durability_levels(minimum_level=SDKConstants.DurabilityLevel.NONE):
         """ Returns all the durability levels sorted by relative strength.
 
-        :param minimum_level: The minimum_level e.g. `Bucket.DurabilityLevel.None`.
+        :param minimum_level: The minimum_level e.g. `SDKConstants.DurabilityLevel.None`.
         """
-        levels = [Bucket.DurabilityLevel.NONE,
-                  Bucket.DurabilityLevel.MAJORITY,
-                  Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
-                  Bucket.DurabilityLevel.PERSIST_TO_MAJORITY]
+        levels = [SDKConstants.DurabilityLevel.NONE,
+                  SDKConstants.DurabilityLevel.MAJORITY,
+                  SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
+                  SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY]
 
         if minimum_level not in levels:
             raise ValueError("minimum_level must be in {}".format(levels))
@@ -1771,11 +1797,11 @@ class BucketUtils(ScopeUtils):
         known_buckets = dict()
         exclude_scopes = list()
 
-        for b_name, scope_dict in exclude_from.items():
-            for scope_name in scope_dict["scopes"].keys():
+        for b_name, scope_dict in list(exclude_from.items()):
+            for scope_name in list(scope_dict["scopes"].keys()):
                 exclude_scopes.append("%s:%s" % (b_name, scope_name))
 
-        for bucket_name in selected_buckets.keys():
+        for bucket_name in list(selected_buckets.keys()):
             bucket = BucketUtils.get_bucket_obj(buckets, bucket_name)
             known_buckets[bucket_name] = bucket
             active_scopes = BucketUtils.get_active_scopes(bucket,
@@ -1838,15 +1864,15 @@ class BucketUtils(ScopeUtils):
         available_collections = list()
         exclude_collections = list()
 
-        for b_name, scope_dict in exclude_from.items():
-            for scope_name, collection_dict in scope_dict["scopes"].items():
-                for c_name in collection_dict["collections"].keys():
+        for b_name, scope_dict in list(exclude_from.items()):
+            for scope_name, collection_dict in list(scope_dict["scopes"].items()):
+                for c_name in list(collection_dict["collections"].keys()):
                     exclude_collections.append("%s:%s:%s"
                                                % (b_name, scope_name, c_name))
 
-        for bucket_name, scope_dict in selected_buckets.items():
+        for bucket_name, scope_dict in list(selected_buckets.items()):
             bucket = BucketUtils.get_bucket_obj(buckets, bucket_name)
-            for scope_name in scope_dict["scopes"].keys():
+            for scope_name in list(scope_dict["scopes"].keys()):
                 active_collections = BucketUtils.get_active_collections(
                     bucket, scope_name, only_names=True)
                 if consider_only_dropped:
@@ -1894,7 +1920,8 @@ class BucketUtils(ScopeUtils):
                 break
         if status is True:
             self.get_updated_bucket_server_list(cluster, bucket)
-            warmed_up = self._wait_warmup_completed(bucket, wait_time=60)
+            warmed_up = self._wait_warmup_completed(bucket, wait_time=300,
+                                                    check_for_persistence=False)
             if not warmed_up:
                 status = False
         if status is True:
@@ -1956,7 +1983,7 @@ class BucketUtils(ScopeUtils):
             self.log.debug("Wait for memcached to accept cbstats "
                            "or any other bucket request connections")
             sleep(2)
-            warmed_up = self._wait_warmup_completed(bucket, wait_time=60)
+            warmed_up = self._wait_warmup_completed(bucket, wait_time=300)
             if not warmed_up:
                 task.result = False
                 raise_exception = "Bucket not warmed up"
@@ -2138,10 +2165,12 @@ class BucketUtils(ScopeUtils):
             compression_mode="off", wait_for_warmup=True,
             conflict_resolution=Bucket.ConflictResolution.SEQ_NO,
             replica_index=1,
+            bucket_rank=None,
+            bucket_priority=Bucket.Priority.LOW,
             storage=Bucket.StorageBackend.magma,
             eviction_policy=None,
             flush_enabled=Bucket.FlushBucket.DISABLED,
-            bucket_durability=BucketDurability[Bucket.DurabilityLevel.NONE],
+            bucket_durability=Bucket.DurabilityMinLevel.NONE,
             purge_interval=1,
             autoCompactionDefined="false",
             fragmentation_percentage=50,
@@ -2151,8 +2180,7 @@ class BucketUtils(ScopeUtils):
             history_retention_seconds=0,
             magma_key_tree_data_block_size=4096,
             magma_seq_tree_data_block_size=4096,
-            vbuckets=None, weight=None, width=None,
-            ):
+            vbuckets=None, weight=None, width=None):
         node_info = RestConnection(cluster.master).get_nodes_self()
         if ram_quota:
             ram_quota_mb = ram_quota
@@ -2175,9 +2203,11 @@ class BucketUtils(ScopeUtils):
              Bucket.replicaNumber: replica,
              Bucket.compressionMode: compression_mode,
              Bucket.maxTTL: maxTTL,
+             Bucket.priority: bucket_priority,
              Bucket.conflictResolutionType: conflict_resolution,
              Bucket.replicaIndex: replica_index,
              Bucket.storageBackend: storage,
+             Bucket.rank: bucket_rank,
              Bucket.evictionPolicy: eviction_policy,
              Bucket.flushEnabled: flush_enabled,
              Bucket.durabilityMinLevel: bucket_durability,
@@ -2202,7 +2232,7 @@ class BucketUtils(ScopeUtils):
                     True if bucket_obj.flushEnabled else False,
                 CloudCluster.Bucket.replicaNumber: bucket_obj.replicaNumber,
                 CloudCluster.Bucket.durabilityMinLevel:
-                    bucket_obj.durability_level,
+                    bucket_obj.durabilityMinLevel,
                 CloudCluster.Bucket.maxTTL:
                     {"unit": "seconds", "value": bucket_obj.maxTTL}
             }
@@ -2313,13 +2343,13 @@ class BucketUtils(ScopeUtils):
             collection_name = BucketUtils.get_random_name(
                 max_length=CbServer.max_collection_name_len,
                 prefix=prefix, counter_obj=counter_obj)
-            if collection_name in scope_spec["collections"].keys():
+            if collection_name in list(scope_spec["collections"].keys()):
                 continue
             scope_spec["collections"][collection_name] = dict()
             collection_obj_index += 1
 
         # Expand spec values within all collection definition specs
-        for _, collection_spec in scope_spec["collections"].items():
+        for _, collection_spec in list(scope_spec["collections"].items()):
             if MetaConstants.NUM_ITEMS_PER_COLLECTION not in collection_spec:
                 collection_spec[MetaConstants.NUM_ITEMS_PER_COLLECTION] = \
                     def_num_docs
@@ -2329,7 +2359,7 @@ class BucketUtils(ScopeUtils):
         scope_spec = buckets_spec["buckets"][bucket_name]["scopes"]
 
         # Create default scope object under scope_specs
-        if CbServer.default_scope not in scope_spec.keys():
+        if CbServer.default_scope not in list(scope_spec.keys()):
             scope_spec[CbServer.default_scope] = dict()
             scope_spec[CbServer.default_scope]["collections"] = dict()
 
@@ -2341,7 +2371,7 @@ class BucketUtils(ScopeUtils):
                              buckets_spec[MetaConstants.NUM_SCOPES_PER_BUCKET])
 
         # Create required Scope specs which are not provided by user
-        for scope_name, spec_val in scope_spec.items():
+        for scope_name, spec_val in list(scope_spec.items()):
             if type(spec_val) is not dict:
                 continue
 
@@ -2362,7 +2392,7 @@ class BucketUtils(ScopeUtils):
             scope_name = BucketUtils.get_random_name(
                 max_length=CbServer.max_scope_name_len,
                 prefix=prefix, counter_obj=counter_obj)
-            if scope_name in scope_spec.keys():
+            if scope_name in list(scope_spec.keys()):
                 continue
 
             scope_spec[scope_name] = dict()
@@ -2383,7 +2413,7 @@ class BucketUtils(ScopeUtils):
             buckets_spec["buckets"] = dict()
 
         # Calculate total_ram_requested by spec explicitly
-        for _, bucket_spec in buckets_spec["buckets"].items():
+        for _, bucket_spec in list(buckets_spec["buckets"].items()):
             if Bucket.ramQuotaMB in bucket_spec:
                 total_ram_requested_explicitly += \
                     bucket_spec[Bucket.ramQuotaMB]
@@ -2416,8 +2446,8 @@ class BucketUtils(ScopeUtils):
                 bucket_defaults[param_name] = buckets_spec[param_name]
 
         # Create required Bucket specs which are not provided by spec
-        for bucket_name, bucket_spec in buckets_spec["buckets"].items():
-            for param_name, param_value in bucket_defaults.items():
+        for bucket_name, bucket_spec in list(buckets_spec["buckets"].items()):
+            for param_name, param_value in list(bucket_defaults.items()):
                 if param_name not in bucket_spec:
                     bucket_spec[param_name] = param_value
 
@@ -2439,26 +2469,30 @@ class BucketUtils(ScopeUtils):
 
             buckets_spec["buckets"][bucket_name] = dict()
             buckets_spec["buckets"][bucket_name]["scopes"] = dict()
-            for param_name, param_value in bucket_defaults.items():
+            for param_name, param_value in list(bucket_defaults.items()):
                 buckets_spec["buckets"][bucket_name][param_name] = param_value
+
+            if Bucket.rank not in bucket_defaults:
+                buckets_spec["buckets"][bucket_name][Bucket.rank] = \
+                    randint(0, 1000)
 
             # Expand scopes further within created bucket definition
             BucketUtils.expand_scope_spec(buckets_spec, bucket_name)
             bucket_obj_index += 1
 
         # Handling code for exponential load
-        for bucket_name, bucket_spec in buckets_spec["buckets"].items():
+        for bucket_name, bucket_spec in list(buckets_spec["buckets"].items()):
             if bucket_spec.get(MetaConstants.LOAD_COLLECTIONS_EXPONENTIALLY,
                                False):
                 remaining_num_items = 0
                 # Fetch total_items to be expected as the end of initialization
-                for s_name, s_spec in bucket_spec["scopes"].items():
-                    for c_name, c_spec in s_spec["collections"].items():
+                for s_name, s_spec in list(bucket_spec["scopes"].items()):
+                    for c_name, c_spec in list(s_spec["collections"].items()):
                         remaining_num_items += c_spec["num_items"]
 
                 # Set exponential num_items across the collections
-                for s_name, s_spec in bucket_spec["scopes"].items():
-                    for c_name, c_spec in s_spec["collections"].items():
+                for s_name, s_spec in list(bucket_spec["scopes"].items()):
+                    for c_name, c_spec in list(s_spec["collections"].items()):
                         n_items = int(remaining_num_items / 2)
                         if n_items == 0 and remaining_num_items != 0:
                             n_items = remaining_num_items
@@ -2548,8 +2582,8 @@ class BucketUtils(ScopeUtils):
             buckets_spec[Bucket.ramQuotaMB] = 256
             buckets_spec = BucketUtils.expand_buckets_spec(None, buckets_spec)
 
-            sleep_time = min(15, len(buckets_spec.items()))
-            for bucket_name, bucket_spec in buckets_spec.items():
+            sleep_time = min(15, len(list(buckets_spec.items())))
+            for bucket_name, bucket_spec in list(buckets_spec.items()):
                 # due to AV-49460 need to add some gap in bucket threads
                 sleep(sleep_time, "Adding gap between bucket threads creation")
                 b_obj = Bucket({
@@ -2576,7 +2610,8 @@ class BucketUtils(ScopeUtils):
                 self.specs_for_serverless(buckets_spec)
             buckets_spec = BucketUtils.expand_buckets_spec(
                 rest_conn, buckets_spec)
-            for bucket_name, bucket_spec in buckets_spec.items():
+
+            for bucket_name, bucket_spec in list(buckets_spec.items()):
                 if bucket_spec[MetaConstants.BUCKET_TAR_SRC]:
                     load_data_from_existing_tar = True
                 bucket_creation_tasks.append(
@@ -2607,7 +2642,7 @@ class BucketUtils(ScopeUtils):
             if not buckets_spec.get(bucket.name):
                 continue
             for scope_name, scope_spec \
-                    in buckets_spec[bucket.name]["scopes"].items():
+                    in list(buckets_spec[bucket.name]["scopes"].items()):
                 if type(scope_spec) is not dict:
                     continue
                 scope_spec["name"] = scope_name
@@ -2618,7 +2653,7 @@ class BucketUtils(ScopeUtils):
                     else:
                         self.create_scope_object(bucket, scope_spec)
 
-                for c_name, c_spec in scope_spec["collections"].items():
+                for c_name, c_spec in list(scope_spec["collections"].items()):
                     if type(c_spec) is not dict:
                         continue
                     c_spec["name"] = c_name
@@ -2633,7 +2668,7 @@ class BucketUtils(ScopeUtils):
                         self.create_collection_object(bucket, scope_name, c_spec)
 
         if load_data_from_existing_tar:
-            for bucket_name, bucket_spec in buckets_spec.items():
+            for bucket_name, bucket_spec in list(buckets_spec.items()):
                 bucket_obj = self.get_bucket_obj(cluster.buckets, bucket_name)
                 self.load_bucket_from_tar(
                     cluster.nodes_in_cluster, bucket_obj,
@@ -2643,8 +2678,8 @@ class BucketUtils(ScopeUtils):
                 # Update new num_items for each collection post data loading
                 collection_item_count = \
                     self.get_doc_count_per_collection(cluster, bucket_obj)
-                for s_name, scope in bucket_obj.scopes.items():
-                    for c_name, collection in scope.collections.items():
+                for s_name, scope in list(bucket_obj.scopes.items()):
+                    for c_name, collection in list(scope.collections.items()):
                         collection.num_items = \
                             collection_item_count[s_name][c_name]["items"]
         return result
@@ -2755,11 +2790,12 @@ class BucketUtils(ScopeUtils):
         if len(buckets) == 0:
             table.add_row(["No buckets"])
         else:
-            table.set_headers(["Bucket", "Type", "Storage", "Replicas",
-                               "Durability", "TTL", "Items", "Vbuckets",
-                               "RAM Quota", "RAM Used", "Disk Used", "ARR"])
+            table.set_headers(
+                ["Bucket", "Type / Storage", "Replicas", "Rank", "Vbuckets",
+                 "Durability", "TTL", "Items",
+                 "RAM Quota / Used", "Disk Used", "ARR"])
             if CbServer.cluster_profile == "serverless":
-                table.headers += ["Width/Weight"]
+                table.headers += ["Width / Weight"]
             for bucket in buckets:
                 num_vbuckets = resident_ratio = storage_backend = "-"
                 if bucket.bucketType == Bucket.Type.MEMBASE:
@@ -2771,12 +2807,13 @@ class BucketUtils(ScopeUtils):
                         resident_ratio = 100
                     num_vbuckets = str(bucket.num_vbuckets)
                 bucket_data = [
-                    bucket.name, bucket.bucketType, storage_backend,
-                    str(bucket.replicaNumber), str(bucket.durability_level),
+                    bucket.name,
+                    "{} / {}".format(bucket.bucketType, storage_backend),
+                    str(bucket.replicaNumber), str(bucket.rank), num_vbuckets,
+                    str(bucket.durabilityMinLevel),
                     str(bucket.maxTTL), str(bucket.stats.itemCount),
-                    num_vbuckets,
-                    humanbytes(str(bucket.stats.ram)),
-                    humanbytes(str(bucket.stats.memUsed)),
+                    "{} / {}".format(humanbytes(str(bucket.stats.ram)),
+                                     humanbytes(str(bucket.stats.memUsed))),
                     humanbytes(str(bucket.stats.diskUsed)),
                     resident_ratio]
                 if CbServer.cluster_profile == "serverless":
@@ -2810,7 +2847,7 @@ class BucketUtils(ScopeUtils):
             self.__print_on_prem_bucket_stats(cluster)
 
     @staticmethod
-    def get_vbucket_num_for_key(doc_key, total_vbuckets=1024):
+    def get_vbucket_num_for_key(doc_key: bytes, total_vbuckets=1024):
         """
         Calculates vbucket number based on the document's key
 
@@ -2821,7 +2858,7 @@ class BucketUtils(ScopeUtils):
         Returns:
         :vbucket_number calculated based on the 'doc_key'
         """
-        return (((zlib.crc32(doc_key)) >> 16) & 0x7fff) & (total_vbuckets - 1)
+        return (((zlib.crc32(bytes(doc_key, 'utf-8'))) >> 16) & 0x7fff) & (total_vbuckets - 1)
 
     @staticmethod
     def change_max_buckets(cluster_node, total_buckets):
@@ -2872,8 +2909,9 @@ class BucketUtils(ScopeUtils):
             storage={Bucket.StorageBackend.magma: 3,
                      Bucket.StorageBackend.couchstore: 0},
             compression_mode=Bucket.CompressionMode.ACTIVE,
-            bucket_durability=BucketDurability[Bucket.DurabilityLevel.NONE],
+            bucket_durability=Bucket.DurabilityMinLevel.NONE,
             ram_quota=None,
+            bucket_rank=None,
             bucket_name=None,
             purge_interval=1,
             autoCompactionDefined="false",
@@ -2898,7 +2936,7 @@ class BucketUtils(ScopeUtils):
                 self.log.error("At least need {0}MB memoryQuota".format(256*bucket_count))
                 success = False
         if success:
-            for key in storage.keys():
+            for key in list(storage.keys()):
                 if ram_quota is not None:
                     bucket_ram = ram_quota
                 else:
@@ -2918,6 +2956,7 @@ class BucketUtils(ScopeUtils):
                         Bucket.evictionPolicy: eviction_policy,
                         Bucket.flushEnabled: flush_enabled,
                         Bucket.maxTTL: maxttl,
+                        Bucket.rank: bucket_rank,
                         Bucket.storageBackend: key,
                         Bucket.compressionMode: compression_mode,
                         Bucket.durabilityMinLevel: bucket_durability,
@@ -2934,7 +2973,7 @@ class BucketUtils(ScopeUtils):
                     count += 1
 
             raise_exception = None
-            for bucket, task in tasks.items():
+            for bucket, task in list(tasks.items()):
                 self.task_manager.get_task_result(task)
                 if task.result:
                     cluster.buckets.append(bucket)
@@ -2988,14 +3027,14 @@ class BucketUtils(ScopeUtils):
                                replica_number=None, replica_index=None,
                                flush_enabled=None, time_synchronization=None,
                                max_ttl=None, compression_mode=None,
+                               storageBackend=None, bucket_rank=None,
                                bucket_durability=None, bucket_width=None,
                                bucket_weight=None,
                                history_retention_collection_default=None,
                                history_retention_bytes=None,
                                history_retention_seconds=None,
                                magma_key_tree_data_block_size=None,
-                               magma_seq_tree_data_block_size=None,
-                               storageBackend=None):
+                               magma_seq_tree_data_block_size=None):
         return BucketHelper(cluster_node).change_bucket_props(
             bucket, ramQuotaMB=ram_quota_mb, replicaNumber=replica_number,
             replicaIndex=replica_index, flushEnabled=flush_enabled,
@@ -3003,6 +3042,7 @@ class BucketUtils(ScopeUtils):
             compressionMode=compression_mode,
             bucket_durability=bucket_durability, bucketWidth=bucket_width,
             bucketWeight=bucket_weight,
+            bucket_rank=bucket_rank,
             history_retention_collection_default=history_retention_collection_default,
             history_retention_seconds=history_retention_seconds,
             history_retention_bytes=history_retention_bytes,
@@ -3045,7 +3085,7 @@ class BucketUtils(ScopeUtils):
             for bucket in buckets:
                 try:
                     warmed_up = self._wait_warmup_completed(bucket,
-                                                            wait_time=60)
+                                                            wait_time=300)
                     if not warmed_up:
                         buckets_warmed_up = False
                         break
@@ -3078,7 +3118,7 @@ class BucketUtils(ScopeUtils):
                 verified = True
                 for bucket in cluster.buckets:
                     verified &= self.wait_till_total_numbers_match(
-                        master, bucket, timeout_in_seconds=(timeout or 500),
+                        cluster, bucket, timeout_in_seconds=(timeout or 500),
                         num_zone=num_zone)
                 if not verified:
                     msg = "Lost items!!! Replication was completed " \
@@ -3092,7 +3132,7 @@ class BucketUtils(ScopeUtils):
         min_count = list()
         zones = rest.get_zone_names()
         for zone in zones:
-            nodes = rest.get_nodes_in_zone(zone).keys()
+            nodes = list(rest.get_nodes_in_zone(zone).keys())
             if nodes:
                 min_count.append(len(nodes))
         # [2,2,1] supports replica 3
@@ -3213,7 +3253,7 @@ class BucketUtils(ScopeUtils):
         """
         tasks = []
         if stat_map:
-            for server, stat_value in stat_map.items():
+            for server, stat_value in list(stat_map.items()):
                 if bucket.bucketType == 'memcached':
                     continue
                 tasks.append(self.task.async_wait_for_stats(
@@ -3297,8 +3337,8 @@ class BucketUtils(ScopeUtils):
             ("last_persisted_snap_start", "last_persisted_seqno"),
             ("last_persisted_snap_start", "last_persisted_snap_end")
         ]
-        for node, vBucket in vb_seqno_stats.items():
-            for vb_num, stat in vBucket.items():
+        for node, vBucket in list(vb_seqno_stats.items()):
+            for vb_num, stat in list(vBucket.items()):
                 for key_pair in comparion_key_pairs:
                     if int(stat[key_pair[0]]) > int(stat[key_pair[1]]):
                         validation_passed = False
@@ -3347,10 +3387,10 @@ class BucketUtils(ScopeUtils):
                                          stat["ep_history_retention_seconds"]))
 
             stat = cb_stat.get_collections(bucket)
-            for s_name, scope in bucket.scopes.items():
+            for s_name, scope in list(bucket.scopes.items()):
                 if scope.is_dropped:
                     continue
-                for c_name, col in scope.collections.items():
+                for c_name, col in list(scope.collections.items()):
                     if col.is_dropped:
                         continue
                     col = bucket.scopes[s_name].collections[c_name]
@@ -3363,6 +3403,27 @@ class BucketUtils(ScopeUtils):
                     if val_as_per_test != val_as_per_stat:
                         result = False
                         self.log.critical(log_msg)
+        return result
+
+    def validate_oso_dcp_backfill_value(self, kv_nodes, buckets,
+                                        expected_val="auto"):
+        result = True
+        if expected_val is None:
+            expected_val = "auto"
+        elif expected_val == 1:
+            expected_val = 'true'
+        elif expected_val == 0:
+            expected_val = 'false'
+
+        for node in kv_nodes:
+            cbstat = Cbstats(node)
+            for bucket in buckets:
+                val = cbstat.all_stats(bucket.name)["ep_dcp_oso_backfill"]
+                if val != expected_val:
+                    result = False
+                    self.log.critical("Bucket {}, oso_dcp_backfill mismatch."
+                                      "Expected {}, Actual: {}"
+                                      .format(bucket.name, expected_val, val))
         return result
 
     def wait_for_collection_creation_to_complete(self, cluster, timeout=60):
@@ -3425,7 +3486,7 @@ class BucketUtils(ScopeUtils):
         :param tasks_info: dict with "ops_failed" Bool value updated
         :return: Aggregated success status for all tasks. (Boolean)
         """
-        for task, _ in tasks_info.items():
+        for task, _ in list(tasks_info.items()):
             if tasks_info[task]["ops_failed"]:
                 return False
         return True
@@ -3439,14 +3500,14 @@ class BucketUtils(ScopeUtils):
 
         :param tasks_info: dictionary updated with retried/unwanted docs
         """
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             task.result = True
             op_type = task_info["op_type"]
-            ignored_keys = task_info["ignored"].keys()
-            retried_success_keys = task_info["retried"]["success"].keys()
-            retried_failed_keys = task_info["retried"]["fail"].keys()
-            unwanted_success_keys = task_info["unwanted"]["success"].keys()
-            unwanted_failed_keys = task_info["unwanted"]["fail"].keys()
+            ignored_keys = list(task_info["ignored"].keys())
+            retried_success_keys = list(task_info["retried"]["success"].keys())
+            retried_failed_keys = list(task_info["retried"]["fail"].keys())
+            unwanted_success_keys = list(task_info["unwanted"]["success"].keys())
+            unwanted_failed_keys = list(task_info["unwanted"]["fail"].keys())
 
             # Success cases
             if len(ignored_keys) > 0:
@@ -3500,80 +3561,59 @@ class BucketUtils(ScopeUtils):
         :param sdk_client_pool: Instance of SDKClientPool
         :return: tasks_info dictionary updated with retried/unwanted docs
         """
-        for task, task_info in tasks_info.items():
-            client = None
+        for task, task_info in list(tasks_info.items()):
             bucket = task_info["bucket"]
             scope = task_info["scope"]
             collection = task_info["collection"]
 
-            if sdk_client_pool:
-                client = sdk_client_pool.get_client_for_bucket(bucket,
-                                                               scope,
-                                                               collection)
+            try:
+                client = SiriusClient([cluster.master],
+                                      bucket,
+                                      scope=scope,
+                                      collection=collection)
 
-            if client is None:
-                client = SDKClient([cluster.master],
-                                   bucket,
-                                   scope=scope,
-                                   collection=collection)
+                exception_payload = client.create_payload_exception_handling(resultSeed=task.resultSeed,
+                                                                             identifierToken=IDENTIFIER_TOKEN,
+                                                                             ignoreExceptions=[], retryExceptions=[],
+                                                                             retryAttempts=1)
 
-            for key, failed_doc in task.fail.items():
-                found = False
-                exception = failed_doc["error"]
-                key_value = {key: failed_doc}
-                for ex in task_info["ignore_exceptions"]:
-                    if str(exception).find(ex) != -1:
-                        bucket \
-                            .scopes[scope] \
-                            .collections[collection].num_items -= 1
-                        tasks_info[task]["ignored"].update(key_value)
-                        found = True
-                        break
-                if found:
-                    continue
+                failed_docs, _, _, _ = client.retry_exceptions(exception_payload=exception_payload, delete_record=False)
 
-                ambiguous_state = False
-                if SDKException.DurabilityAmbiguousException \
-                        in str(exception) \
-                        or SDKException.AmbiguousTimeoutException \
-                        in str(exception) \
-                        or SDKException.TimeoutException \
-                        in str(exception) \
-                        or SDKException.RequestCanceledException \
-                        in str(exception):
-                    ambiguous_state = True
+                for key, failed_doc in list(failed_docs.items()):
+                    found = False
+                    exception = failed_doc["error"]
+                    key_value = {key: failed_doc}
 
-                result = client.crud(
-                    task_info["op_type"], key, failed_doc["value"],
-                    exp=task_info["exp"],
-                    replicate_to=task_info["replicate_to"],
-                    persist_to=task_info["persist_to"],
-                    durability=task_info["durability"],
-                    timeout=task_info["timeout"],
-                    time_unit=task_info["time_unit"])
+                    for ex in task_info["ignore_exceptions"]:
+                        if check_if_exception_exists(exception,ex):
+                            bucket \
+                                .scopes[scope] \
+                                .collections[collection].num_items -= 1
+                            tasks_info[task]["ignored"].update(key_value)
+                            found = True
+                            break
+                    if found:
+                        continue
 
-                dict_key = "unwanted"
-                for ex in task_info["retry_exceptions"]:
-                    if str(exception).find(ex) != -1:
-                        dict_key = "retried"
-                        break
-                if result["status"] \
-                        or (ambiguous_state
-                            and SDKException.DocumentExistsException
-                            in result["error"]
-                            and task_info["op_type"] in ["create", "update"]) \
-                        or (ambiguous_state
-                            and SDKException.DocumentNotFoundException
-                            in result["error"]
-                            and task_info["op_type"] == "delete"):
-                    tasks_info[task][dict_key]["success"].update(key_value)
-                else:
-                    tasks_info[task][dict_key]["fail"].update(key_value)
-            if sdk_client_pool:
-                sdk_client_pool.release_client(client)
-            else:
-                # Close client for this task
-                client.close()
+                    ambiguous_state = False
+                    if check_if_exception_exists(str(exception), SDKException.DurabilityAmbiguousException,
+                                                 SDKException.AmbiguousTimeoutException, SDKException.TimeoutException,
+                                                 SDKException.RequestCanceledException):
+                        ambiguous_state = True
+
+                    dict_key = "unwanted"
+                    for ex in task_info["retry_exceptions"]:
+                        if check_if_exception_exists(str(exception), ex):
+                            dict_key = "retried"
+                            break
+
+                    if failed_doc["status"]:
+                        tasks_info[task][dict_key]["success"].update(key_value)
+                    else:
+                        tasks_info[task][dict_key]["fail"].update(key_value)
+            except Exception as e:
+                print(str(e))
+                raise e
 
         return tasks_info
 
@@ -3593,7 +3633,10 @@ class BucketUtils(ScopeUtils):
                           track_failures=True,
                           sdk_client_pool=None,
                           sdk_retry_strategy=None,
-                          iterations=1):
+                          iterations=1,
+                          ignore_exceptions=[],
+                          retry_exceptions=[]):
+
         return self.task.async_load_gen_docs(
             cluster, bucket, generator, op_type,
             exp=exp, random_exp=random_exp,
@@ -3612,7 +3655,8 @@ class BucketUtils(ScopeUtils):
             track_failures=track_failures,
             sdk_client_pool=sdk_client_pool,
             sdk_retry_strategy=sdk_retry_strategy,
-            iterations=iterations)
+            iterations=iterations, retry_exception=retry_exceptions,
+            ignore_exceptions=ignore_exceptions)
 
     def load_docs_to_all_collections(self, start, end, cluster,
                                      key="test_docs",
@@ -3634,8 +3678,8 @@ class BucketUtils(ScopeUtils):
         """
         generator = doc_generator(key, start, end, mutate=mutate)
         for bucket in self.get_all_buckets(cluster):
-            for _, scope in bucket.scopes.items():
-                for _, collection in scope.collections.items():
+            for _, scope in list(bucket.scopes.items()):
+                for _, collection in list(scope.collections.items()):
                     task = self.task.async_load_gen_docs(
                         cluster, bucket,
                         generator, op_type,
@@ -3702,7 +3746,10 @@ class BucketUtils(ScopeUtils):
                 track_failures=track_failures,
                 sdk_client_pool=sdk_client_pool,
                 sdk_retry_strategy=sdk_retry_strategy,
-                iterations=iterations)
+                iterations=iterations,
+                ignore_exceptions=ignore_exceptions,
+                retry_exceptions=retry_exceptions)
+
             tasks_info[task] = self.get_doc_op_info_dict(
                 bucket, op_type, exp,
                 scope=scope,
@@ -3736,7 +3783,8 @@ class BucketUtils(ScopeUtils):
                 scope, collection,
                 suppress_error_table=suppress_error_table,
                 sdk_client_pool=sdk_client_pool,
-                sdk_retry_strategy=sdk_retry_strategy)
+                sdk_retry_strategy=sdk_retry_strategy,ignore_exceptions=ignore_exceptions,
+                retry_exception=retry_exceptions)
             task_info[task] = self.get_doc_op_info_dict(
                 bucket, op_type, exp,
                 scope=scope,
@@ -3799,7 +3847,7 @@ class BucketUtils(ScopeUtils):
             track_failures=track_failures,
             sdk_client_pool=sdk_client_pool)
 
-        for task in tasks_info.keys():
+        for task in list(tasks_info.keys()):
             self.task_manager.get_task_result(task)
 
         # Wait for all doc_loading tasks to complete and populate failures
@@ -3862,7 +3910,7 @@ class BucketUtils(ScopeUtils):
             sleep(5, "Wait for all docs to get ambiguous aborts")
             cb_err.revert(CouchbaseError.STOP_MEMCACHED)
 
-            if len(task.fail.keys()) != num_items[task]:
+            if len(list(task.fail.keys())) != num_items[task]:
                 self.log.error("Failure not seen for few keys")
                 result = False
 
@@ -3873,7 +3921,7 @@ class BucketUtils(ScopeUtils):
                 num_items[task] = get_num_items(load_gen)
             for task in tasks:
                 self.task_manager.get_task_result(task)
-                if len(task.fail.keys()) != 0:
+                if len(list(task.fail.keys())) != 0:
                     self.log.error("Errors during successful load attempt")
                     result = False
         elif load_type == "aborts_at_end":
@@ -3884,7 +3932,7 @@ class BucketUtils(ScopeUtils):
                 num_items[task] = get_num_items(load_gen)
             for task in tasks:
                 self.task_manager.get_task_result(task)
-                if len(task.fail.keys()) != 0:
+                if len(list(task.fail.keys())) != 0:
                     self.log.error("Errors during successful load attempt")
                     result = False
 
@@ -3897,7 +3945,7 @@ class BucketUtils(ScopeUtils):
             sleep(5, "Wait for all docs to get ambiguous aborts")
             cb_err.revert(CouchbaseError.STOP_MEMCACHED)
 
-            if len(task.fail.keys()) != num_items[task]:
+            if len(list(task.fail.keys())) != num_items[task]:
                 self.log.error("Failure not seen for few keys")
                 result = False
         elif load_type == "mixed_aborts":
@@ -3934,7 +3982,7 @@ class BucketUtils(ScopeUtils):
             cb_err.revert(CouchbaseError.STOP_MEMCACHED)
 
             for task in tasks:
-                if len(task.fail.keys()) != num_items[task]:
+                if len(list(task.fail.keys())) != num_items[task]:
                     self.log.error("Failure not seen for few keys")
                     result = False
 
@@ -3948,7 +3996,7 @@ class BucketUtils(ScopeUtils):
         servers = self.cluster_util.get_kv_nodes(cluster)
         dcp_stat_map = self.data_collector.collect_compare_dcp_stats(
             cluster.buckets, servers, filter_list=filter_list)
-        for bucket in dcp_stat_map.keys():
+        for bucket in list(dcp_stat_map.keys()):
             if dcp_stat_map[bucket]:
                 self.log.critical("Bucket {0} has unacked bytes != 0: {1}"
                                   .format(bucket, dcp_stat_map[bucket]))
@@ -4061,16 +4109,16 @@ class BucketUtils(ScopeUtils):
         """
         bucketMap = dict()
         logic = True
-        for bucket in map1.keys():
+        for bucket in list(map1.keys()):
             map = dict()
             nodeMap = dict()
             output = ""
-            for node in map1[bucket].keys():
-                for vbucket in map1[bucket][node].keys():
+            for node in list(map1[bucket].keys()):
+                for vbucket in list(map1[bucket][node].keys()):
                     uuid = map1[bucket][node][vbucket]['uuid']
                     abs_high_seqno = map1[bucket][node][vbucket]['abs_high_seqno']
                     purge_seqno = map1[bucket][node][vbucket]['purge_seqno']
-                    if vbucket in map.keys():
+                    if vbucket in list(map.keys()):
                         common_str = "\n bucket {0}, vbucket {1} :: " \
                                      "Original in node {2}. UUID" \
                             .format(bucket, vbucket, nodeMap[vbucket])
@@ -4109,8 +4157,8 @@ class BucketUtils(ScopeUtils):
         """
         isTrue = True
         output = ""
-        for bucket in vbucketseq.keys():
-            for vbucket in vbucketseq[bucket].keys():
+        for bucket in list(vbucketseq.keys()):
+            for vbucket in list(vbucketseq[bucket].keys()):
                 seq = vbucketseq[bucket][vbucket]['abs_high_seqno']
                 uuid = vbucketseq[bucket][vbucket]['uuid']
                 fseq = failoverlog[bucket][vbucket]['seq']
@@ -4131,16 +4179,16 @@ class BucketUtils(ScopeUtils):
     @staticmethod
     def print_results_per_node(node_map):
         """ Method to print map results - Used only for debugging purpose """
-        for bucket in node_map.keys():
-            print("----- Bucket {0} -----".format(bucket))
-            for node in node_map[bucket].keys():
-                print("-------------Node {0}------------".format(node))
-                for vbucket in node_map[bucket][node].keys():
-                    print("   for vbucket {0}".format(vbucket))
-                    for key in node_map[bucket][node][vbucket].keys():
-                        print("            :: for key {0} = {1}"
-                              .format(key,
-                                      node_map[bucket][node][vbucket][key]))
+        for bucket in list(node_map.keys()):
+            print(("----- Bucket {0} -----".format(bucket)))
+            for node in list(node_map[bucket].keys()):
+                print(("-------------Node {0}------------".format(node)))
+                for vbucket in list(node_map[bucket][node].keys()):
+                    print(("   for vbucket {0}".format(vbucket)))
+                    for key in list(node_map[bucket][node][vbucket].keys()):
+                        print(("            :: for key {0} = {1}"
+                               .format(key,
+                                       node_map[bucket][node][vbucket][key])))
 
     def vb_distribution_analysis(self, cluster,
                                  servers=[], buckets=[], num_replicas=0,
@@ -4153,7 +4201,7 @@ class BucketUtils(ScopeUtils):
         servers = self.cluster_util.get_kv_nodes(cluster, servers)
         active, replica = self.get_vb_distribution_active_replica(
             cluster, servers=servers, buckets=buckets)
-        for bucket in active.keys():
+        for bucket in list(active.keys()):
             self.log.debug("Begin Verification for Bucket {0}".format(bucket))
             active_result = active[bucket]
             replica_result = replica[bucket]
@@ -4319,17 +4367,17 @@ class BucketUtils(ScopeUtils):
         """
         bucketMap = dict()
         logic = True
-        for bucket in map1.keys():
+        for bucket in list(map1.keys()):
             map = dict()
             tempMap = dict()
             output = ""
-            for node in map1[bucket].keys():
-                for vbucket in map1[bucket][node].keys():
+            for node in list(map1[bucket].keys()):
+                for vbucket in list(map1[bucket][node].keys()):
                     id = map1[bucket][node][vbucket]['id']
                     seq = map1[bucket][node][vbucket]['seq']
                     num_entries = map1[bucket][node][vbucket]['num_entries']
                     state = vbucketMap[bucket][node][vbucket]['state']
-                    if vbucket in map.keys():
+                    if vbucket in list(map.keys()):
                         if map[vbucket]['id'] != id:
                             logic = False
                             output += "\n bucket {0}, vbucket {1} :: Original node {2} {3} :: UUID {4}, Change node {5} {6} UUID {7}".format(
@@ -4398,7 +4446,7 @@ class BucketUtils(ScopeUtils):
 
     def sync_ops_all_buckets(self, cluster, docs_gen_map, batch_size=10,
                              verify_data=True, exp=0, num_items=0):
-        for key in docs_gen_map.keys():
+        for key in list(docs_gen_map.keys()):
             if key != "remaining":
                 op_type = key
                 if key == "expiry":
@@ -4409,14 +4457,14 @@ class BucketUtils(ScopeUtils):
                                            op_type, exp)
                 if verify_data:
                     self.verify_cluster_stats(cluster, num_items)
-        if "expiry" in docs_gen_map.keys():
+        if "expiry" in list(docs_gen_map.keys()):
             self._expiry_pager(cluster)
 
     def async_ops_all_buckets(self, cluster, docs_gen_map={}, batch_size=10):
         tasks = []
-        if "expiry" in docs_gen_map.keys():
+        if "expiry" in list(docs_gen_map.keys()):
             self._expiry_pager(cluster)
-        for key in docs_gen_map.keys():
+        for key in list(docs_gen_map.keys()):
             if key != "remaining":
                 op_type = key
                 if key == "expiry":
@@ -4461,7 +4509,7 @@ class BucketUtils(ScopeUtils):
                 compaction_tasks[bucket.name] = self.task.async_compact_bucket(
                     cluster.master, bucket)
             if not async_run:
-                for task in compaction_tasks.values():
+                for task in list(compaction_tasks.values()):
                     self.task_manager.get_task_result(task)
         return compaction_tasks
 
@@ -4768,6 +4816,23 @@ class BucketUtils(ScopeUtils):
                                                           item))
         return bucket_list
 
+    def fetch_rank_map(self, cluster, cluster_node=None,
+                       fetch_latest_buckets=False):
+        rank_map = {}
+        if cluster_node or fetch_latest_buckets:
+            if cluster_node is None:
+                cluster_node = cluster.master
+            rest = BucketHelper(cluster_node)
+            json_parsed = rest.get_buckets_json()
+            for item in json_parsed:
+                if Bucket.rank in item:
+                    rank_map[item[Bucket.name]] = item[Bucket.rank]
+                else:
+                    rank_map[item[Bucket.name]] = None
+        else:
+            rank_map = {bucket.name : bucket.rank for bucket in cluster.buckets}
+        return rank_map
+
     @staticmethod
     def get_fragmentation_kv(cluster, bucket=None, server=None):
         if bucket is None:
@@ -4803,7 +4868,10 @@ class BucketUtils(ScopeUtils):
                 bucket.serverless.weight = parsed[Bucket.weight]
 
             if Bucket.durabilityMinLevel in parsed:
-                bucket.durability_level = parsed[Bucket.durabilityMinLevel]
+                bucket.durabilityMinLevel = parsed[Bucket.durabilityMinLevel]
+
+            if Bucket.rank in parsed:
+                bucket.rank = parsed[Bucket.rank]
 
             if Bucket.compressionMode in parsed:
                 bucket.compressionMode = parsed[Bucket.compressionMode]
@@ -4811,6 +4879,9 @@ class BucketUtils(ScopeUtils):
             if Bucket.conflictResolutionType in parsed:
                 bucket.conflictResolutionType = \
                     parsed[Bucket.conflictResolutionType]
+
+            if Bucket.rank in parsed:
+                bucket.rank = parsed[Bucket.rank]
 
         # Sanitise the value to the expected value for cb buckets
         if bucket.bucketType == 'membase':
@@ -4866,7 +4937,7 @@ class BucketUtils(ScopeUtils):
         bucket.stats.ram = parsed['quota']['ram']
         return bucket
 
-    def wait_till_total_numbers_match(self, master, bucket,
+    def wait_till_total_numbers_match(self, cluster, bucket,
                                       timeout_in_seconds=120,
                                       num_zone=1):
         self.log.debug('Waiting for sum_of_curr_items == total_items')
@@ -4874,7 +4945,7 @@ class BucketUtils(ScopeUtils):
         verified = False
         while (time.time() - start) <= timeout_in_seconds:
             try:
-                if self.verify_items_count(master, bucket, num_zone=num_zone):
+                if self.verify_items_count(cluster, bucket, num_zone=num_zone):
                     verified = True
                     break
                 else:
@@ -4883,7 +4954,7 @@ class BucketUtils(ScopeUtils):
                 self.log.error("Unable to retrieve stats for any node!")
                 break
         if not verified:
-            rest = RestConnection(master)
+            rest = RestConnection(cluster.master)
             RebalanceHelper.print_taps_from_all_nodes(rest, bucket)
         return verified
 
@@ -4916,20 +4987,56 @@ class BucketUtils(ScopeUtils):
                     raise Exception("Active and replica vbucket list"
                                     "are overlapped")
 
-    def verify_items_count(self, master, bucket, num_attempt=3, timeout=2,
+    def get_actual_replica(self, cluster, bucket, num_zone):
+        servers = self.cluster_util.get_kv_nodes(cluster)
+        available_replicas = bucket.replicaNumber
+        if num_zone > 1:
+            """
+            replica number will be either replica number or one less than the zone number
+            or min number of nodes in the zone
+            zone =2:
+                1 node each, replica set =1, actual =1
+                1 node each, replica set >1, actual = 1
+                2 nodes each, replica set =2, actual =2
+                2 nodes each, replica set =3, actual =2
+                3 nodes each, replica set =3, actual =3
+                group1: 2 nodes, group 1: 1 node, replica_set >1, actual = 1
+                group1: 3 nodes, group 1: 2 node, replica_set >=2, actual = 2
+                group1: 4 nodes, group 1: 5 node, replica_set =3, actual = 3
+
+            zone =3:
+                1 node each, replica_set=2, actual =2
+                2 nodes each, relica_set =3, actual =3
+                3 nodes each,repica_set = 3, actaul = 3
+                num_node_in_each_group: [1, 2, 1], replica_set=3, actual = 2
+                num_node_in_each_group: [2, 2, 1], replica_set=3, actual = 3
+                num_node_in_each_group: [3, 2, 1], replica_set=3, actual = 3
+                num_node_in_each_group: [3, 3, 1], replica_set=3, actual = 3
+            """
+            if bucket.replicaNumber >= num_zone:
+                available_replicas = self.get_min_nodes_in_zone(cluster)
+                if available_replicas > bucket.replicaNumber:
+                    available_replicas = bucket.replicaNumber
+            self.log.info(
+                "available_replicas considered {0}".format(available_replicas))
+        elif len(servers) <= bucket.replicaNumber:
+            available_replicas = len(servers) - 1
+        return available_replicas
+
+    def verify_items_count(self, cluster, bucket, num_attempt=3, timeout=2,
                            num_zone=1):
         # get the #of buckets from rest
-        rest = RestConnection(master)
-        replica_factor = bucket.replicaNumber
+        rest = RestConnection(cluster.master)
         vbucket_active_sum = 0
         vbucket_replica_sum = 0
         vbucket_pending_sum = 0
         all_server_stats = []
         stats_received = True
         nodes = rest.get_nodes()
-        cbstat = Cbstats(master)
-        bucket_helper = BucketHelper(master)
-        active_vbucket_differ_count = len(rest.get_nodes())
+        cbstat = Cbstats(cluster.master)
+        bucket_helper = BucketHelper(cluster.master)
+        active_vbucket_differ_count = len(nodes)
+        replica_factor = self.get_actual_replica(cluster, bucket, num_zone)
         for server in nodes:
             # get the stats
             server_stats = bucket_helper.get_bucket_stats_for_node(
@@ -4941,9 +5048,8 @@ class BucketUtils(ScopeUtils):
             all_server_stats.append((server, server_stats))
         if not stats_received:
             raise StatsUnavailableException()
-        sum = 0
-        max_vbuckets = int(cbstat.get_stats_memc(bucket.name, "all",
-                                                 "ep_max_vbuckets"))
+        curr_items = 0
+        max_vbuckets = int(cbstat.all_stats(bucket.name)["ep_max_vbuckets"])
         master_stats = bucket_helper.get_bucket_stats(bucket)
         if "vb_active_num" in master_stats:
             self.log.debug('vb_active_num from master: {0}'
@@ -4954,7 +5060,7 @@ class BucketUtils(ScopeUtils):
         for server, single_stats in all_server_stats:
             if not single_stats or "curr_items" not in single_stats:
                 continue
-            sum += single_stats["curr_items"]
+            curr_items += single_stats["curr_items"]
             self.log.debug("curr_items from {0}:{1} - {2}"
                            .format(server.ip, server.port,
                                    single_stats["curr_items"]))
@@ -4986,31 +5092,24 @@ class BucketUtils(ScopeUtils):
         self.log.debug(msg.format(vbucket_active_sum, vbucket_pending_sum,
                                   vbucket_replica_sum))
         msg = 'sum: {0} and sum * (replica_factor + 1) ({1}) : {2}'
-        self.log.debug(msg.format(sum, replica_factor + 1,
-                                  (sum * (replica_factor + 1))))
+        self.log.debug(msg.format(curr_items, replica_factor + 1,
+                                  (curr_items * (replica_factor + 1))))
         if "curr_items_tot" in master_stats:
             self.log.debug('curr_items_tot from master: {0}'
                            .format(master_stats["curr_items_tot"]))
         else:
             raise Exception("Bucket {0} stats doesnt contain 'curr_items_tot':"
                             .format(bucket))
-        if num_zone > 1:
-            num_nodes = num_zone
-        else:
-            num_nodes = len(nodes)
-        if replica_factor >= num_nodes:
-            self.log.warn("Number of zones/nodes is less than replica requires")
-            expected_replica_vbucket = max_vbuckets * (num_nodes - 1)
-            delta = (sum * num_nodes) - master_stats["curr_items_tot"]
-        else:
-            expected_replica_vbucket = (max_vbuckets * replica_factor)
-            delta = sum * (replica_factor + 1) - master_stats["curr_items_tot"]
+
+        expected_replica_vbucket = max_vbuckets * replica_factor
+        delta = curr_items * (replica_factor + 1) - master_stats["curr_items_tot"]
         if vbucket_active_sum != max_vbuckets:
             raise Exception("vbucket_active_sum actual {0} and expected {1}"
                             .format(vbucket_active_sum, max_vbuckets))
         elif vbucket_replica_sum != expected_replica_vbucket:
             raise Exception("vbucket_replica_sum actual {0} and expected {1}"
-                            .format(vbucket_replica_sum, expected_replica_vbucket))
+                            .format(vbucket_replica_sum,
+                                    expected_replica_vbucket))
         else:
             self.log.debug('vbucket_active_sum: {0}'
                            'vbucket_replica_sum: {1}'
@@ -5019,10 +5118,10 @@ class BucketUtils(ScopeUtils):
         delta = abs(delta)
 
         if delta > 0:
-            if sum == 0:
+            if curr_items == 0:
                 missing_percentage = 0
             else:
-                missing_percentage = delta * 1.0 / (sum * (replica_factor + 1))
+                missing_percentage = delta * 1.0 / (curr_items * (replica_factor + 1))
             self.log.debug("Nodes stats are: {0}"
                            .format([node.ip for node in nodes]))
         else:
@@ -5034,7 +5133,7 @@ class BucketUtils(ScopeUtils):
             return True
         return False
 
-    def _wait_warmup_completed(self, bucket, servers=None, wait_time=300):
+    def _wait_warmup_completed(self, bucket, servers=None, wait_time=300, check_for_persistence=True):
         # Return True, if bucket_type is not equal to MEMBASE
         if bucket.bucketType != Bucket.Type.MEMBASE:
             return True
@@ -5044,6 +5143,7 @@ class BucketUtils(ScopeUtils):
                        % (bucket.name, servers))
 
         warmed_up = False
+        ready_for_persistence = False
         start = time.time()
         for server in servers:
             # Cbstats implementation to wait for bucket warmup
@@ -5059,8 +5159,26 @@ class BucketUtils(ScopeUtils):
                     self.log.warning("Exception during cbstat all cmd: %s" % e)
                 sleep(2, "Warm-up not complete for %s on %s" % (bucket.name,
                                                                 server.ip))
+            ready_for_persistence = False
+            if not check_for_persistence or bucket.storageBackend == Bucket.StorageBackend.couchstore:
+                ready_for_persistence = True
+                continue
 
-        return warmed_up
+            while time.time() - start < wait_time:
+                try:
+                    result = cbstat_obj.vbucket_seqno(bucket.name)
+                    all_vbuckets_ready = True
+                    for vbucket in result:
+                        if int(result[vbucket]["last_persisted_seqno"]) == 0:
+                            all_vbuckets_ready = False
+                    if all_vbuckets_ready:
+                        ready_for_persistence = True
+                        break
+                except Exception as e:
+                    self.log.warning("Exception during cbstat vbucket-seqno cmd: {}".format(e))
+                sleep(2, "Bucket {} is not ready for persistence on {}".format(bucket.name,
+                                                                               server.ip))
+        return warmed_up and ready_for_persistence
 
     def add_rbac_user(self, cluster_node, testuser=None, rolelist=None):
         """
@@ -5263,7 +5381,7 @@ class BucketUtils(ScopeUtils):
                                retry_time=2):
         tasks = []
         result = True
-        for i in xrange(num_views):
+        for i in range(num_views):
             tasks.append(self.async_query_view(
                 server, prefix + ddoc_name, view_name + str(i), query,
                 expected_rows, bucket, retry_time))
@@ -5289,7 +5407,7 @@ class BucketUtils(ScopeUtils):
         ref_view.name = (prefix, ref_view.name)[prefix is None]
         if different_map:
             views = []
-            for i in xrange(count):
+            for i in range(count):
                 views.append(View(ref_view.name + str(i),
                                   'function (doc, meta) {'
                                   'emit(meta.id, "emitted_value%s");}'
@@ -5299,7 +5417,7 @@ class BucketUtils(ScopeUtils):
             return [
                 View("{0}{1}".format(ref_view.name, i),
                      ref_view.map_func, None, is_dev_ddoc)
-                for i in xrange(count)
+                for i in range(count)
             ]
 
     @staticmethod
@@ -5533,9 +5651,9 @@ class BucketUtils(ScopeUtils):
             if collection_data is None:
                 collection_data = tem_collection_data
             else:
-                for key, value in tem_collection_data.items():
+                for key, value in list(tem_collection_data.items()):
                     if type(value) is dict:
-                        for col_name, c_data in value.items():
+                        for col_name, c_data in list(value.items()):
                             collection_data[key][col_name]['items'] \
                                 += c_data['items']
 
@@ -5691,7 +5809,7 @@ class BucketUtils(ScopeUtils):
                 test_values[key]["memory"] += t_bucket.ramQuotaMB * 1048576
 
         # Begin limit/utilization validation
-        for node_ip, test_stats in test_values.items():
+        for node_ip, test_stats in list(test_values.items()):
             server_node = get_server_node(node_ip)
             server_kv_limits = server_node.limits[CbServer.Services.KV]
             server_kv_usage = server_node.utilization[CbServer.Services.KV]
@@ -5789,12 +5907,12 @@ class BucketUtils(ScopeUtils):
         def update_ops_details_dict(target_key, bucket_data_to_update,
                                     fetch_collections=False):
             dict_to_update = ops_details[target_key]
-            for bucket_name, b_data in bucket_data_to_update.items():
+            for bucket_name, b_data in list(bucket_data_to_update.items()):
                 if bucket_name not in dict_to_update:
                     dict_to_update[bucket_name] = dict()
                     dict_to_update[bucket_name]["scopes"] = dict()
                 scope_dict = dict_to_update[bucket_name]["scopes"]
-                for scope_name, scope_data in b_data["scopes"].items():
+                for scope_name, scope_data in list(b_data["scopes"].items()):
                     if scope_name not in scope_dict:
                         scope_dict[scope_name] = dict()
                         scope_dict[scope_name]["collections"] = dict()
@@ -5805,7 +5923,7 @@ class BucketUtils(ScopeUtils):
                         scope_data["collections"] = \
                             bucket.scopes[scope_name].collections
 
-                    for collection_name in scope_data["collections"].keys():
+                    for collection_name in list(scope_data["collections"].keys()):
                         collection_dict[collection_name] = dict()
 
         def perform_scope_operation(operation_type, ops_spec):
@@ -5833,7 +5951,8 @@ class BucketUtils(ScopeUtils):
                     created_scope_collection_details = dict()
                     for _ in range(scopes_num):
                         scope_name = BucketUtils.get_random_name(
-                            prefix="scope", counter_obj=scope_counter)
+                            prefix='scope',
+                            counter_obj=scope_counter)
                         ScopeUtils.create_scope(cluster.master,
                                                 bucket,
                                                 {"name": scope_name})
@@ -5845,7 +5964,7 @@ class BucketUtils(ScopeUtils):
                                 for _ in range(collection_count):
                                     collection_name = \
                                         BucketUtils.get_random_name(
-                                            prefix="collection",
+                                            prefix='collection',
                                             counter_obj=col_counter)
                                     futures[executor.submit(
                                         BucketUtils.create_collection,
@@ -5870,10 +5989,10 @@ class BucketUtils(ScopeUtils):
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures = []
                     with requests.Session() as session:
-                        for bucket_name, b_data in buckets_spec.items():
+                        for bucket_name, b_data in list(buckets_spec.items()):
                             bucket = BucketUtils.get_bucket_obj(buckets,
                                                                 bucket_name)
-                            for scope_name in b_data["scopes"].keys():
+                            for scope_name in list(b_data["scopes"].keys()):
                                 futures.append(executor.submit(ScopeUtils.drop_scope, cluster.master,
                                                                bucket, scope_name, session=session))
                     for future in concurrent.futures.as_completed(futures):
@@ -5884,10 +6003,10 @@ class BucketUtils(ScopeUtils):
                 update_ops_details_dict("scopes_added", buckets_spec)
                 update_ops_details_dict("collections_added", buckets_spec,
                                         fetch_collections=True)
-                for bucket_name, b_data in buckets_spec.items():
+                for bucket_name, b_data in list(buckets_spec.items()):
                     bucket = BucketUtils.get_bucket_obj(buckets,
                                                         bucket_name)
-                    for scope_name in b_data["scopes"].keys():
+                    for scope_name in list(b_data["scopes"].keys()):
                         scope_obj = bucket.scopes[scope_name]
                         BucketUtils.create_scope(cluster.master,
                                                  bucket,
@@ -5895,7 +6014,7 @@ class BucketUtils(ScopeUtils):
                         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                             futures = []
                             with requests.Session() as session:
-                                for _, collection in scope_obj.collections.items():
+                                for _, collection in list(scope_obj.collections.items()):
                                     c_dict = collection.get_dict_object()
                                     if "nonDedupedHistory" not in bucket.bucketCapabilities:
                                         c_dict.pop("history", None)
@@ -5908,7 +6027,7 @@ class BucketUtils(ScopeUtils):
 
         def perform_collection_operation(operation_type, ops_spec):
             if operation_type == "create":
-                bucket_names = ops_spec.keys()
+                bucket_names = list(ops_spec.keys())
                 bucket_names.remove("req_collections")
                 net_dict = dict()  # {"buckets"{bucket_name:{"scopes":{scope_name:{"collections":{collections_name:{}}}}}}}
                 net_dict["buckets"] = dict()
@@ -5919,7 +6038,7 @@ class BucketUtils(ScopeUtils):
                             bucket_name = sample(bucket_names, 1)[0]
                             bucket = BucketUtils.get_bucket_obj(buckets,
                                                                 bucket_name)
-                            scope = sample(ops_spec[bucket_name]["scopes"].keys(),
+                            scope = sample(list(ops_spec[bucket_name]["scopes"].keys()),
                                            1)[0]
                             collection_name = BucketUtils.get_random_name(
                                 prefix="collection",
@@ -5949,11 +6068,11 @@ class BucketUtils(ScopeUtils):
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures = []
                     with requests.Session() as session:
-                        for bucket_name, b_data in ops_spec.items():
+                        for bucket_name, b_data in list(ops_spec.items()):
                             bucket = BucketUtils.get_bucket_obj(buckets, bucket_name)
-                            for scope_name, scope_data in b_data["scopes"].items():
+                            for scope_name, scope_data in list(b_data["scopes"].items()):
                                 for collection_name in \
-                                        scope_data["collections"].keys():
+                                        list(scope_data["collections"].keys()):
                                     if operation_type == "flush":
                                         CollectionUtils.flush_collection(
                                             cluster.master, bucket,
@@ -5971,10 +6090,10 @@ class BucketUtils(ScopeUtils):
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures = []
                     with requests.Session() as session:
-                        for bucket_name, b_data in ops_spec.items():
+                        for bucket_name, b_data in list(ops_spec.items()):
                             bucket = BucketUtils.get_bucket_obj(buckets, bucket_name)
-                            for scope_name, scope_data in b_data["scopes"].items():
-                                for col_name in scope_data["collections"].keys():
+                            for scope_name, scope_data in list(b_data["scopes"].items()):
+                                for col_name in list(scope_data["collections"].keys()):
                                     collection = bucket.scopes[scope_name] \
                                         .collections[col_name]
                                     c_dict = collection.get_dict_object()
@@ -6015,21 +6134,39 @@ class BucketUtils(ScopeUtils):
         # Fetch random Collections to drop
         exclude_from = copy.deepcopy(cols_to_flush)
         # Code to avoid removing collections under the scope '_system'
+        dict_to_update = dict()
         for b in buckets:
-            dict_to_update = {
-                b.name: {
-                    "scopes": {
-                        CbServer.system_scope: {
-                            "collections": {
-                                CbServer.eventing_collection: {},
-                                CbServer.query_collection: {},
-                                CbServer.mobile_collection: {},
-                                CbServer.regulator_collection: {}
-                            }
-                        }
-                    }
+            dict_to_update[b.name] = dict()
+            dict_to_update[b.name]["scopes"] = dict()
+            dict_to_update[b.name]["scopes"][CbServer.system_scope] = {
+                "collections": {
+                    CbServer.eventing_collection: {},
+                    CbServer.query_collection: {},
+                    CbServer.mobile_collection: {},
+                    CbServer.regulator_collection: {},
                 }
+
             }
+            for scope in b.scopes:
+                for collection in b.scopes[scope].collections:
+                    if 'skip_dict' in input_spec and b.name in input_spec[
+                        'skip_dict'] and 'scopes' in input_spec[
+                        'skip_dict'][b.name] and scope in input_spec[
+                        'skip_dict'][b.name]['scopes'] and 'collections' in \
+                            input_spec['skip_dict'][b.name]['scopes'][scope] \
+                            and collection in input_spec['skip_dict'][b.name][
+                                               'scopes'][scope]['collections']:
+                        if 'scopes' not in dict_to_update[b.name]:
+                            dict_to_update[b.name]['scopes'] = dict()
+                        if scope not in dict_to_update[b.name]['scopes']:
+                            dict_to_update[b.name]['scopes'][scope] = dict()
+                        if 'collections' not in dict_to_update[b.name][
+                            'scopes'][scope]:
+                            dict_to_update[b.name]['scopes'][scope]['collections'] = dict()
+                        if collection not in dict_to_update[b.name][
+                            'scopes'][scope]['collections']:
+                            dict_to_update[b.name]['scopes'][scope]['collections'][
+                                collection] = dict()
             exclude_from.update(dict_to_update)
         # If recreating dropped collections then exclude dropping default collection
         if input_spec.get(MetaCrudParams.COLLECTIONS_TO_RECREATE, 0):
@@ -6041,8 +6178,7 @@ class BucketUtils(ScopeUtils):
                     exclude_from[bucket.name]["scopes"][CbServer.default_scope] = dict()
                     exclude_from[bucket.name]["scopes"][CbServer.default_scope]["collections"] = dict()
                 exclude_from[bucket.name]["scopes"][CbServer.default_scope]["collections"][
-                    CbServer.default_collection] = \
-                    dict()
+                    CbServer.default_collection] = dict()
         cols_to_drop = BucketUtils.get_random_collections(
             buckets,
             input_spec.get(MetaCrudParams.COLLECTIONS_TO_DROP, 0),
@@ -6096,7 +6232,7 @@ class BucketUtils(ScopeUtils):
             input_spec.get(MetaCrudParams.COLLECTIONS_TO_RECREATE, 0),
             input_spec.get(MetaCrudParams.SCOPES_CONSIDERED_FOR_OPS, "all"),
             input_spec.get(MetaCrudParams.BUCKET_CONSIDERED_FOR_OPS, "all"),
-            consider_only_dropped=True)
+            consider_only_dropped=True, exclude_from=exclude_from)
         perform_collection_operation("recreate", collections_to_recreate)
         DocLoaderUtils.log.info("Done Performing scope/collection specific "
                                 "operations")
@@ -6307,7 +6443,7 @@ class BucketUtils(ScopeUtils):
                 while max_retries > 0:
                     stat_ok = True
                     if bucket.storageBackend == Bucket.StorageBackend.magma:
-                        for vb, _ in vb_details.items():
+                        for vb, _ in list(vb_details.items()):
                             if "history_start_seqno" not in vb_details[str(vb)]:
                                 stat_ok = False
                                 break
@@ -6321,7 +6457,7 @@ class BucketUtils(ScopeUtils):
                                       .format(node.ip))
             else:
                 vb_details_fields.remove("history_start_seqno")
-                for vb, _ in vb_details.items():
+                for vb, _ in list(vb_details.items()):
                     if "history_start_seqno" in vb_details[str(vb)]:
                         self.log.critical(
                             "Hist_stat_seqno present for non-magma bucket")
@@ -6362,7 +6498,7 @@ class BucketUtils(ScopeUtils):
         purge_seqno = "purge_seqno"
         # Check replica stats
         for index, stat in enumerate([prev_stat, curr_stats]):
-            for vb_num, stats in stat.items():
+            for vb_num, stats in list(stat.items()):
                 for r_stat in stats[replica]:
                     if r_stat[high_seqno] < r_stat[hist_start_seqno]:
                         result = False
@@ -6384,7 +6520,7 @@ class BucketUtils(ScopeUtils):
                             .format(index, vb_num, r_stat[purge_seqno],
                                     r_stat[hist_start_seqno]))
         if no_history_preserved:
-            for vb_num, stats in curr_stats.items():
+            for vb_num, stats in list(curr_stats.items()):
                 active_stats = stats[active]
                 if active_stats[hist_start_seqno] != 0:
                     result = False
@@ -6392,7 +6528,7 @@ class BucketUtils(ScopeUtils):
                         "vb_{0} history_start_seqno {1} != 0"
                         .format(vb_num, active_stats[hist_start_seqno]))
         elif comparison == "==":
-            for vb_num, stats in prev_stat.items():
+            for vb_num, stats in list(prev_stat.items()):
                 active_stats = stats[active]
                 if active_stats[hist_start_seqno] \
                         != curr_stats[vb_num][active][hist_start_seqno]:
@@ -6402,7 +6538,7 @@ class BucketUtils(ScopeUtils):
                         .format(vb_num, active_stats[hist_start_seqno],
                                 curr_stats[vb_num][active][hist_start_seqno]))
         elif comparison == ">":
-            for vb_num, stats in prev_stat.items():
+            for vb_num, stats in list(prev_stat.items()):
                 prev_active_stats = stats[active]
                 if prev_active_stats[hist_start_seqno] \
                         > curr_stats[vb_num][active][hist_start_seqno]:
@@ -6413,27 +6549,26 @@ class BucketUtils(ScopeUtils):
                                 curr_stats[vb_num][active][hist_start_seqno]))
 
         elif comparison == ">=":
-            for vb_num, stats in prev_stat.items():
+            for vb_num, stats in list(prev_stat.items()):
                 prev_active_stats = stats[active]
                 if prev_active_stats[hist_start_seqno] \
                         >= curr_stats[vb_num][active][hist_start_seqno]:
                     result = False
                     self.log.critical(
                         "vb_{0} hist_start_seqno, prev::{1} >= curr::{2}"
-                            .format(vb_num,
-                                    prev_active_stats[hist_start_seqno],
-                                    curr_stats[vb_num][active][
-                                        hist_start_seqno]))
+                        .format(vb_num,
+                                prev_active_stats[hist_start_seqno],
+                                curr_stats[vb_num][active][
+                                    hist_start_seqno]))
         return result
 
     def validate_disk_info_detail_history_stats(self, bucket, bucket_nodes,
                                                 configured_size_per_vb):
         result = True
         for node in bucket_nodes:
-            shell = RemoteMachineShellConnection(node)
-            cbstat = Cbstats(shell)
+            cbstat = Cbstats(node)
             disk_info = cbstat.disk_info_detail(bucket.name)
-            for vb_num, stat in disk_info.items():
+            for vb_num, stat in list(disk_info.items()):
                 if stat["history_disk_size"] > configured_size_per_vb:
                     result = False
                     self.log.critical(

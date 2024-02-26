@@ -11,16 +11,15 @@ import random
 import socket
 import threading
 import time
+import traceback
 from copy import deepcopy
+from sdk_client3 import SDKClient
 import zlib
-from httplib import IncompleteRead
+from http.client import IncompleteRead
 
-import com.couchbase.test.transactions.SimpleTransaction as Transaction
-from _threading import Lock
-from com.couchbase.client.java.json import JsonObject
-from java.lang import Thread
-from java.util.concurrent import Callable
-from reactor.util.function import Tuples
+import requests
+from threading import Lock
+
 
 import common_lib
 import global_vars
@@ -29,15 +28,16 @@ from BucketLib.MemcachedOperations import MemcachedHelper
 from BucketLib.bucket import Bucket, Serverless
 from Cb_constants import constants, CbServer, DocLoading, ClusterRun
 from CbasLib.CBASOperations import CBASHelper
-from CbasLib.cbas_entity import Dataverse, Dataset, Synonym, \
-    CBAS_Index, CBAS_UDF, Remote_Dataset
-from Jython_tasks.task_manager import TaskManager
+from CbasLib.cbas_entity import Dataverse, CBAS_Collection, Dataset, Synonym, \
+    CBAS_Index, CBAS_UDF
+from tasks.task_manager import TaskManager
 from cb_tools.cbstats import Cbstats
-from collections_helper.collections_spec_constants import MetaConstants
+from constants.sdk_constants.sdk_client_constants import SDKConstants
+from collections_helper.collections_spec_constants import MetaConstants, MetaCrudParams
 from common_lib import sleep
 from couchbase_helper.document import DesignDocument
 from couchbase_helper.documentgenerator import BatchedDocumentGenerator, \
-    SubdocDocumentGenerator
+    SubdocDocumentGenerator, DocumentGenerator
 from error_simulation.cb_error import CouchbaseError
 from global_vars import logger
 from custom_exceptions.exception import \
@@ -59,16 +59,25 @@ from capella_utils.serverless import CapellaUtils as ServerlessUtils, \
 from capellaAPI.capella.dedicated.CapellaAPI import CapellaAPI as decicatedCapellaAPI
 from constants.cloud_constants.capella_constants import AWS
 
-from java.util.concurrent.atomic import AtomicInteger
-from org.xbill.DNS import Lookup, Type
+
+from sirius_client import SiriusClient, check_sirius_status, clear_test_information, IDENTIFIER_TOKEN
+from TestInput import TestInputSingleton
+
+from threading import Lock
 
 
-class Task(Callable):
-    serial_number = AtomicInteger(0)
+class Task():
+    serial_number: int = 0
+    serial_number_lock: Lock = Lock()
 
     def __init__(self, thread_name):
+
+        Task.serial_number_lock.acquire()
         self.thread_name = "{}_{}".format(thread_name,
-                                          Task.serial_number.incrementAndGet())
+                                          Task.serial_number)
+        Task.serial_number += 1
+        Task.serial_number_lock.release()
+
         self.exception = None
         self.completed = False
         self.started = False
@@ -89,12 +98,12 @@ class Task(Callable):
                              str(time.strftime("%H:%M:%S",
                                                time.gmtime(self.end_time)))))
             return "%s task completed in %.2fs" % \
-                   (self.thread_name, self.completed - self.started,)
+                (self.thread_name, self.completed - self.started,)
         elif self.started:
             return "Thread %s at %s" % \
-                   (self.thread_name,
-                    str(time.strftime("%H:%M:%S",
-                                      time.gmtime(self.start_time))))
+                (self.thread_name,
+                 str(time.strftime("%H:%M:%S",
+                                   time.gmtime(self.start_time))))
         else:
             return "[%s] not yet scheduled" % self.thread_name
 
@@ -195,7 +204,8 @@ class TimerTask(Task):
             kwds (dict): A dictionary of keyword arguments for the function `f`.
             interval (int): The time to wait in between function calls.
         """
-        super(TimerTask, self).__init__("TimerTask: function:{} Args:{} Kwds:{} Interval:{}".format(f, args, kwds, interval))
+        super(TimerTask, self).__init__(
+            "TimerTask: function:{} Args:{} Kwds:{} Interval:{}".format(f, args, kwds, interval))
         self.f, self.args, self.kwds, self.interval = f, args, kwds, interval
 
     def call(self):
@@ -276,10 +286,10 @@ class UpgradeProvisionedCluster(Task):
 
         count = 120
         self.state = DedicatedUtils.get_cluster_state(
-                    self.cluster.pod, self.cluster.tenant, self.cluster.id)
+            self.cluster.pod, self.cluster.tenant, self.cluster.id)
         while self.state == "healthy" and count > 0:
             self.state = DedicatedUtils.get_cluster_state(
-                    self.cluster.pod, self.cluster.tenant, self.cluster.id)
+                self.cluster.pod, self.cluster.tenant, self.cluster.id)
             self.sleep(5, "Wait until CP trigger the upgrade job and change status")
             self.log.info("Current: {}, Expected: {}".format(self.state, "upgrading"))
             count -= 1
@@ -311,8 +321,9 @@ class UpgradeProvisionedCluster(Task):
                         data = data.get("data")
                         if data.get("clusterId") == self.cluster.id:
                             step, progress = data.get("currentStep"), \
-                                             data.get("completionPercentage")
-                            self.log.info("{}: Status=={}, State=={}, Progress=={}%".format("Scaling", self.state, step, progress))
+                                data.get("completionPercentage")
+                            self.log.info("{}: Status=={}, State=={}, Progress=={}%".format("Scaling", self.state, step,
+                                                                                            progress))
                     time.sleep(self.poll_interval)
                 else:
                     self.log.info("Scaling the cluster completed. State == {}".
@@ -358,7 +369,7 @@ class RebalanceTaskCapella(Task):
         count = 120
         while self.state == "healthy" and count > 0:
             self.state = DedicatedUtils.get_cluster_state(
-                    self.cluster.pod, self.cluster.tenant, self.cluster.id)
+                self.cluster.pod, self.cluster.tenant, self.cluster.id)
             self.sleep(5, "Wait until CP trigger the scaling job and change status")
             self.log.info("Current: {}, Expected: {}".format(self.state, "scaling"))
             count -= 1
@@ -392,8 +403,9 @@ class RebalanceTaskCapella(Task):
                         data = data.get("data")
                         if data.get("clusterId") == self.cluster.id:
                             step, progress = data.get("currentStep"), \
-                                             data.get("completionPercentage")
-                            self.log.info("{}: Status=={}, State=={}, Progress=={}%".format("Scaling", self.state, step, progress))
+                                data.get("completionPercentage")
+                            self.log.info("{}: Status=={}, State=={}, Progress=={}%".format("Scaling", self.state, step,
+                                                                                            progress))
                     time.sleep(self.poll_interval)
                 else:
                     self.log.info("Scaling the cluster completed. State == {}".
@@ -438,7 +450,7 @@ class RebalanceTask(Task):
                  use_hostnames=False, services=None,
                  check_vbucket_shuffling=True,
                  retry_get_process_num=25, add_nodes_server_groups=None,
-                 defrag_options=None):
+                 defrag_options=None, validate_bucket_ranking=True):
         super(RebalanceTask, self).__init__(
             "Rebalance_task_IN=[{}]_OUT=[{}]_{}"
             .format(",".join([node.ip for node in to_add]),
@@ -457,6 +469,7 @@ class RebalanceTask(Task):
         self.retry_get_process_num = retry_get_process_num
         self.server_groups_to_add = dict()
         self.defrag_options = None
+        self.validate_bucket_ranking = validate_bucket_ranking
 
         if isinstance(add_nodes_server_groups, dict):
             """
@@ -469,7 +482,7 @@ class RebalanceTask(Task):
 
         try:
             self.rest = RestConnection(self.cluster.master)
-        except ServerUnavailableException, e:
+        except ServerUnavailableException as e:
             self.test_log.error(e)
             raise e
 
@@ -485,7 +498,8 @@ class RebalanceTask(Task):
         for r_node in self.rest.get_nodes(inactive_added=True,
                                           inactive_failed=True):
             for server in self.cluster.servers:
-                if r_node.ip == server.ip and r_node.port == server.port:
+                if r_node.ip == server.ip and int(r_node.port) == \
+                        int(server.port):
                     if r_node.clusterMembership not in valid_membership:
                         continue
                     if ClusterRun.is_enabled:
@@ -512,15 +526,15 @@ class RebalanceTask(Task):
         """
         if defrag_options:
             self.defrag_options = dict()
-            self.defrag_options["defragmentZones"] = ",".\
-                    join(defrag_options["defragmentZones"])
+            self.defrag_options["defragmentZones"] = ",". \
+                join(defrag_options["defragmentZones"])
             self.defrag_options["knownNodesIP"] = defrag_options["knownNodes"]
 
         cluster_stats = self.rest.get_cluster_stats()
         self.table = TableView(self.test_log.info)
         self.table.set_headers(["Nodes", "Zone", "Services", "Version / Config",
                                 "CPU", "Status", "Membership / Recovery"])
-        for node, stat in cluster_stats.items():
+        for node, stat in list(cluster_stats.items()):
             node_ip, node_port = node.split(':')
             node_status = "Cluster node"
             if ClusterRun.is_enabled:
@@ -597,21 +611,21 @@ class RebalanceTask(Task):
     def __str__(self):
         if self.exception:
             return "[%s] %s download error %s in %.2fs" % \
-                   (self.thread_name, self.num_items, self.exception,
-                    self.completed - self.started,)  # , self.result)
+                (self.thread_name, self.num_items, self.exception,
+                 self.completed - self.started,)  # , self.result)
         elif self.completed:
             self.test_log.debug("Time: %s"
                                 % str(time.strftime("%H:%M:%S",
                                                     time.gmtime(time.time()))))
             return "[%s] %s items loaded in %.2fs" % \
-                   (self.thread_name, self.loaded,
-                    self.completed - self.started,)  # , self.result)
+                (self.thread_name, self.loaded,
+                 self.completed - self.started,)  # , self.result)
         elif self.started:
             return "[%s] %s started at %s" % \
-                   (self.thread_name, self.num_items, self.started)
+                (self.thread_name, self.num_items, self.started)
         else:
             return "[%s] %s not yet scheduled" % \
-                   (self.thread_name, self.num_items)
+                (self.thread_name, self.num_items)
 
     def call(self):
         def print_nodes(msg, node_list):
@@ -623,13 +637,15 @@ class RebalanceTask(Task):
 
         self.start_task()
         try:
-            if len(self.to_add) and len(self.to_add) == len(self.to_remove):
+            if len(self.to_add) and len(self.to_add) == len(self.to_remove) \
+                    and self.cluster.nodes_in_cluster:
                 node_version_check = self.rest.check_node_versions()
-                non_swap_servers = set(self.servers) - set(
+                non_swap_servers = set(self.cluster.nodes_in_cluster) - set(
                     self.to_remove) - set(self.to_add)
                 if self.check_vbucket_shuffling:
                     self.old_vbuckets = BucketHelper(
-                        self.servers[0])._get_vbuckets(non_swap_servers, None)
+                        self.cluster.master) \
+                        ._get_vbuckets(non_swap_servers, None)
                 if self.old_vbuckets and self.check_vbucket_shuffling:
                     self.monitor_vbuckets_shuffling = True
                 if self.monitor_vbuckets_shuffling \
@@ -651,7 +667,7 @@ class RebalanceTask(Task):
             self.state = "add_nodes"
             self.add_nodes()
             # Validate the current orchestrator is selected as expected
-            result = global_vars.cluster_util.\
+            result = global_vars.cluster_util. \
                 validate_orchestrator_selection(self.cluster)
             if result is False:
                 return self.result
@@ -663,6 +679,20 @@ class RebalanceTask(Task):
                 return self.result
             self.state = "triggered"
             self.table.display("Rebalance Overview")
+
+            # Pick temp-master if the current one is going out
+            if self.cluster.master in self.to_remove:
+                retained_nodes = [
+                    node for node in self.cluster.nodes_in_cluster
+                    if node not in self.to_remove]
+                # In case of swap of all available nodes,
+                # retained nodes will be None. Consider self.to_add nodes here
+                if not retained_nodes:
+                    retained_nodes = self.to_add
+                self.cluster.master = retained_nodes[0]
+                self.log.critical("Picked new temp-master: {}"
+                                  .format(self.cluster.master))
+                self.rest = RestConnection(self.cluster.master)
 
             check_timeout = int(time.time()) + 10
             rebalance_started = False
@@ -682,6 +712,7 @@ class RebalanceTask(Task):
             self.exception = e
             self.result = False
             self.test_log.error(str(e))
+            traceback.print_exc()
             return self.result
 
         if CbServer.cluster_profile == "serverless":
@@ -692,10 +723,18 @@ class RebalanceTask(Task):
         self.complete_task()
 
         # Validate the current orchestrator is selected as expected
-        result = global_vars.cluster_util.\
+        result = global_vars.cluster_util. \
             validate_orchestrator_selection(self.cluster, self.to_remove)
         if result:
             self.result = True
+
+        if self.validate_bucket_ranking:
+            # Validate if the vbucket movement is as per bucket ranking
+            ranking_validation_res = global_vars.cluster_util.\
+                    validate_bucket_ranking(self.cluster)
+            if not ranking_validation_res:
+                self.log.error("The vbucket movement was not according to bucket ranking")
+                self.result = False
 
         print_nodes("Cluster nodes..", self.cluster.nodes_in_cluster)
         print_nodes("KV............", self.cluster.kv_nodes)
@@ -709,9 +748,10 @@ class RebalanceTask(Task):
         return self.result
 
     def add_nodes(self):
-        master = self.servers[0]
+        username = self.cluster.master.rest_username
+        password = self.cluster.master.rest_password
         node_index = 0
-        server_groups = self.server_groups_to_add.keys() \
+        server_groups = list(self.server_groups_to_add.keys()) \
             if self.server_groups_to_add else []
         server_group_index = 0
         services_for_node = [CbServer.Services.KV]
@@ -732,12 +772,12 @@ class RebalanceTask(Task):
                                 ",".join(services_for_node), "", "",
                                 "<--- IN ---", ""])
             if self.use_hostnames:
-                self.rest.add_node(master.rest_username, master.rest_password,
+                self.rest.add_node(username, password,
                                    node.hostname, node.port,
                                    zone_name=zone_name,
                                    services=services_for_node)
             else:
-                self.rest.add_node(master.rest_username, master.rest_password,
+                self.rest.add_node(username, password,
                                    node.ip, node.port,
                                    zone_name=zone_name,
                                    services=services_for_node)
@@ -818,8 +858,8 @@ class RebalanceTask(Task):
                         non_swap_servers, None)
                     for vb_type in ["active_vb", "replica_vb"]:
                         for srv in non_swap_servers:
-                            if set(self.old_vbuckets[srv][vb_type]) != set(
-                                    new_vbuckets[srv][vb_type]):
+                            if set(self.old_vbuckets[srv.ip][vb_type]) != set(
+                                    new_vbuckets[srv.ip][vb_type]):
                                 msg = "%s vBuckets were shuffled on %s! " \
                                       "Expected: %s, Got: %s" \
                                       % (vb_type, srv.ip,
@@ -860,16 +900,24 @@ class RebalanceTask(Task):
                     sleep(10, log_type="infra")
                     self.poll = True
                 else:
+                    exception_msg = "Seems like rebalance hangs. Please check logs!"
+                    if self.validate_bucket_ranking:
+                        # Validate if the vbucket movement is as per bucket ranking
+                        ranking_validation_res = global_vars.cluster_util.\
+                            validate_bucket_ranking(self.cluster)
+                        if not ranking_validation_res:
+                            self.log.error("The vbucket movement was not according to bucket ranking")
+                            exception_msg += "\nFurther, the vbucket movement upto the hang was not according to bucket ranking"
+
                     self.result = False
                     self.rest.print_UI_logs()
-                    raise RebalanceFailedException(
-                        "seems like rebalance hangs. please check logs!")
+                    raise RebalanceFailedException(exception_msg)
             else:
                 success_cleaned = []
                 for removed in self.to_remove:
                     try:
                         rest = RestConnection(removed)
-                    except ServerUnavailableException, e:
+                    except ServerUnavailableException as e:
                         self.test_log.error(e)
                         continue
                     start = time.time()
@@ -879,7 +927,7 @@ class RebalanceTask(Task):
                                     (len(rest.get_pools_info()["pools"]) == 0):
                                 success_cleaned.append(removed)
                                 break
-                        except (ServerUnavailableException, IncompleteRead), e:
+                        except (ServerUnavailableException, IncompleteRead) as e:
                             self.test_log.error(e)
 
                 for node in set(self.to_remove) - set(success_cleaned):
@@ -945,7 +993,7 @@ class GenericLoadingTask(Task):
             self.generator.reset()
             try:
                 while self.has_next():
-                    self.next()
+                    next(self)
             except Exception as e:
                 self.test_log.error(e)
                 self.set_exception(Exception(e.message))
@@ -955,7 +1003,7 @@ class GenericLoadingTask(Task):
     def has_next(self):
         raise NotImplementedError
 
-    def next(self):
+    def __next__(self):
         raise NotImplementedError
 
     # start of batch methods
@@ -991,8 +1039,8 @@ class GenericLoadingTask(Task):
                     Thread.sleep(self.timeout)
                     # self.test_log.debug("Reading values {0} after failure"
                     # .format(fail.keys()))
-                    read_map, _ = self.batch_read(fail.keys())
-                    for key, value in fail.items():
+                    read_map, _ = self.batch_read(list(fail.keys()))
+                    for key, value in list(fail.items()):
                         if key in read_map and read_map[key]["cas"] != 0:
                             success[key] = value
                             success[key].pop("error")
@@ -1000,7 +1048,7 @@ class GenericLoadingTask(Task):
                         elif not self.suppress_error_table:
                             failed_item_table.add_row([key, value['error']])
                 elif not self.suppress_error_table:
-                    for key, value in fail.items():
+                    for key, value in list(fail.items()):
                         failed_item_table.add_row([key, value['error']])
                 if not self.suppress_error_table:
                     failed_item_table.display("Keys failed in %s:%s:%s"
@@ -1038,9 +1086,9 @@ class GenericLoadingTask(Task):
                         "Sleep before reading the doc for verification")
                     Thread.sleep(self.timeout)
                     self.test_log.debug("Reading values {0} after failure"
-                                        .format(fail.keys()))
-                    read_map, _ = self.batch_read(fail.keys())
-                    for key, value in fail.items():
+                                        .format(list(fail.keys())))
+                    read_map, _ = self.batch_read(list(fail.keys()))
+                    for key, value in list(fail.items()):
                         if key in read_map and read_map[key]["cas"] != 0 \
                                 and value == read_map[key]["value"]:
                             success[key] = value
@@ -1049,7 +1097,7 @@ class GenericLoadingTask(Task):
                         elif not self.suppress_error_table:
                             failed_item_table.add_row([key, value['error']])
                 elif not self.suppress_error_table:
-                    for key, value in fail.items():
+                    for key, value in list(fail.items()):
                         failed_item_table.add_row([key, value['error']])
                 if not self.suppress_error_table:
                     failed_item_table.display("Keys failed in %s:%s:%s"
@@ -1086,9 +1134,9 @@ class GenericLoadingTask(Task):
                         "Sleep before reading the doc for verification")
                     Thread.sleep(self.timeout)
                     self.test_log.debug("Reading values {0} after failure"
-                                        .format(fail.keys()))
-                    read_map, _ = self.batch_read(fail.keys())
-                    for key, value in fail.items():
+                                        .format(list(fail.keys())))
+                    read_map, _ = self.batch_read(list(fail.keys()))
+                    for key, value in list(fail.items()):
                         if key in read_map and read_map[key]["cas"] != 0:
                             success[key] = value
                             success[key].pop("error")
@@ -1096,7 +1144,7 @@ class GenericLoadingTask(Task):
                         elif not self.suppress_error_table:
                             failed_item_table.add_row([key, value['error']])
                 elif not self.suppress_error_table:
-                    for key, value in fail.items():
+                    for key, value in list(fail.items()):
                         failed_item_table.add_row([key, value['error']])
                 if not self.suppress_error_table:
                     failed_item_table.display("Keys failed in %s:%s:%s"
@@ -1113,7 +1161,7 @@ class GenericLoadingTask(Task):
                      durability=""):
         client = client or self.client
         success, fail = client.delete_multi(
-            dict(key_val).keys(),
+            list(dict(key_val).keys()),
             persist_to=persist_to,
             replicate_to=replicate_to,
             timeout=self.timeout,
@@ -1123,7 +1171,7 @@ class GenericLoadingTask(Task):
         if fail and not self.suppress_error_table:
             failed_item_view = TableView(self.test_log.info)
             failed_item_view.set_headers(["Delete Key", "Exception"])
-            for key, exception in fail.items():
+            for key, exception in list(fail.items()):
                 failed_item_view.add_row([key, exception])
             failed_item_view.display("Keys failed in %s:%s:%s"
                                      % (client.bucket.name,
@@ -1133,7 +1181,7 @@ class GenericLoadingTask(Task):
 
     def batch_touch(self, key_val, exp=0):
         success, fail = self.client.touch_multi(
-            dict(key_val).keys(),
+            list(dict(key_val).keys()),
             exp=exp,
             timeout=self.timeout,
             time_unit=self.time_unit,
@@ -1141,7 +1189,7 @@ class GenericLoadingTask(Task):
         if fail and not self.suppress_error_table:
             failed_item_view = TableView(self.test_log.info)
             failed_item_view.set_headers(["Touch Key", "Exception"])
-            for key, exception in fail.items():
+            for key, exception in list(fail.items()):
                 failed_item_view.add_row([key, exception])
             failed_item_view.display("Keys failed in %s:%s:%s"
                                      % (self.client.bucket.name,
@@ -1158,7 +1206,7 @@ class GenericLoadingTask(Task):
         if fail and not self.suppress_error_table:
             failed_item_view = TableView(self.test_log.info)
             failed_item_view.set_headers(["Read Key", "Exception"])
-            for key, exception in fail.items():
+            for key, exception in list(fail.items()):
                 failed_item_view.add_row([key, exception])
             failed_item_view.display("Keys failed in %s:%s:%s"
                                      % (client.bucket.name,
@@ -1426,7 +1474,7 @@ class LoadDocumentsTask(GenericLoadingTask):
                 self.fail.update(fail)
 
         elif self.op_type == DocLoading.Bucket.DocOps.READ:
-            success, fail = self.batch_read(dict(key_value).keys())
+            success, fail = self.batch_read(list(dict(key_value).keys()))
             if self.track_failures:
                 self.fail.update(fail)
             if not self.skip_read_success_results:
@@ -1763,7 +1811,7 @@ class Durability(Task):
             self.log.debug("Starting loader thread '%s'" % self.thread_name)
             try:
                 while self.has_next():
-                    self.next()
+                    next(self)
             except Exception as e:
                 self.set_exception(Exception(e.message))
             self.log.debug("Loader thread '%s' completed" % self.thread_name)
@@ -1846,13 +1894,13 @@ class Durability(Task):
                            self.write_offset,
                            self.end))
                     if self.generator_persist._doc_gen.has_next():
-                        doc = self.generator_persist._doc_gen.next()
+                        doc = next(self.generator_persist._doc_gen)
                         key, val = doc[0], doc[1]
                         vBucket = (((zlib.crc32(key)) >> 16) & 0x7fff) & (
                                 len(self.bucket.vbuckets) - 1)
                         nodes = [self.bucket.vbuckets[vBucket].master]
                         if self.durability \
-                                == Bucket.DurabilityLevel.PERSIST_TO_MAJORITY:
+                                == SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY:
                             nodes += self.bucket.vbuckets[vBucket].replica
                         count = 0
                         if self.op_type == 'create':
@@ -1874,7 +1922,7 @@ class Durability(Task):
                                         count += 1
                             except:
                                 pass
-                            if key not in self.create_failed.keys():
+                            if key not in list(self.create_failed.keys()):
                                 '''
                                 this condition make sure that document is
                                 persisted in alleast 1 node
@@ -1896,8 +1944,8 @@ class Durability(Task):
                                         key))
 
                         if self.op_type == 'update':
-                            if key not in self.update_failed[
-                                self.instance].keys():
+                            if key not in list(self.update_failed[
+                                                   self.instance].keys()):
                                 try:
                                     for node in nodes:
                                         key_stat = shells[
@@ -1941,8 +1989,8 @@ class Durability(Task):
                                         count += 1
                                 except Exception as e:
                                     pass
-                            if key not in self.delete_failed[
-                                self.instance].keys():
+                            if key not in list(self.delete_failed[
+                                                   self.instance].keys()):
                                 if count == (self.bucket.replicaNumber + 1):
                                     # if count > (self.bucket.replicaNumber+1 - self.majority_value):
                                     self.sdk_acked_pers_failed.update(
@@ -1979,14 +2027,14 @@ class Durability(Task):
                         % (self.read_offset, self.op_type, self.write_offset,
                            self.end))
                     if self.generator_reader._doc_gen.has_next():
-                        doc = self.generator_reader._doc_gen.next()
+                        doc = next(self.generator_reader._doc_gen)
                         key, val = doc[0], doc[1]
                         if self.op_type == 'create':
                             result = self.client.get_from_all_replicas(key)
                             self.test_log.debug(
                                 "Key = %s getFromAllReplica = %s" % (
                                     key, result))
-                            if key not in self.create_failed.keys():
+                            if key not in list(self.create_failed.keys()):
                                 if len(result) == 0:
                                     # if len(result) < self.majority_value:
                                     self.sdk_acked_curd_failed.update(
@@ -2011,7 +2059,7 @@ class Durability(Task):
                                     % (key, result))
                         if self.op_type == 'update':
                             result = self.client.get_from_all_replicas(key)
-                            if key not in self.update_failed.keys():
+                            if key not in list(self.update_failed.keys()):
                                 if len(result) == 0:
                                     # if len(result) < self.majority_value:
                                     self.sdk_acked_curd_failed.update(
@@ -2051,7 +2099,7 @@ class Durability(Task):
                                             % (key, result))
                         if self.op_type == 'delete':
                             result = self.client.get_from_all_replicas(key)
-                            if key not in self.delete_failed.keys():
+                            if key not in list(self.delete_failed.keys()):
                                 if len(result) > self.bucket.replicaNumber:
                                     self.sdk_acked_curd_failed.update(result[0])
                                     self.test_log.error(
@@ -2066,6 +2114,292 @@ class Durability(Task):
                         break
                     self.read_offset += 1
 
+class ContinuousRangeScan(Task):
+
+    # creates range scan queries and expected count using data spec file key
+    # and doc count on the collections then starting range scan for the given
+    # collections using RangeScanOnCollection task
+
+    def __init__(self,  cluster, task_manager,
+                 sdk_client_pool, items, range_scan_collections,
+                 parallel_task = 8, buckets=None,
+                 include_prefix_scan = True, include_range_scan=True,
+                 skip_scopes = ['_system'], include_start_term=1,
+                 include_end_term=1, key_size=8, key="test_collections",
+                 expect_exceptions= [],
+                 runs_per_collection=1,timeout=None,
+                 expect_range_scan_failure=True):
+        super(ContinuousRangeScan, self).__init__("ContinuousRangeScan task starting")
+        self.validation_map = OrderedDict()
+        self.cluster = cluster
+        self.stop_task = False
+        self.fail_map = []
+        self.skip_scopes = skip_scopes
+        self.parallel_task = parallel_task
+        self.sdk_client_pool = sdk_client_pool
+        self.task_manager = task_manager
+        self.include_prefix_scan  = include_prefix_scan
+        self.include_range_scan = include_range_scan
+        self.num_items = items
+        self.key_size = key_size
+        self.expect_exceptions = expect_exceptions
+        self.include_start_term = include_start_term
+        self.include_end_term = include_end_term
+        self.range_scan_collections = range_scan_collections
+        self.consecutive_runs_per_collection = runs_per_collection
+        self.timeout = timeout
+        self.expect_range_scan_failure = expect_range_scan_failure
+        self.key = key
+        if buckets is None:
+            self.buckets = self.cluster.buckets
+
+    def update_validation_map(self, term, append_key=True,
+                              times_repeated = 1):
+        search_string = ""
+        for i in range(len(term)):
+            search_string += term[i]
+            append_term = ""
+            if append_key:
+                append_term = self.key + "-"
+            if append_term+search_string not in self.validation_map["prefix_scan"]:
+                self.validation_map["prefix_scan"][
+                    append_term+search_string] = times_repeated
+            else:
+                self.validation_map["prefix_scan"][
+                    append_term+search_string] += times_repeated
+
+    def create_range_scan_terms(self):
+        if "range_scan" not in self.validation_map:
+            self.validation_map["range_scan"] = dict()
+        range_info = [0, self.num_items]
+        key_tuple = (" ", " ")
+        self.validation_map["range_scan"][key_tuple] = 0
+        key_tuple = (":)", ";)")
+        self.validation_map["range_scan"][key_tuple] = 0
+        key_tuple = ("-1", "-1")
+        self.validation_map["range_scan"][key_tuple] = 0
+        for i in range(range_info[0], range_info[1]):
+            start_index = i
+            end_index = range_info[0]+(range_info[1]-i-1)
+            if start_index > end_index:
+                expected_count = 0
+            else:
+                expected_count = abs(end_index - start_index +
+                                     self.include_start_term +
+                                     self.include_end_term -1)
+            start_term = self.key + "-" + str(abs(start_index)).zfill(
+                self.key_size - len(self.key) - 1)
+            end_index = self.key + "-" + str(abs(end_index)).zfill(
+                self.key_size - len(self.key) - 1)
+            key_tuple = (start_term, end_index)
+            self.validation_map["range_scan"][key_tuple] = expected_count
+
+    def create_prefix_scan_queries(self,sub_doc_index=None):
+        if "prefix_scan" not in self.validation_map:
+            self.validation_map["prefix_scan"] = \
+                {"*": 0, " ": 0, "-1": 0, "(!!$$!!)": 0, " " + self.key: 0,
+                 "!" + self.key: 0, self.key + " ": 0}
+            self.update_validation_map(self.key, append_key=False,
+                                       times_repeated=self.num_items)
+            for i in range(self.num_items):
+                next_key = str(abs(i)).zfill(self.key_size - len(self.key) - 1)
+                self.update_validation_map(str(next_key), append_key=True)
+
+    def call(self):
+        try:
+            self.start_task()
+            self.exclude_collection = list()
+            if self.include_prefix_scan:
+                self.create_prefix_scan_queries(self.num_items)
+            if self.include_range_scan:
+                self.create_range_scan_terms()
+            self.log.debug("Collections selected for range scan %s" %
+                           self.range_scan_collections)
+            if self.sdk_client_pool is None:
+                self.log.debug("SDK pool not found creating clients" %
+                               self.range_scan_collections)
+                client_for_collection_list = list()
+                for bucket in self.buckets:
+                    for scope in bucket.scopes:
+                        if scope in self.skip_scopes:
+                            continue
+                        for collection in bucket.scopes[scope].collections:
+                            if str(collection) not in self.range_scan_collections:
+                                continue
+                            for _ in range(
+                                    self.consecutive_runs_per_collection):
+                                if self.sdk_client_pool is not None:
+                                    client_for_collection = self.sdk_client_pool.get_client_for_bucket \
+                                        (bucket, scope, collection)
+                                else:
+                                    client_for_collection = SDKClient(
+                                        [self.cluster.master],
+                                        bucket, scope, collection)
+                                client_for_collection_list.append(
+                                    client_for_collection)
+            else:
+                client_for_collection_list = self.sdk_client_pool
+            parallel_scan_task = {key: None for key in
+                                  range(self.parallel_task)}
+            run_parallel_tasks = True
+            iterator = 0
+            while run_parallel_tasks:
+                task_triggered = None
+                for task in parallel_scan_task:
+                    if (parallel_scan_task[task] is None or \
+                        parallel_scan_task[task].task_ended == True) and \
+                            iterator < len(client_for_collection_list):
+                        if parallel_scan_task[task] is not None \
+                                and parallel_scan_task[
+                            task].failure_map["failure_in_scan"]:
+                            self.fail_map.append(
+                                parallel_scan_task[task].failure_map)
+                        task_triggered = RangeScanOnCollection(
+                            clients=client_for_collection_list[iterator],
+                            scan_terms_map=self.validation_map,
+                            timeout=self.timeout, expect_exceptions=
+                            self.expect_exceptions,
+                            sampling_scan_param=self.num_items)
+                        self.task_manager.add_new_task(task_triggered)
+                        parallel_scan_task[task] = task_triggered
+                        iterator += 1
+                for task in parallel_scan_task:
+                    if parallel_scan_task[task] is not None \
+                            and parallel_scan_task[task].task_ended == False:
+                        break
+                else:
+                    break
+                self.sleep(30,
+                           "waiting before checking for iteration of range "
+                           "scan")
+                if self.stop_task:
+                    for task in parallel_scan_task:
+                        if parallel_scan_task[task] is not None:
+                            parallel_scan_task[task].stop_scan = True
+                    break
+            for task in parallel_scan_task:
+                if parallel_scan_task[task] is not None:
+                    if parallel_scan_task[task].failure_map["failure_in_scan"]:
+                        self.fail_map.append(
+                            parallel_scan_task[task].failure_map)
+                    self.task_manager.get_task_result(parallel_scan_task[task])
+
+        except Exception as error:
+            self.log.debug("Exception occured in range scan method %s" %
+                           error)
+            self.set_exception(error)
+
+class RangeScanOnCollection(Task):
+    def __init__(self, clients, scan_terms_map, timeout=60,
+                 expect_exceptions=[],sampling_scan_param=0):
+        super(RangeScanOnCollection, self).__init__("RangeScanOnCollection")
+        self.clients = clients
+        self.task_ended = False
+        self.sampling_scan_param = sampling_scan_param
+        self.stop_scan = False
+        self.scan_terms_map = scan_terms_map
+        self.result_map = dict()
+        self.timeout = timeout
+        self.expect_exceptions = expect_exceptions
+        self.failure_map = {"failure_in_scan": False,
+                            "prefix_scan": {},
+                            "range_scan": {},
+                            "sampling_scan":{},
+                            "exception": list()}
+    def call(self):
+        term_result_map  = list()
+        scan_dictionary_items = list()
+        for scan_type in self.scan_terms_map:
+            term_result_map.append(('', ''))
+            scan_dictionary_items.append(list(self.scan_terms_map[scan_type].items()))
+        try:
+            for term_result_map in zip(*scan_dictionary_items):
+                if self.stop_scan:
+                    self.end_task()
+                    return
+                iterator = 0
+                if "prefix_scan" in self.scan_terms_map:
+                    result, bucket, collection, scope \
+                        = self.clients.prefix_range_scan(
+                        term_result_map[iterator][0], timeout=self.timeout)
+                    if str(result['exception']) != "" and str(result['exception']) \
+                            in self.expect_exceptions:
+                        continue
+                    if result['count'] != term_result_map[iterator][1]:
+                        self.log.debug("Prefix scan failed for term - {0} "
+                                       "scope - {1} collection - {2} time "
+                                       "taken - {3} expected-count - {4}"
+                                       " actual-count - {5}".format(
+                                       str(term_result_map[iterator][0]),
+                                       scope,
+                                       collection, str(result['time_taken']),
+                                       str(term_result_map[iterator][1]),
+                                       str(result['count'])))
+                        self.failure_map["failure_in_scan"] = True
+                        self.failure_map["prefix_scan"
+                        ][scope + "/" + collection + "/"
+                          + str(term_result_map[iterator][0])] \
+                            = "act:" + str(result['count']) + " exptd:" + \
+                              str(term_result_map[iterator][1])\
+                                  + " excep:"+ str(result['exception'])[35:58]
+                    iterator += 1
+                if "range_scan" in self.scan_terms_map:
+                    result, bucket, collection, scope = self.clients.range_scan(
+                        term_result_map[iterator][0][0],
+                        term_result_map[iterator][0][1], timeout=self.timeout)
+                    if result['count'] != term_result_map[iterator][1]:
+                        if str(result['exception'])!= "" and str(result[
+                            'exception'])\
+                                in self.expect_exceptions:
+                            continue
+                        self.log.debug("Range scan failed for start term - "
+                                       "{0} end term - {1}"
+                                       " scope - {2} collection - {3} time "
+                                       "taken - {4}  expected_count - {5}"
+                                       " actual_count - {6}".format(
+                            str(term_result_map[iterator][0][0]),
+                            str(term_result_map[iterator][0][1]), scope,
+                            collection, str(result['time_taken']),
+                            str(term_result_map[iterator][1]),
+                            str(result['count'])))
+                        self.failure_map["failure_in_scan"] = True
+                        self.failure_map["range_scan"
+                        ][scope + "/" + collection + "/" +
+                          str(term_result_map[iterator][0][0])+"-"+str(
+                            term_result_map[iterator][0][1])] \
+                            = "act:" + str(result['count']) + " exptd:" + \
+                              str(term_result_map[iterator][1]) +\
+                                  " excep:"+ str(result['exception'])[35:58]
+                    iterator += 1
+                limit = random.randint(1, self.sampling_scan_param)
+                seed =  random.randint(1, self.sampling_scan_param)
+                result,bucket, collection, scope  = \
+                self.clients.sampling_scan(limit, seed, timeout=self.timeout)
+                if result['count'] != limit:
+                    if str(result['exception']) != "" and str(result['exception']) \
+                            in self.expect_exceptions:
+                        continue
+                    self.log.debug("Sampling scan failed expected limit - "
+                                   "{0} received limit {1}".
+                                   format(limit,result['count']))
+                    self.failure_map["sampling_scan"
+                    ][scope + "/" + collection + "/" + str(limit) + str(
+                        seed)] \
+                      = "act:" + str(result['count']) + " exptd:" + \
+                          str(limit) + \
+                          " excep:" + str(result['exception'])[35:58]
+
+        except Exception as error:
+            self.log.debug("exception occurred while hitting range "
+                           "scan {0}".format(error))
+            self.failure_map["failure_in_scan"] = True
+            self.failure_map["exception"].append(error)
+        finally:
+            self.end_task()
+
+    def end_task(self):
+        self.clients.close()
+        self.task_ended = True
 
 class LoadDocumentsGeneratorsTask(Task):
     def __init__(self, cluster, task_manager, bucket, clients, generators,
@@ -2187,8 +2521,8 @@ class LoadDocumentsGeneratorsTask(Task):
                 try:
                     self.task_manager.get_task_result(task)
                     self.log.debug("%s - Items loaded %s. Itr count: %s"
-                                    % (task.thread_name, task.docs_loaded,
-                                       task.itr_count))
+                                   % (task.thread_name, task.docs_loaded,
+                                      task.itr_count))
                     i = 0
                     while task.docs_loaded < (task.generator._doc_gen.end -
                                               task.generator._doc_gen.start) \
@@ -2463,7 +2797,7 @@ class LoadSubDocumentsGeneratorsTask(Task):
 
 
 class ContinuousDocOpsTask(Task):
-    def __init__(self, cluster, task_manager, bucket, clients, generator,
+    def __init__(self, cluster, task_manager, bucket, generator,
                  op_type="update", exp=0, flag=0, persist_to=0, replicate_to=0,
                  durability="", time_unit="seconds",
                  batch_size=1,
@@ -2471,7 +2805,7 @@ class ContinuousDocOpsTask(Task):
                  process_concurrency=4,
                  scope=CbServer.default_scope,
                  collection=CbServer.default_collection,
-                 sdk_client_pool=None, sdk_retry_strategy=None):
+                 sdk_retry_strategy=None):
         super(ContinuousDocOpsTask, self).__init__(
             "ContDocOps_%s_%s_%s_%s"
             % (bucket.name, scope, collection, time.time()))
@@ -2485,8 +2819,6 @@ class ContinuousDocOpsTask(Task):
         self.timeout_secs = timeout_secs
         self.compression = compression
         self.process_concurrency = process_concurrency
-        self.clients = clients
-        self.sdk_client_pool = sdk_client_pool
         self.task_manager = task_manager
         self.batch_size = batch_size
         self.generator = generator
@@ -2516,44 +2848,33 @@ class ContinuousDocOpsTask(Task):
     def _start_doc_ops(self, bucket):
         self.test_log.info("Performing doc ops '%s' on %s" % (self.op_type,
                                                               bucket.name))
+        task_instance = 0
         while not self.__stop_updates:
             self.itr_count += 1
-            doc_gens = list()
-            doc_tasks = list()
-            task_instance = 1
-            for _ in self.clients:
-                doc_gens.append(copy.deepcopy(self.generator))
+            generator = deepcopy(self.generator)
 
-            for index, generator in enumerate(doc_gens):
-                batch_gen = BatchedDocumentGenerator(generator,
-                                                     self.batch_size)
-                task = LoadDocumentsTask(
-                    self.cluster, bucket, self.clients[index],
-                    batch_gen, self.op_type, self.exp,
-                    task_identifier="%s_%s" % (self.thread_name,
-                                               task_instance),
-                    persist_to=self.persist_to,
-                    replicate_to=self.replicate_to,
-                    durability=self.durability,
-                    batch_size=self.batch_size,
-                    timeout_secs=self.timeout_secs,
-                    scope=self.scope,
-                    collection=self.collection,
-                    sdk_client_pool=self.sdk_client_pool,
-                    skip_read_success_results=True,
-                    sdk_retry_strategy=self.sdk_retry_strategy)
-                self.task_manager.add_new_task(task)
-                doc_tasks.append(task)
-                self.fail.update(task.fail)
-                task_instance += 1
+            doc_tasks = list()
+
+            generator.start += self.batch_size * task_instance
+            generator.end += generator.start + self.batch_size
+
+            task = RestBasedDocLoader(cluster=self.cluster, task_manager=self.task_manager,
+                                      bucket=bucket, generator=generator,
+                                      op_type=self.op_type, exp=self.exp,
+                                      persist_to=self.persist_to, replicate_to=self.replicate_to,
+                                      time_unit="seconds", timeout_secs=self.timeout_secs, retries=5,
+                                      durability=self.durability, task_identifier=self.thread_name,
+                                      scope=self.scope, collection=self.collection,
+                                      sdk_retry_strategy=self.sdk_retry_strategy)
+            self.task_manager.add_new_task(task)
+            doc_tasks.append(task)
+            self.fail.update(task.fail)
+            task_instance += 1
 
             for task in doc_tasks:
                 self.task_manager.get_task_result(task)
                 del task
-        self.test_log.info("Closing SDK clients..")
-        for client in self.clients:
-            if client is not None:
-                client.close()
+
         self.test_log.info("Done doc_ops on %s. Total iterations: %d"
                            % (bucket.name, self.itr_count))
 
@@ -2565,156 +2886,6 @@ class ContinuousDocOpsTask(Task):
         else:
             self._start_doc_ops(self.bucket)
         self.complete_task()
-
-
-class LoadDocumentsForDgmTask(LoadDocumentsGeneratorsTask):
-    def __init__(self, cluster, task_manager, bucket, clients, doc_gen, exp,
-                 batch_size=50,
-                 persist_to=0, replicate_to=0,
-                 durability="",
-                 timeout_secs=5,
-                 process_concurrency=4, print_ops_rate=True,
-                 active_resident_threshold=99,
-                 dgm_batch=5000,
-                 scope=CbServer.default_scope,
-                 collection=CbServer.default_collection,
-                 skip_read_on_error=False,
-                 suppress_error_table=False,
-                 track_failures=True,
-                 task_identifier="",
-                 sdk_client_pool=None,
-                 sdk_retry_strategy=None):
-        super(LoadDocumentsForDgmTask, self).__init__(
-            self, cluster, task_manager, bucket, clients, None,
-            "create", exp,
-            task_identifier="DGM_%s_%s_%s_%s" % (bucket.name, scope,
-                                                 collection, time.time()))
-
-        self.cluster = cluster
-        self.exp = exp
-        self.doc_gen = doc_gen
-        self.persist_to = persist_to
-        self.replicate_to = replicate_to
-        self.durability = durability
-        self.timeout_secs = timeout_secs
-        self.process_concurrency = process_concurrency
-        self.clients = clients
-        self.task_manager = task_manager
-        self.batch_size = batch_size
-        self.op_types = None
-        self.buckets = None
-        self.print_ops_rate = print_ops_rate
-        self.active_resident_threshold = active_resident_threshold
-        self.dgm_batch = dgm_batch
-        self.task_identifier = task_identifier
-        self.skip_read_on_error = skip_read_on_error
-        self.suppress_error_table = suppress_error_table
-        self.track_failures = track_failures
-        self.op_type = "create"
-        self.rest_client = BucketHelper(self.cluster.master)
-        self.doc_index = self.doc_gen.start
-        self.docs_loaded_per_bucket = dict()
-        if isinstance(bucket, list):
-            self.buckets = bucket
-        else:
-            self.buckets = [bucket]
-        self.scope = scope
-        self.collection = collection
-        self.sdk_client_pool = sdk_client_pool
-        self.sdk_retry_strategy = sdk_retry_strategy
-
-    def _get_bucket_dgm(self, bucket):
-        """
-        Returns a tuple of (active_rr, replica_rr)
-        """
-        try:
-            active_resident_items_ratio = self.rest_client.fetch_bucket_stats(
-                bucket.name)["op"]["samples"][
-                "vb_active_resident_items_ratio"][-1]
-            replica_resident_items_ratio = self.rest_client.fetch_bucket_stats(
-                bucket.name)["op"]["samples"][
-                "vb_replica_resident_items_ratio"][-1]
-        except KeyError:
-            active_resident_items_ratio = replica_resident_items_ratio = 100
-        return active_resident_items_ratio, replica_resident_items_ratio
-
-    def _load_next_batch_of_docs(self, bucket):
-        doc_gens = [deepcopy(self.doc_gen)
-                    for _ in range(self.process_concurrency)]
-        doc_tasks = list()
-        self.test_log.debug("Doc load from index %d" % self.doc_index)
-        for index in range(self.process_concurrency):
-            doc_gens[index].start = self.doc_index
-            doc_gens[index].itr = self.doc_index
-            doc_gens[index].end = self.doc_index + self.dgm_batch
-            self.doc_index += self.dgm_batch
-            self.docs_loaded_per_bucket[bucket] += self.dgm_batch
-
-        # Start doc_loading tasks
-        for index, doc_gen in enumerate(doc_gens):
-            batch_gen = BatchedDocumentGenerator(doc_gen, self.batch_size)
-            task = LoadDocumentsTask(
-                self.cluster, bucket, self.clients[index], batch_gen,
-                "create", self.exp,
-                scope=self.scope,
-                collection=self.collection,
-                task_identifier=self.thread_name,
-                persist_to=self.persist_to,
-                replicate_to=self.replicate_to,
-                durability=self.durability,
-                timeout_secs=self.timeout_secs,
-                skip_read_on_error=self.skip_read_on_error,
-                suppress_error_table=self.suppress_error_table,
-                track_failures=self.track_failures,
-                sdk_client_pool=self.sdk_client_pool,
-                sdk_retry_strategy=self.sdk_retry_strategy)
-            self.task_manager.add_new_task(task)
-            doc_tasks.append(task)
-
-        # Wait for doc_loading tasks to complete
-        for task in doc_tasks:
-            self.task_manager.get_task_result(task)
-
-    def _load_bucket_into_dgm(self, bucket):
-        """
-        Load bucket into dgm until either active_rr or replica_rr
-        goes below self.active_resident_threshold
-        """
-        active_dgm_value, replica_dgm_value = self._get_bucket_dgm(bucket)
-        self.test_log.info("DGM doc loading for '%s' to atleast %s%%"
-                           % (bucket.name, self.active_resident_threshold))
-        while active_dgm_value > self.active_resident_threshold and \
-                replica_dgm_value > self.active_resident_threshold:
-            self.test_log.info("Active_resident_items_ratio for {0} is {1}"
-                               .format(bucket.name, active_dgm_value))
-            self.test_log.info("Replica_resident_items_ratio for {0} is {1}"
-                               .format(bucket.name, replica_dgm_value))
-            self._load_next_batch_of_docs(bucket)
-            active_dgm_value, replica_dgm_value = self._get_bucket_dgm(bucket)
-        self.test_log.info(
-            "Active DGM %s%% Replica DGM %s%% achieved for '%s'. Loaded docs: %s"
-            % (active_dgm_value, replica_dgm_value, bucket.name,
-               self.docs_loaded_per_bucket[bucket]))
-
-    def call(self):
-        self.test_log.info("Starting DGM doc loading task")
-        self.start_task()
-        for bucket in self.buckets:
-            self.docs_loaded_per_bucket[bucket] = 0
-            self._load_bucket_into_dgm(bucket)
-            collection = bucket.scopes[self.scope].collections[self.collection]
-            collection.num_items += self.docs_loaded_per_bucket[bucket]
-            collection.doc_index = (collection.doc_index[0],
-                                    collection.doc_index[1] +
-                                    self.docs_loaded_per_bucket[bucket])
-
-        # Close all SDK clients
-        if self.sdk_client_pool is None:
-            for client in self.clients:
-                client.close()
-
-        self.complete_task()
-        self.test_log.info("Done loading docs for DGM")
 
 
 class ValidateDocumentsTask(GenericLoadingTask):
@@ -2778,7 +2949,7 @@ class ValidateDocumentsTask(GenericLoadingTask):
                                                            self.collection)
         key_value = dict(doc_gen.next_batch(self.skip_doc_gen_value))
         self.test_log.info(key_value)
-        result_map, self.failed_reads = self.batch_read(key_value.keys())
+        result_map, self.failed_reads = self.batch_read(list(key_value.keys()))
         self.test_log.info(result_map)
         self.test_log.info(self.failed_reads)
 
@@ -2790,7 +2961,7 @@ class ValidateDocumentsTask(GenericLoadingTask):
         op_failed_tbl = TableView(self.log.error)
         op_failed_tbl.set_headers(["Update Key",
                                    "Value"])
-        for key, value in task.success.items():
+        for key, value in list(task.success.items()):
             doc_value = value["value"]
             failed_row = [key, doc_value]
             if doc_value[0] != 0:
@@ -2816,7 +2987,7 @@ class ValidateDocumentsTask(GenericLoadingTask):
         op_failed_tbl.set_headers(["Delete Key",
                                    "Value"])
 
-        for key, value in task.success.items():
+        for key, value in list(task.success.items()):
             doc_value = value["value"]
             failed_row = [key, doc_value]
         if doc_value[0] != 2:
@@ -2825,7 +2996,7 @@ class ValidateDocumentsTask(GenericLoadingTask):
             if doc_value[index] != "PATH_NOT_FOUND":
                 op_failed_tbl.add_row(failed_row)
 
-        for key, value in task.fail.items():
+        for key, value in list(task.fail.items()):
             op_failed_tbl.add_row([key, value["value"]])
 
         op_failed_tbl.display("Keys failed in %s:%s:%s"
@@ -2846,7 +3017,7 @@ class ValidateDocumentsTask(GenericLoadingTask):
             # change to getFromReplica
             result_map = dict()
             self.failed_reads = dict()
-            for key in key_value.keys():
+            for key in list(key_value.keys()):
                 try:
                     result = self.client.get_from_all_replicas(key)
                     if all(_result for _result in result) \
@@ -2873,13 +3044,13 @@ class ValidateDocumentsTask(GenericLoadingTask):
                     self.exception = error
                     return
         else:
-            result_map, self.failed_reads = self.batch_read(key_value.keys())
+            result_map, self.failed_reads = self.batch_read(list(key_value.keys()))
         if self.sdk_client_pool:
             self.sdk_client_pool.release_client(self.client)
             self.client = None
 
         if not self.suppress_error_table:
-            for key, value in self.failed_reads.items():
+            for key, value in list(self.failed_reads.items()):
                 if SDKException.DocumentNotFoundException \
                         not in str(self.failed_reads[key]["error"]):
                     self.failed_item_table.add_row([key, value['error']])
@@ -2887,8 +3058,8 @@ class ValidateDocumentsTask(GenericLoadingTask):
                                                            key_value)
         if self.op_type == 'delete':
             not_missing = []
-            if missing_keys.__len__() != key_value.keys().__len__():
-                for key in key_value.keys():
+            if missing_keys.__len__() != list(key_value.keys()).__len__():
+                for key in list(key_value.keys()):
                     if key not in missing_keys:
                         not_missing.append(key)
                 if not_missing:
@@ -2907,7 +3078,7 @@ class ValidateDocumentsTask(GenericLoadingTask):
                                               wrong_values))
                 self.wrong_values.extend(wrong_values)
         if self.exception:
-            raise(self.exception)
+            raise self
 
     def next(self, override_generator=None):
         doc_gen = override_generator or self.generator
@@ -2919,7 +3090,7 @@ class ValidateDocumentsTask(GenericLoadingTask):
     def validate_key_val(self, map, key_value):
         missing_keys = []
         wrong_values = []
-        for key, value in key_value.items():
+        for key, value in list(key_value.items()):
             if key in map:
                 if type(value) == JsonObject:
                     expected_val = Json.loads(value.toString())
@@ -3201,9 +3372,9 @@ class StatsWaitTask(Task):
             self.stop = True
 
     def _compare(self, cmp_type, a, b):
-        if isinstance(b, (int, long)) and a.isdigit():
-            a = long(a)
-        elif isinstance(b, (int, long)) and not a.isdigit():
+        if isinstance(b, int) and a.isdigit():
+            a = int(a)
+        elif isinstance(b, int) and not a.isdigit():
             return False
         self.test_log.debug("Comparing %s %s %s" % (a, cmp_type, b))
         if (cmp_type == StatsWaitTask.EQUAL and a == b) or \
@@ -3306,23 +3477,23 @@ class ViewCreateTask(Task):
                     _, json_parsed, _ = self.rest._get_design_doc(
                         self.bucket, self.design_doc_name)
                     if self.view.is_spatial:
-                        if self.view.name not in json_parsed["spatial"].keys():
+                        if self.view.name not in list(json_parsed["spatial"].keys()):
                             self.set_exception(
                                 Exception(
                                     "design doc {0} doesn't contain spatial view {1}"
-                                        .format(self.design_doc_name,
-                                                self.view.name)))
-                            return 0
-                    else:
-                        if self.view.name not in json_parsed["views"].keys():
-                            self.set_exception(Exception(
-                                "design doc {0} doesn't contain view {1}"
                                     .format(self.design_doc_name,
                                             self.view.name)))
                             return 0
+                    else:
+                        if self.view.name not in list(json_parsed["views"].keys()):
+                            self.set_exception(Exception(
+                                "design doc {0} doesn't contain view {1}"
+                                .format(self.design_doc_name,
+                                        self.view.name)))
+                            return 0
                 self.test_log.debug(
                     "View: {0} was created successfully in ddoc: {1}"
-                        .format(self.view.name, self.design_doc_name))
+                    .format(self.view.name, self.design_doc_name))
             else:
                 # If we are here, it means design doc was successfully updated
                 self.test_log.debug("Design Doc: {0} was updated successfully"
@@ -3383,7 +3554,7 @@ class ViewCreateTask(Task):
                            "username": self.rest.username,
                            "password": self.rest.password}
 
-            for count in xrange(retry_count):
+            for count in range(retry_count):
                 try:
                     rest_node = RestConnection(server_info)
                     content, meta = rest_node.get_ddoc(self.bucket,
@@ -3394,21 +3565,21 @@ class ViewCreateTask(Task):
                     else:
                         self.test_log.debug(
                             "Design Doc {0} version is not updated on node {1}:{2}. Retrying."
-                                .format(self.design_doc_name,
-                                        node.ip, node.port))
+                            .format(self.design_doc_name,
+                                    node.ip, node.port))
                         sleep(2)
                 except ReadDocumentException as e:
                     if count < retry_count:
                         self.test_log.debug(
                             "Design Doc {0} not yet available on node {1}:{2}. Retrying."
-                                .format(self.design_doc_name,
-                                        node.ip, node.port))
+                            .format(self.design_doc_name,
+                                    node.ip, node.port))
                         sleep(2)
                     else:
                         self.test_log.error(
                             "Design Doc {0} failed to replicate on node {1}:{2}"
-                                .format(self.design_doc_name, node.ip,
-                                        node.port))
+                            .format(self.design_doc_name, node.ip,
+                                    node.port))
                         self.set_exception(e)
                         break
                 except Exception as e:
@@ -3422,7 +3593,7 @@ class ViewCreateTask(Task):
             else:
                 self.set_exception(Exception(
                     "Design Doc {0} version mismatch on node {1}:{2}"
-                        .format(self.design_doc_name, node.ip, node.port)))
+                    .format(self.design_doc_name, node.ip, node.port)))
 
 
 class ViewDeleteTask(Task):
@@ -3494,7 +3665,7 @@ class ViewDeleteTask(Task):
         except QueryViewException as e:
             self.test_log.debug(
                 "View: {0} was successfully deleted in ddoc: {1}"
-                    .format(self.view.name, self.design_doc_name))
+                .format(self.view.name, self.design_doc_name))
             return True
 
         # catch and set all unexpected exceptions
@@ -3566,16 +3737,16 @@ class ViewQueryTask(Task):
                    self.view_name, self.expected_rows,
                    len(content['rows'])))
 
-            raised_error = content.get(u'error', '') or \
+            raised_error = content.get('error', '') or \
                            ''.join([str(item) for item in
-                                    content.get(u'errors', [])])
+                                    content.get('errors', [])])
             if raised_error:
                 raise QueryViewException(self.view_name, raised_error)
 
             if len(content['rows']) == self.expected_rows:
                 self.test_log.debug(
                     "Expected rows: '{0}' was found for view query"
-                        .format(self.expected_rows))
+                    .format(self.expected_rows))
                 return True
             else:
                 if len(content['rows']) > self.expected_rows:
@@ -3710,7 +3881,7 @@ class RunQueriesTask(Task):
 
     def __init__(self, cluster, queries, task_manager, helper, query_type,
                  run_infinitely=False, parallelism=1, is_prepared=True,
-                 record_results=True, regenerate_queries=False):
+                 record_results=True):
         super(RunQueriesTask, self).__init__("RunQueriesTask_started_%s"
                                              % (time.time()))
         self.cluster = cluster
@@ -3728,7 +3899,6 @@ class RunQueriesTask(Task):
         self.is_prepared = is_prepared
         self.debug_msg = self.query_type + "-DEBUG-"
         self.record_results = record_results
-        self.regenerate_queries = regenerate_queries
 
     def call(self):
         start = 0
@@ -3769,8 +3939,6 @@ class RunQueriesTask(Task):
                         end = self.parallelism
                     else:
                         break
-                if self.regenerate_queries:
-                    self.prepare_cbas_queries()
         except Exception as e:
             self.test_log.error(e)
             self.set_exception(e)
@@ -3778,7 +3946,7 @@ class RunQueriesTask(Task):
         self.complete_task()
 
     def prepare_cbas_queries(self):
-        datasets = self.cbas_util.get_datasets(self.cluster)
+        datasets = self.cbas_util.get_datasets(self.cluster, retries=20)
         if not datasets:
             self.set_exception(Exception("Datasets not available"))
         prepared_queries = []
@@ -4003,7 +4171,7 @@ class DropIndexTask(Task):
             if not check:
                 raise DropIndexException(
                     "index {0} does not exist will not drop"
-                        .format(self.index_name))
+                    .format(self.index_name))
             self.n1ql_helper.run_cbq_query(query=self.query, server=self.server)
             return_value = self.check()
         except N1QLQueryException as e:
@@ -4014,7 +4182,7 @@ class DropIndexTask(Task):
                 self.call()
         # catch and set all unexpected exceptions
         except DropIndexException as e:
-            self.setexception(e)
+            self.set_exception(e)
 
     def check(self):
         try:
@@ -4267,7 +4435,7 @@ class MonitorServerlessDatabaseScaling(Task):
 
         while not rebalanced and timeout > 0:
             rebalanced = True
-            for dp_id, dp_info in data_plane_buckets_map.items():
+            for dp_id, dp_info in list(data_plane_buckets_map.items()):
                 if dp_info["s_index"] == len_states:
                     continue
                 db_info = self.get_db_debug_json(dp_info["buckets"][0].name)
@@ -4309,8 +4477,8 @@ class MonitorServerlessDatabaseScaling(Task):
 
             dataplane_id = json.loads(
                 self.serverless_util.capella_api
-                    .get_database_debug_info(sub_task["bucket"].name)
-                    .content)["dataplane"]["id"]
+                .get_database_debug_info(sub_task["bucket"].name)
+                .content)["dataplane"]["id"]
             bucket_info[sub_task["bucket"].name] = dict()
             bucket_info[sub_task["bucket"].name]["scaled"] = False
             bucket_info[sub_task["bucket"].name]["cluster"] \
@@ -4323,7 +4491,7 @@ class MonitorServerlessDatabaseScaling(Task):
 
         while retries > 0:
             dataplane_buckets_map = dict()
-            for b_name, b_info in bucket_info.items():
+            for b_name, b_info in list(bucket_info.items()):
                 if b_info["scaled"]:
                     continue
                 dataplane_id = json.loads(self.serverless_util.capella_api
@@ -4340,7 +4508,7 @@ class MonitorServerlessDatabaseScaling(Task):
             self.__track_dataplane_rebalance(dataplane_buckets_map)
 
             result = True
-            for b_name, b_info in bucket_info.items():
+            for b_name, b_info in list(bucket_info.items()):
                 bucket = b_info["bucket"]
                 self.update_bucket_nebula_and_kv_nodes(b_info["cluster"],
                                                        bucket)
@@ -4374,7 +4542,7 @@ class MonitorServerlessDatabaseScaling(Task):
         timeout = self.timeout
         while not weight_scaled and timeout > 0:
             weight_scaled = True
-            for b_name, b_info in buckets_to_track.items():
+            for b_name, b_info in list(buckets_to_track.items()):
                 if b_info["scaled"]:
                     continue
                 db_info = self.get_db_debug_json(b_name)
@@ -4388,7 +4556,7 @@ class MonitorServerlessDatabaseScaling(Task):
                     self.test_log.info("%s - weight scaled to %s override weight %s"
                                        % (b_name,
                                           sizing_info["weight"],
-                                          sizing_info["weightOverRide"] ))
+                                          sizing_info["weightOverRide"]))
                 else:
                     weight_scaled = False
             self.sleep(1)
@@ -4407,7 +4575,7 @@ class MonitorServerlessDatabaseScaling(Task):
             buckets_to_track[bucket.name]["desired_ram_quota"] = sub_task["desired_ram_quota"]
 
         result = True
-        for b_name, b_info in buckets_to_track.items():
+        for b_name, b_info in list(buckets_to_track.items()):
             if b_info["scaled"]:
                 continue
             start = time.time()
@@ -4423,9 +4591,9 @@ class MonitorServerlessDatabaseScaling(Task):
                 data = rest.get_bucket_json(bucket.name)
                 bucket.ramQuotaMB = data["quota"]["rawRAM"] / (1024 * 1024)
             if bucket.ramQuotaMB == b_info["desired_ram_quota"]:
-                    b_info["scaled"] = True
-                    self.test_log.info("{} - RAM scaled to {}".format(bucket.name,
-                                                                      bucket.ramQuotaMB))
+                b_info["scaled"] = True
+                self.test_log.info("{} - RAM scaled to {}".format(bucket.name,
+                                                                  bucket.ramQuotaMB))
             else:
                 self.test_log.warning("Bucket: {}, Expected: {}, Actual: {}".format(bucket.name,
                                                                                     b_info["desired_ram_quota"],
@@ -4482,7 +4650,7 @@ class MonitorServerlessDatabaseScaling(Task):
                 sizing_info["width"] != bucket.serverless.width) \
                     or (validate_weight_update and
                         ((sizing_info["weight"] != bucket.serverless.weight) and
-                        (sizing_info["weightOverRide"] != bucket.serverless.weight))) \
+                         (sizing_info["weightOverRide"] != bucket.serverless.weight))) \
                     or (validate_ram_update and
                         sizing_info["memoryQuota"] != bucket.ramQuotaMB):
                 self.test_log.warning("Bucket %s sizing mismatch"
@@ -4511,7 +4679,7 @@ class BucketCreateTask(Task):
             self.bucket.threadsNumber = self.bucket_priority
 
         try:
-            self.result = BucketHelper(self.server)\
+            self.result = BucketHelper(self.server) \
                 .create_bucket(self.bucket.__dict__)
             if self.result is False:
                 self.test_log.critical("Bucket %s creation failed"
@@ -4584,7 +4752,7 @@ class BucketCreateFromSpecTask(Task):
         self.result = True
         self.start_task()
         bucket_params = Bucket.get_params()
-        for key, value in self.bucket_spec.items():
+        for key, value in list(self.bucket_spec.items()):
             if key in bucket_params:
                 setattr(self.bucket_obj, key, value)
 
@@ -4592,9 +4760,9 @@ class BucketCreateFromSpecTask(Task):
         self.create_bucket()
         Bucket.set_defaults(self.bucket_obj)
         if CbServer.default_collection not in \
-                self.bucket_spec[
-                    "scopes"][CbServer.default_scope][
-                    "collections"].keys():
+                list(self.bucket_spec[
+                         "scopes"][CbServer.default_scope][
+                         "collections"].keys()):
             self.bucket_helper.delete_collection(self.bucket_spec["name"],
                                                  CbServer.default_scope,
                                                  CbServer.default_collection)
@@ -4604,17 +4772,17 @@ class BucketCreateFromSpecTask(Task):
                 .pop(CbServer.default_collection, None)
 
         if self.bucket_spec[
-                MetaConstants.CREATE_COLLECTIONS_USING_MANIFEST_IMPORT]:
+            MetaConstants.CREATE_COLLECTIONS_USING_MANIFEST_IMPORT]:
             self.create_collections_using_manifest_import()
-            for scope_name, scope_spec in self.bucket_spec["scopes"].items():
+            for scope_name, scope_spec in list(self.bucket_spec["scopes"].items()):
                 scope_spec["name"] = scope_name
                 for collection_name, collection_spec \
-                        in scope_spec["collections"].items():
+                        in list(scope_spec["collections"].items()):
                     if collection_name == CbServer.default_collection:
                         continue
                     collection_spec["name"] = collection_name
         else:
-            for scope_name, scope_spec in self.bucket_spec["scopes"].items():
+            for scope_name, scope_spec in list(self.bucket_spec["scopes"].items()):
                 scope_spec["name"] = scope_name
                 scope_create_thread = threading.Thread(
                     target=self.create_scope_from_spec,
@@ -4627,11 +4795,11 @@ class BucketCreateFromSpecTask(Task):
     def create_collections_using_manifest_import(self):
         json_content = dict()
         json_content["scopes"] = list()
-        for s_name, s_dict in self.bucket_spec["scopes"].items():
+        for s_name, s_dict in list(self.bucket_spec["scopes"].items()):
             scope = dict()
             scope["name"] = s_name
             scope["collections"] = list()
-            for c_name, c_dict in s_dict["collections"].items():
+            for c_name, c_dict in list(s_dict["collections"].items()):
                 col = dict()
                 col["name"] = c_name
                 if "maxTTL" in c_dict:
@@ -4686,7 +4854,7 @@ class BucketCreateFromSpecTask(Task):
             self.bucket_obj.stats.increment_manifest_uid()
 
         for collection_name, collection_spec \
-                in scope_spec["collections"].items():
+                in list(scope_spec["collections"].items()):
             if collection_name == CbServer.default_collection:
                 continue
 
@@ -4771,7 +4939,7 @@ class MutateDocsFromSpecTask(Task):
 
     def __print_ops_task(self, op_type):
         if self.print_ops_rate:
-            for bucket in self.loader_spec.keys():
+            for bucket in list(self.loader_spec.keys()):
                 bucket.stats.manage_task(op_type, self.task_manager,
                                          cluster=self.cluster,
                                          bucket=bucket,
@@ -4837,7 +5005,7 @@ class MutateDocsFromSpecTask(Task):
 
     def create_tasks_for_bucket(self, bucket, scope_dict):
         load_gen_for_scopes_create_threads = list()
-        for scope_name, collection_dict in scope_dict.items():
+        for scope_name, collection_dict in list(scope_dict.items()):
             scope_thread = threading.Thread(
                 target=self.create_tasks_for_scope,
                 args=[bucket, scope_name, collection_dict["collections"]])
@@ -4848,7 +5016,7 @@ class MutateDocsFromSpecTask(Task):
 
     def create_tasks_for_scope(self, bucket, scope_name, collection_dict):
         load_gen_for_collection_create_threads = list()
-        for c_name, c_data in collection_dict.items():
+        for c_name, c_data in list(collection_dict.items()):
             collection_thread = threading.Thread(
                 target=self.create_tasks_for_collections,
                 args=[bucket, scope_name, c_name, c_data])
@@ -4860,7 +5028,7 @@ class MutateDocsFromSpecTask(Task):
 
     def create_tasks_for_collections(self, bucket, scope_name,
                                      col_name, col_meta):
-        for op_type, op_data in col_meta.items():
+        for op_type, op_data in list(col_meta.items()):
             # Create success, fail dict per load_gen task
             op_data["success"] = dict()
             op_data["fail"] = dict()
@@ -4945,7 +5113,7 @@ class MutateDocsFromSpecTask(Task):
 
     def get_tasks(self):
         load_gen_for_bucket_create_threads = list()
-        for bucket, scope_dict in self.loader_spec.items():
+        for bucket, scope_dict in list(self.loader_spec.items()):
             bucket_thread = threading.Thread(
                 target=self.create_tasks_for_bucket,
                 args=[bucket, scope_dict["scopes"]])
@@ -5010,7 +5178,7 @@ class CompareIndexKVData(Task):
         if len(kvList) != len(indexList):
             return False
         size = len(kvList)
-        kvListItems = kvList.items()
+        kvListItems = list(kvList.items())
         for x in range(size - 1, -1, -1):
             isFound = False
             for y in range(size):
@@ -5075,7 +5243,7 @@ class ValidateDocsFromSpecTask(Task):
 
     def create_tasks_for_bucket(self, bucket, scope_dict):
         load_gen_for_scopes_create_threads = list()
-        for scope_name, collection_dict in scope_dict.items():
+        for scope_name, collection_dict in list(scope_dict.items()):
             scope_thread = threading.Thread(
                 target=self.create_tasks_for_scope,
                 args=[bucket, scope_name, collection_dict["collections"]])
@@ -5086,7 +5254,7 @@ class ValidateDocsFromSpecTask(Task):
 
     def create_tasks_for_scope(self, bucket, scope_name, collection_dict):
         load_gen_for_collection_create_threads = list()
-        for c_name, c_data in collection_dict.items():
+        for c_name, c_data in list(collection_dict.items()):
             collection_thread = threading.Thread(
                 target=self.create_tasks_for_collections,
                 args=[bucket, scope_name, c_name, c_data])
@@ -5098,7 +5266,7 @@ class ValidateDocsFromSpecTask(Task):
 
     def create_tasks_for_collections(self, bucket, scope_name,
                                      col_name, col_meta):
-        for op_type, op_data in col_meta.items():
+        for op_type, op_data in list(col_meta.items()):
             # Create success, fail dict per load_gen task
             op_data["success"] = dict()
             op_data["fail"] = dict()
@@ -5141,7 +5309,7 @@ class ValidateDocsFromSpecTask(Task):
         tasks = list()
         bucket_validation_threads = list()
 
-        for bucket, scope_dict in self.loader_spec.items():
+        for bucket, scope_dict in list(self.loader_spec.items()):
             bucket_thread = threading.Thread(
                 target=self.create_tasks_for_bucket,
                 args=[bucket, scope_dict["scopes"]])
@@ -5339,11 +5507,12 @@ class MonitorDBFragmentationTask(Task):
             sleep(2)
         self.complete_task()
 
+
 class CloudHibernationTask(Task):
     def __init__(self, cluster, database_id, type='pause', tenant=None,
                  timeout_to_complete=1800, timeout_to_start=10):
         super(CloudHibernationTask, self).__init__("CloudHibernationTask-{0}".format(
-                                                                    database_id))
+            database_id))
         self.database_id = database_id
         self.serverless_util = ServerlessUtils(cluster, tenant)
         self.timeout_to_complete = timeout_to_complete
@@ -5360,13 +5529,12 @@ class CloudHibernationTask(Task):
                 self.result = False
                 return self.result
 
-
             self.sleep(self.timeout_to_start, "Wait for pause task to start")
             result_pause_completion = self.serverless_util.wait_for_hibernation_completion(
-                                                        self.tenant,
-                                                        self.database_id,
-                                                        "pause",
-                                                        self.timeout_to_complete)
+                self.tenant,
+                self.database_id,
+                "pause",
+                self.timeout_to_complete)
             if result_pause_completion == False:
                 self.complete_task()
                 self.result = False
@@ -5380,10 +5548,10 @@ class CloudHibernationTask(Task):
 
             self.sleep(self.timeout_to_start, "Wait for resume task to start")
             result_resume_completion = self.serverless_util.wait_for_hibernation_completion(
-                                                        self.tenant,
-                                                        self.database_id,
-                                                        "resume",
-                                                        self.timeout_to_complete)
+                self.tenant,
+                self.database_id,
+                "resume",
+                self.timeout_to_complete)
             if result_resume_completion == False:
                 self.complete_task()
                 self.result = False
@@ -5397,7 +5565,7 @@ class HibernationTask(Task):
     def __init__(self, master_server, bucket_name, s3_path, region, rate_limit,
                  type='pause', timeout=300):
         super(HibernationTask, self).__init__("HibernationTask-{0}".format(
-                                                                    bucket_name))
+            bucket_name))
         self.master_server = master_server
         self.s3_path = s3_path
         self.bucket_name = bucket_name
@@ -5428,7 +5596,7 @@ class HibernationTask(Task):
             self.complete_task()
             self.result = False
             self.failure_reason = "No hibernation task named {0}".format(
-                                                                   self.type)
+                self.type)
         if not status:
             self.complete_task()
             self.result = False
@@ -5460,12 +5628,13 @@ class HibernationTask(Task):
         self.failure_reason = "Timed out waiting for hibernation to complete"
         return self.result
 
+
 class AutoFailoverNodesFailureTask(Task):
     def __init__(self, task_manager, master, servers_to_fail, failure_type,
                  timeout, pause=0, expect_auto_failover=True, timeout_buffer=3,
                  check_for_failover=True, failure_timers=None,
                  disk_timeout=0, disk_location=None, disk_size=200,
-                 auto_reprovision=False):
+                 auto_reprovision=False, validate_bucket_ranking=True):
         super(AutoFailoverNodesFailureTask, self) \
             .__init__("AutoFailoverNodesFailureTask")
         self.task_manager = task_manager
@@ -5482,7 +5651,7 @@ class AutoFailoverNodesFailureTask(Task):
         self.timeout_buffer = timeout_buffer
         self.current_failure_node = self.servers_to_fail[0]
         self.max_time_to_wait_for_failover = self.timeout + \
-                                             self.timeout_buffer + 180
+                                             self.timeout_buffer
         self.disk_timeout = disk_timeout
         self.disk_location = disk_location
         self.disk_size = disk_size
@@ -5491,6 +5660,7 @@ class AutoFailoverNodesFailureTask(Task):
         self.failure_timers = failure_timers
         self.rebalance_in_progress = False
         self.auto_reprovision = auto_reprovision
+        self.validate_bucket_ranking = validate_bucket_ranking
 
     def check_failure_timer_task_start(self, timer_task, retry_count=5):
         while retry_count != 0 and not timer_task.started:
@@ -5510,7 +5680,7 @@ class AutoFailoverNodesFailureTask(Task):
             self.rebalance_in_progress = True
         return_val = False
         while self.has_next() and not self.completed:
-            self.next()
+            next(self)
             if self.pause > 0 and self.pause > self.timeout:
                 return_val = self.check()
         if self.pause == 0 or 0 < self.pause < self.timeout:
@@ -5599,7 +5769,7 @@ class AutoFailoverNodesFailureTask(Task):
     def has_next(self):
         return self.itr < self.num_servers_to_fail
 
-    def next(self):
+    def __next__(self):
         if self.pause != 0:
             self.test_log.debug("Wait before reset_auto_failover")
             sleep(self.pause)
@@ -5737,7 +5907,10 @@ class AutoFailoverNodesFailureTask(Task):
         self.test_log.debug("Adding {0} into iptables rules on {1}"
                             .format(node1.ip, node2.ip))
         command = "iptables -A INPUT -s {0} -j DROP".format(node2.ip)
+        command2 = "nft add rule ip filter INPUT ip saddr %s counter drop" %\
+                   node2.ip
         shell.execute_command(command)
+        shell.execute_command(command2)
         shell.disconnect()
         self.start_time = time.time()
 
@@ -5862,6 +6035,14 @@ class AutoFailoverNodesFailureTask(Task):
             self.set_result(False)
             self.set_exception(Exception("Failed to rebalance after failover"))
 
+        if self.validate_bucket_ranking:
+            # Validating bucket ranking post rebalance
+            validate_ranking_res = global_vars.cluster_util.validate_bucket_ranking(None, self.master)
+            if not validate_ranking_res:
+                self.log.error("The vbucket movement was not according to bucket ranking")
+                self.set_result(False)
+                self.set_exception(Exception("Vbucket movement during rebalance did not occur as per bucket ranking"))
+
     def _check_if_rebalance_in_progress(self, timeout):
         rest = RestConnection(self.master)
         end_time = time.time() + timeout
@@ -5896,7 +6077,7 @@ class AutoFailoverNodesFailureTask(Task):
 
 class NodeFailureTask(Task):
     def __init__(self, task_manager, node, failure_type,
-                 task_type="induce_failure"):
+                 task_type="induce_failure", disk_location="/data"):
         super(NodeFailureTask, self).__init__("NodeFailureTask_%s_%s_%s"
                                               % (node.ip, failure_type,
                                                  task_type))
@@ -5906,6 +6087,7 @@ class NodeFailureTask(Task):
         self.task_type = task_type
         self.shell = None
         self.set_result(True)
+        self.disk_location = disk_location
 
     def _fail_disk(self, node):
         output, error = self.shell.unmount_partition(self.disk_location)
@@ -5981,7 +6163,9 @@ class NodeFailureTask(Task):
             self.shell.stop_memcached()
         elif self.failure_type == "network_split":
             for node in self.to_nodes:
+                command1 = "nft add rule ip filter INPUT ip saddr %s counter drop" % node.ip
                 command = "iptables -A INPUT -s %s -j DROP" % node.ip
+                self.shell.execute_command(command1)
                 self.shell.execute_command(command)
         elif self.failure_type == "disk_failure":
             self._fail_disk(self.target_node)
@@ -6026,7 +6210,8 @@ class ConcurrentFailoverTask(Task):
     def __init__(self, task_manager, master, servers_to_fail,
                  disk_location=None, disk_size=200,
                  expected_fo_nodes=1, monitor_failover=True,
-                 task_type="induce_failure"):
+                 task_type="induce_failure", grace_timeout=5,
+                 validate_bucket_ranking=True):
         """
         :param servers_to_fail: Dict of nodes to fail mapped with their
                                 corresponding failure method.
@@ -6044,7 +6229,7 @@ class ConcurrentFailoverTask(Task):
         self.master = master
         self.servers_to_fail = servers_to_fail
         self.timeout = self.initial_fo_settings.timeout
-        self.grace_period_for_fo = 5
+        self.grace_timeout = grace_timeout
 
         # Takes either of induce_failure / revert_failure
         self.task_type = task_type
@@ -6058,6 +6243,8 @@ class ConcurrentFailoverTask(Task):
         # To track failover operation
         self.expected_nodes_to_fo = expected_fo_nodes
         self.monitor_failover = monitor_failover
+
+        self.validate_bucket_ranking = validate_bucket_ranking
 
         # To track NodeFailureTask per node
         self.sub_tasks = list()
@@ -6074,8 +6261,9 @@ class ConcurrentFailoverTask(Task):
 
     def wait_for_fo_attempt(self):
         start_time = time.time()
-        expect_fo_after_time = start_time + self.timeout
-        while int(time.time()) < expect_fo_after_time:
+        expect_fo_after_time = start_time + self.timeout - 0.5
+        max_fo_time_allowed = expect_fo_after_time + 2
+        while time.time() < expect_fo_after_time:
             curr_fo_settings = self.rest.get_autofailover_settings()
             if self.initial_fo_settings.count != curr_fo_settings.count:
                 self.test_log.critical("Auto failover triggered before "
@@ -6083,11 +6271,19 @@ class ConcurrentFailoverTask(Task):
                                        % (self.initial_fo_settings.count,
                                           curr_fo_settings.count))
                 self.set_result(False)
+        if time.time() > max_fo_time_allowed:
+            self.test_log.critical("Auto failover triggered outside the "
+                                   "timeout window")
+            self.set_result(False)
 
     def call(self):
         self.start_task()
-
-        for node, failure_info in self.servers_to_fail.items():
+        status, current_orchestrator = \
+            global_vars.cluster_util.get_orchestrator_node(
+            self.master)
+        for node, failure_info in list(self.servers_to_fail.items()):
+            if current_orchestrator == node.ip:
+                self.grace_timeout += 15
             self.sub_tasks.append(
                 NodeFailureTask(self.task_manager, node, failure_info,
                                 task_type=self.task_type))
@@ -6110,7 +6306,7 @@ class ConcurrentFailoverTask(Task):
 
             if self.result and self.monitor_failover:
                 self.log.info("Wait for failover to actually start running")
-                timeout = int(time.time()) + 15
+                timeout = time.time() + self.grace_timeout
                 task_id_changed = False
                 while not task_id_changed and int(time.time()) < timeout:
                     server_task = self.rest.ns_server_tasks(
@@ -6121,12 +6317,16 @@ class ConcurrentFailoverTask(Task):
                         self.prev_rebalance_status_id = server_task["statusId"]
                         self.log.debug("New failover status id: %s"
                                        % server_task["statusId"])
-
                 if task_id_changed:
                     status = self.rest.monitorRebalance()
                 else:
-                    status = False
-                    self.test_log.critical("Failover not started as expected")
+                    sleep(4,"waiting for fo count to reflect in REST")
+                    curr_fo_settings = self.rest.get_autofailover_settings()
+                    if self.expected_nodes_to_fo == curr_fo_settings.count:
+                        status = True
+                    else:
+                        status = False
+                        self.test_log.critical("Auto-Failover not started")
 
                 if status is False:
                     self.set_result(False)
@@ -6140,6 +6340,15 @@ class ConcurrentFailoverTask(Task):
                             % (self.expected_nodes_to_fo,
                                curr_fo_settings.count))
                         self.set_result(False)
+
+                    if self.validate_bucket_ranking:
+                        # Validating bucket ranking post rebalance
+                        validate_ranking_res = global_vars.cluster_util.validate_bucket_ranking(None, self.master)
+                        if not validate_ranking_res:
+                            self.log.error("The vbucket movement was not according to bucket ranking")
+                            self.set_result(False)
+                            self.set_exception(Exception("Vbucket movement during rebalance"
+                                                        "did not occur as per bucket ranking"))
 
         self.complete_task()
 
@@ -6166,7 +6375,7 @@ class NodeDownTimerTask(Task):
                     if response != 0:
                         self.test_log.debug(
                             "Injected failure in {}. Caught due to ping"
-                                .format(self.node))
+                            .format(self.node))
                         self.complete_task()
                         self.set_result(True)
                         break
@@ -6220,14 +6429,13 @@ class Atomicity(Task):
     write_offset = list()
 
     def __init__(self, cluster, task_manager, bucket, clients,
-                 generator, op_type, exp, flag=0,
+                 generator, op_type, exp, transaction_options=None,
                  persist_to=0, replicate_to=0, time_unit="seconds",
                  batch_size=1,
                  timeout_secs=5, compression=None,
                  process_concurrency=8, print_ops_rate=True, retries=5,
-                 update_count=1, transaction_timeout=5,
-                 commit=True, durability=None, sync=True, num_threads=5,
-                 record_fail=False, defer=False):
+                 update_count=1, commit=True, sync=True, num_threads=5,
+                 record_fail=False):
         super(Atomicity, self).__init__("AtomicityDocLoadTask_%s_%s_%s_%s"
                                         % (op_type, generator[0].start,
                                            generator[0].end, time.time()))
@@ -6236,16 +6444,13 @@ class Atomicity(Task):
         self.cluster = cluster
         self.commit = commit
         self.record_fail = record_fail
-        self.defer = defer
         self.num_docs = num_threads
         self.exp = exp
-        self.flag = flag
         self.sync = sync
         self.persist_to = persist_to
         self.replicate_to = replicate_to
         self.time_unit = time_unit
         self.timeout_secs = timeout_secs
-        self.transaction_timeout = transaction_timeout
         self.compression = compression
         self.process_concurrency = process_concurrency
         self.task_manager = task_manager
@@ -6253,43 +6458,17 @@ class Atomicity(Task):
         self.print_ops_rate = print_ops_rate
         self.op_type = op_type
         self.bucket = bucket
-        self.clients = clients
         self.gen = list()
         self.retries = retries
         self.update_count = update_count
-        self.transaction_app = Transaction()
-        self.transaction = None
-        if durability == Bucket.DurabilityLevel.MAJORITY:
-            self.durability = 1
-        elif durability == \
-                Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
-            self.durability = 2
-        elif durability == Bucket.DurabilityLevel.PERSIST_TO_MAJORITY:
-            self.durability = 3
-        elif durability == "ONLY_NONE":
-            self.durability = 4
-        else:
-            self.durability = 0
-        sleep(10, "Wait before txn load")
+        #self.transaction_app = Transaction()
+        #self.transaction_options = transaction_options
+        #sleep(10, "Wait before txn load")
 
     def call(self):
         tasks = list()
         exception_seen = None
         self.start_task()
-        if self.op_type == "time_out":
-            transaction_config = self.transaction_app.createTransactionConfig(
-                2, self.durability)
-        else:
-            self.test_log.info("Transaction timeout: %s"
-                               % self.transaction_timeout)
-            transaction_config = self.transaction_app.createTransactionConfig(
-                self.transaction_timeout, self.durability)
-        try:
-            self.transaction = self.transaction_app.createTansaction(
-                self.clients[0][0].cluster, transaction_config)
-            self.test_log.info("Transaction: %s" % self.transaction)
-        except Exception as e:
-            self.set_exception(e)
 
         for generator in self.generators:
             tasks.extend(self.get_tasks(generator))
@@ -6302,12 +6481,6 @@ class Atomicity(Task):
             self.task_manager.get_task_result(task)
             if task.exception is not None:
                 exception_seen = task.exception
-
-        self.transaction.close()
-
-        for con in self.clients:
-            for client in con:
-                client.close()
 
         self.complete_task()
         if exception_seen:
@@ -6335,22 +6508,12 @@ class Atomicity(Task):
             generators.append(batch_gen)
 
         for i in range(0, len(generators)):
-            task = self.Loader(self.cluster, self.bucket[i], self.clients,
-                               generators[i], self.op_type,
-                               self.exp, self.num_docs, self.update_count,
-                               self.defer, self.sync, self.record_fail,
-                               flag=self.flag,
-                               persist_to=self.persist_to,
-                               replicate_to=self.replicate_to,
-                               time_unit=self.time_unit,
-                               batch_size=self.batch_size,
-                               timeout_secs=self.timeout_secs,
-                               compression=self.compression,
-                               instance_num=1,
-                               transaction_app=self.transaction_app,
-                               transaction=self.transaction,
-                               commit=self.commit,
-                               retries=self.retries)
+            task = RestBasedDocLoader(cluster=self.cluster, task_manager=self.task_manager,
+                                      bucket=self.bucket[i], generator=generators[i],
+                                      op_type=self.op_type, exp=self.exp,
+                                      persist_to=self.persist_to, replicate_to=self.replicate_to,
+                                      time_unit="seconds", timeout_secs=self.timeout_secs, retries=5,
+                                      durability=self.durability, task_identifier=self.thread_name)
             tasks.append(task)
         return tasks
 
@@ -6364,11 +6527,12 @@ class Atomicity(Task):
 
         def __init__(self, cluster, bucket, clients,
                      generator, op_type, exp,
-                     num_docs, update_count, defer, sync, record_fail,
-                     flag=0, persist_to=0, replicate_to=0, time_unit="seconds",
+                     num_docs, update_count, sync, record_fail,
+                     transaction_options,
+                     persist_to=0, replicate_to=0, time_unit="seconds",
                      batch_size=1, timeout_secs=5,
                      compression=None, retries=5, instance_num=0,
-                     transaction_app=None, transaction=None, commit=True,
+                     transaction_app=None, commit=True,
                      sdk_client_pool=None,
                      scope=CbServer.default_scope,
                      collection=CbServer.default_collection):
@@ -6388,17 +6552,15 @@ class Atomicity(Task):
                                   generator._doc_gen.end,
                                   time.time())
             self.exp = exp
-            self.flag = flag
             self.persist_to = persist_to
             self.replicate_to = replicate_to
             self.compression = compression
             self.timeout_secs = timeout_secs
             self.time_unit = time_unit
+            self.transaction_options = transaction_options
             self.instance = instance_num
             self.transaction_app = transaction_app
-            self.transaction = transaction
             self.commit = commit
-            self.defer = defer
             self.clients = clients
             self.bucket = bucket
             self.exp_unit = "seconds"
@@ -6418,7 +6580,6 @@ class Atomicity(Task):
 
         def call(self):
             self.start_task()
-            self.test_log.info("Starting Atomicity load generation thread")
             self.all_keys = list()
             self.update_keys = list()
             self.delete_keys = list()
@@ -6434,7 +6595,7 @@ class Atomicity(Task):
                 docs.append(tuple)
             last_batch = dict(self.key_value_list[-10:])
 
-            self.all_keys = dict(self.key_value_list).keys()
+            self.all_keys = list(dict(self.key_value_list).keys())
             self.list_docs = list(self.__chunks(self.all_keys,
                                                 self.num_docs))
             self.docs = list(self.__chunks(self.key_value_list, self.num_docs))
@@ -6467,8 +6628,9 @@ class Atomicity(Task):
                 elif op_type == "update_Rollback":
                     exception = self.transaction_app.RunTransaction(
                         self.clients[0][0].cluster,
-                        self.transaction, self.bucket, [], self.update_keys,
-                        [], False, True, self.update_count)
+                        self.bucket, [], self.update_keys,
+                        [], False, True, self.update_count,
+                        self.transaction_options)
                 elif op_type == "delete" or op_type == "rebalance_delete":
                     for doc in self.list_docs:
                         self.transaction_load(doc, self.commit,
@@ -6483,14 +6645,14 @@ class Atomicity(Task):
                                           doc_type=self.generator.doc_type)
                 elif op_type == "general_delete":
                     self.test_log.debug("Performing delete for keys %s"
-                                        % last_batch.keys())
+                                        % list(last_batch.keys()))
                     for client in self.clients[0]:
                         _ = self.batch_delete(
                             self.batch, client,
                             persist_to=self.persist_to,
                             replicate_to=self.replicate_to,
                             durability="")
-                    self.delete_keys = last_batch.keys()
+                    self.delete_keys = list(last_batch.keys())
                 elif op_type in ["rebalance_update", "create_update"]:
                     for i in range(len(self.docs)):
                         self.transaction_load(self.docs[i], self.commit,
@@ -6501,8 +6663,9 @@ class Atomicity(Task):
                 elif op_type == "time_out":
                     err = self.transaction_app.RunTransaction(
                         self.clients[0][0].cluster,
-                        self.transaction, self.bucket, docs, [], [],
-                        True, True, self.update_count)
+                        self.bucket, docs, [], [],
+                        True, True, self.update_count,
+                        self.transaction_options)
                     if "AttemptExpired" in str(err):
                         self.test_log.info("Transaction Expired as Expected")
                         for line in err:
@@ -6514,32 +6677,6 @@ class Atomicity(Task):
                         # self.test_log.warning("Wait for txn to clean up")
                         # time.sleep(60)
 
-                if self.defer:
-                    self.test_log.info("Commit/rollback deffered transaction")
-                    self.retries = 5
-                    if op_type != "create":
-                        commit = self.commit
-                    for encoded in self.encoding:
-                        err = self.transaction_app.DefferedTransaction(
-                            self.clients[0][0].cluster,
-                            self.transaction, commit, encoded)
-                        if err:
-                            while self.retries > 0:
-                                if SDKException.DurabilityImpossibleException \
-                                        in str(err):
-                                    self.retries -= 1
-                                    self.test_log.info(
-                                        "Retrying due to D_Impossible seen during deferred-transaction")
-                                    # sleep(60)
-                                    err = self.transaction_app.DefferedTransaction(
-                                        self.clients[0][0].cluster,
-                                        self.transaction, self.commit, encoded)
-                                    if err:
-                                        continue
-                                    break
-                                else:
-                                    exception = err
-                                    break
                 if exception:
                     if self.record_fail:
                         self.all_keys = list()
@@ -6580,39 +6717,24 @@ class Atomicity(Task):
         def transaction_load(self, doc, commit=True, update_keys=[],
                              op_type="create"):
             err = None
-            if self.defer:
-                if op_type == "create":
-                    ret = self.transaction_app.DeferTransaction(
-                        self.clients[0][0].cluster,
-                        self.transaction, self.bucket, doc, update_keys, [],
-                        self.update_count)
-                elif op_type == "update":
-                    ret = self.transaction_app.DeferTransaction(
-                        self.clients[0][0].cluster,
-                        self.transaction, self.bucket, [], doc, [],
-                        self.update_count)
-                elif op_type == "delete":
-                    ret = self.transaction_app.DeferTransaction(
-                        self.clients[0][0].cluster,
-                        self.transaction, self.bucket, [], [], doc,
-                        self.update_count)
-                err = ret.getT2()
-            else:
-                if op_type == "create":
-                    err = self.transaction_app.RunTransaction(
-                        self.clients[0][0].cluster,
-                        self.transaction, self.bucket, doc, update_keys, [],
-                        commit, self.sync, self.update_count)
-                elif op_type == "update":
-                    err = self.transaction_app.RunTransaction(
-                        self.clients[0][0].cluster,
-                        self.transaction, self.bucket, [], doc, [],
-                        commit, self.sync, self.update_count)
-                elif op_type == "delete":
-                    err = self.transaction_app.RunTransaction(
-                        self.clients[0][0].cluster,
-                        self.transaction, self.bucket, [], [], doc,
-                        commit, self.sync, self.update_count)
+            if op_type == "create":
+                err = self.transaction_app.RunTransaction(
+                    self.clients[0][0].cluster,
+                    self.bucket, doc, update_keys, [],
+                    commit, self.sync, self.update_count,
+                    self.transaction_options)
+            elif op_type == "update":
+                err = self.transaction_app.RunTransaction(
+                    self.clients[0][0].cluster,
+                    self.bucket, [], doc, [],
+                    commit, self.sync, self.update_count,
+                    self.transaction_options)
+            elif op_type == "delete":
+                err = self.transaction_app.RunTransaction(
+                    self.clients[0][0].cluster,
+                    self.bucket, [], [], doc,
+                    commit, self.sync, self.update_count,
+                    self.transaction_options)
             if err:
                 if self.record_fail:
                     self.all_keys = list()
@@ -6625,8 +6747,6 @@ class Atomicity(Task):
                     self.transaction_load(doc, commit, update_keys, op_type)
                 # else:
                 #     exception = err
-            elif self.defer:
-                self.encoding.append(ret.getT1())
 
         def __chunks(self, l, n):
             """Yield successive n-sized chunks from l."""
@@ -6838,9 +6958,9 @@ class ViewCompactionTask(Task):
                 self._get_compaction_details()
             self.test_log.debug(
                 "{0}: stats compaction before triggering it: ({1},{2})"
-                    .format(self.design_doc_name,
-                            self.compaction_revision,
-                            self.precompacted_fragmentation))
+                .format(self.design_doc_name,
+                        self.compaction_revision,
+                        self.precompacted_fragmentation))
             if self.precompacted_fragmentation == 0:
                 self.test_log.warning(
                     "%s: There is nothing to compact, fragmentation is 0"
@@ -6865,9 +6985,9 @@ class ViewCompactionTask(Task):
             new_compaction_revision, fragmentation = self._get_compaction_details()
             self.test_log.debug(
                 "{0}: stats compaction:revision and fragmentation: ({1},{2})"
-                    .format(self.design_doc_name,
-                            new_compaction_revision,
-                            fragmentation))
+                .format(self.design_doc_name,
+                        new_compaction_revision,
+                        fragmentation))
 
             if new_compaction_revision == self.compaction_revision and _compaction_running:
                 # compaction ran successfully but compaction was not changed
@@ -6879,8 +6999,8 @@ class ViewCompactionTask(Task):
                     self.precompacted_fragmentation > fragmentation:
                 self.test_log.info(
                     "{1}: compactor was run, compaction revision was changed on {0}"
-                        .format(new_compaction_revision,
-                                self.design_doc_name))
+                    .format(new_compaction_revision,
+                            self.design_doc_name))
                 frag_val_diff = fragmentation - self.precompacted_fragmentation
                 self.test_log.info("%s: fragmentation went from %d to %d"
                                    % (self.design_doc_name,
@@ -6895,14 +7015,14 @@ class ViewCompactionTask(Task):
                     self.test_log.warning(
                         "Compaction completed, but fragmentation value {0} "
                         "is more than before compaction {1}"
-                            .format(fragmentation,
-                                    self.precompacted_fragmentation))
+                        .format(fragmentation,
+                                self.precompacted_fragmentation))
                     # Probably we already compacted, so nothing to do here
                     self.set_result(self.with_rebalance)
                 else:
                     self.set_result(True)
             else:
-                for i in xrange(20):
+                for i in range(20):
                     self.test_log.debug("Wait for compaction to start")
                     sleep(2)
                     if self._is_compacting():
@@ -7008,7 +7128,7 @@ class CompactBucketTask(Task):
                     break
                 status, self.progress = \
                     self.rest.check_compaction_status(self.bucket.name)
-                if self.progress > 0:
+                if (self.progress is not None) and (self.progress > 0):
                     self.test_log.debug("Compaction started for %s"
                                         % self.bucket.name)
                     break
@@ -7236,7 +7356,7 @@ class NodeInitializeTask(Task):
         # Display memory quota allocated
         tbl = TableView(self.test_log.critical)
         tbl.set_headers(["Service", "RAM MiB"])
-        for service, mem_quota in service_quota.items():
+        for service, mem_quota in list(service_quota.items()):
             tbl.add_row([service, str(mem_quota)])
         tbl.display("Memory quota allocated:")
 
@@ -7294,11 +7414,12 @@ class NodeInitializeTask(Task):
 class FailoverTask(Task):
     def __init__(self, servers, to_failover=[], wait_for_pending=0,
                  graceful=False, use_hostnames=False, allow_unsafe=False,
-                 all_at_once=False):
+                 all_at_once=False, validate_bucket_ranking=True):
         Task.__init__(self, "failover_task")
         self.servers = servers
         self.to_failover = to_failover
         self.graceful = graceful
+        self.validate_bucket_ranking = validate_bucket_ranking
         self.wait_for_pending = wait_for_pending
         self.use_hostnames = use_hostnames
         self.allow_unsafe = allow_unsafe
@@ -7353,6 +7474,15 @@ class FailoverTask(Task):
                     self.set_exception("Node failover failed!!")
         self.rest.monitorRebalance()
 
+        if self.validate_bucket_ranking:
+            # Validating bucket ranking post rebalance
+            validate_ranking_res = global_vars.cluster_util.validate_bucket_ranking(None, self.servers[0])
+            if not validate_ranking_res:
+                self.log.error("The vbucket movement was not according to bucket ranking")
+                self.set_result(False)
+                self.set_exception(Exception("Vbucket movement during rebalance"
+                                            "did not occur as per bucket ranking"))
+
 
 class BucketFlushTask(Task):
     def __init__(self, server, task_manager, bucket="default", timeout=300):
@@ -7375,7 +7505,7 @@ class BucketFlushTask(Task):
                 else:
                     self.test_log.error(
                         "Unable to reach bucket {0} on server {1} after flush"
-                            .format(self.bucket, self.server))
+                        .format(self.bucket, self.server))
                     self.set_result(False)
             else:
                 self.set_result(False)
@@ -7407,9 +7537,8 @@ class CreateDatasetsTask(Task):
         else:
             self.creation_methods = creation_methods
         if self.ds_per_collection > 1:
-            self.creation_methods = list(filter(lambda method: method !=
-                                                               'enable_cbas_from_kv',
-                                                self.creation_methods))
+            self.creation_methods = list([method for method in self.creation_methods if method !=
+                                          'enable_cbas_from_kv'])
         self.cbas_util = cbas_util
         self.ds_per_dv = ds_per_dv
         if remote_datasets:
@@ -7424,8 +7553,6 @@ class CreateDatasetsTask(Task):
             for bucket in self.cluster.buckets:
                 if self.kv_name_cardinality > 1:
                     for scope in self.bucket_util.get_active_scopes(bucket):
-                        if scope.name == "_system":
-                            continue
                         for collection in \
                                 self.bucket_util.get_active_collections(
                                     bucket, scope.name):
@@ -7444,10 +7571,8 @@ class CreateDatasetsTask(Task):
         return self.result
 
     def dataset_present(self, dataset_name, dataverse_name):
-        names_present = list(filter(
-            lambda ds: ds.name == dataset_name and
-                       ds.dataverse_name == dataverse_name,
-            self.created_datasets))
+        names_present = list([ds for ds in self.created_datasets if ds.name == dataset_name and
+                              ds.dataverse_name == dataverse_name])
         if names_present:
             return True
         return False
@@ -7467,7 +7592,7 @@ class CreateDatasetsTask(Task):
             if creation_method == "enable_cbas_from_kv":
                 enabled_from_KV = True
                 if bucket.name + "." + scope.name in \
-                        self.cbas_util.dataverses.keys():
+                        list(self.cbas_util.dataverses.keys()):
                     dataverse = self.cbas_util.dataverses[
                         bucket.name + "." + scope.name]
                 else:
@@ -7476,9 +7601,8 @@ class CreateDatasetsTask(Task):
             else:
                 enabled_from_KV = False
                 dataverses = list(
-                    filter(lambda dv: (self.ds_per_dv is None) or (len(
-                        dv.datasets.keys()) < self.ds_per_dv),
-                           self.cbas_util.dataverses.values()))
+                    [dv for dv in list(self.cbas_util.dataverses.values()) if (self.ds_per_dv is None) or (len(
+                        list(dv.datasets.keys())) < self.ds_per_dv)])
                 if dataverses:
                     dataverse = random.choice(dataverses)
                 if self.cbas_name_cardinality > 1 and not dataverse:
@@ -7493,30 +7617,31 @@ class CreateDatasetsTask(Task):
                     name_cardinality=1, max_length=3, fixed_length=True)
             num_of_items = collection.num_items
 
-            if link_name:
-                dataset_obj = Remote_Dataset(
+            if creation_method == "cbas_collection":
+                dataset_obj = CBAS_Collection(
                     name=name, dataverse_name=dataverse.name,
-                    link_name=link_name, bucket=bucket, scope=scope, collection=collection,
-                    num_of_items=num_of_items
-                )
+                    link_name=link_name,
+                    dataset_source="internal", dataset_properties={},
+                    bucket=bucket, scope=scope, collection=collection,
+                    enabled_from_KV=enabled_from_KV, num_of_items=num_of_items)
             else:
                 dataset_obj = Dataset(
                     name=name, dataverse_name=dataverse.name,
+                    dataset_source="internal", dataset_properties={},
                     bucket=bucket, scope=scope, collection=collection,
                     enabled_from_KV=enabled_from_KV, num_of_items=num_of_items,
-                    )
-            analytics_collection = True if creation_method == "cbas_collection" else False
-            if not self.create_dataset(dataset_obj, analytics_collection=analytics_collection):
+                    link_name=link_name)
+            if not self.create_dataset(dataset_obj):
                 raise N1QLQueryException(
-                "Could not create dataset " + dataset_obj.name + " on " +
+                    "Could not create dataset " + dataset_obj.name + " on " +
                     dataset_obj.dataverse_name)
             self.created_datasets.append(dataset_obj)
-            if dataverse.name not in self.cbas_util.dataverses.keys():
+            if dataverse.name not in list(self.cbas_util.dataverses.keys()):
                 self.cbas_util.dataverses[dataverse.name] = dataverse
             self.cbas_util.dataverses[dataverse.name].datasets[
                 self.created_datasets[-1].full_name] = self.created_datasets[-1]
 
-    def create_dataset(self, dataset, analytics_collection=False):
+    def create_dataset(self, dataset):
         dataverse_name = str(dataset.dataverse_name)
         if dataverse_name == "Default":
             dataverse_name = None
@@ -7530,7 +7655,10 @@ class CreateDatasetsTask(Task):
                     self.cluster, dataset.get_fully_qualified_kv_entity_name(1),
                     False, False, None, None, None, 120, 120)
         else:
-            dataset.link_name = dataset.link_name if hasattr(dataset, "link_name") else None
+            if isinstance(dataset, CBAS_Collection):
+                analytics_collection = True
+            elif isinstance(dataset, Dataset):
+                analytics_collection = False
             if self.kv_name_cardinality > 1 and self.cbas_name_cardinality > 1:
                 return self.cbas_util.create_dataset(
                     self.cluster, dataset.name, dataset.full_kv_entity_name,
@@ -7577,8 +7705,8 @@ class CreateSynonymsTask(Task):
                 name = self.cbas_util.generate_name(
                     name_cardinality=1, max_length=3, fixed_length=True)
                 while name in \
-                        self.cbas_util.dataverses[
-                            self.dataverse.name].synonyms.keys():
+                        list(self.cbas_util.dataverses[
+                                 self.dataverse.name].synonyms.keys()):
                     name = self.cbas_util.generate_name(
                         name_cardinality=1, max_length=3, fixed_length=True)
                 synonym = Synonym(
@@ -7711,7 +7839,7 @@ class DropUDFTask(Task):
     def call(self):
         self.start_task()
         try:
-            for udf in self.dataverse.udfs.values():
+            for udf in list(self.dataverse.udfs.values()):
                 if not self.cbas_util.drop_udf(
                         self.cluster, name=udf.name,
                         dataverse=self.dataverse.name,
@@ -7738,7 +7866,7 @@ class DropCBASIndexesTask(Task):
     def call(self):
         self.start_task()
         try:
-            for index in self.dataset.indexes.values():
+            for index in list(self.dataset.indexes.values()):
                 if not self.cbas_util.drop_cbas_index(
                         self.cluster, index_name=index.name,
                         dataset_name=index.full_dataset_name,
@@ -7764,8 +7892,8 @@ class DropSynonymsTask(Task):
     def call(self):
         self.start_task()
         try:
-            for dv_name, dataverse in self.cbas_util.dataverses.items():
-                for synonym in dataverse.synonyms.values():
+            for dv_name, dataverse in list(self.cbas_util.dataverses.items()):
+                for synonym in list(dataverse.synonyms.values()):
                     if not self.cbas_util.drop_analytics_synonym(
                             self.cluster, synonym_full_name=synonym.full_name,
                             if_exists=True, timeout=120,
@@ -7791,26 +7919,26 @@ class DropDatasetsTask(Task):
     def call(self):
         self.start_task()
         try:
-            for dv_name, dataverse in self.cbas_util.dataverses.items():
-                for ds_name, dataset in dataverse.datasets.items():
+            for dv_name, dataverse in list(self.cbas_util.dataverses.items()):
+                for ds_name, dataset in list(dataverse.datasets.items()):
                     if dataset.enabled_from_KV:
                         if self.kv_name_cardinality > 1:
                             if not self.cbas_util.disable_analytics_from_KV(
-                                self.cluster, dataset.full_kv_entity_name):
+                                    self.cluster, dataset.full_kv_entity_name):
                                 raise Exception(
                                     "Unable to disable analytics on " + \
                                     dataset.full_kv_entity_name)
                         else:
                             if not self.cbas_util.disable_analytics_from_KV(
-                                self.cluster,
-                                dataset.get_fully_qualified_kv_entity_name(1)):
+                                    self.cluster,
+                                    dataset.get_fully_qualified_kv_entity_name(1)):
                                 raise Exception(
                                     "Unable to disable analytics on " + \
                                     dataset.get_fully_qualified_kv_entity_name(
                                         1))
                     else:
                         if not self.cbas_util.drop_dataset(
-                            self.cluster, dataset.full_name):
+                                self.cluster, dataset.full_name):
                             raise Exception(
                                 "Unable to drop dataset " + dataset.full_name)
                     dataverse.datasets.pop(dataset.full_name)
@@ -7830,10 +7958,10 @@ class DropDataversesTask(Task):
     def call(self):
         self.start_task()
         try:
-            for dataverse in self.cbas_util.dataverses.values():
+            for dataverse in list(self.cbas_util.dataverses.values()):
                 if dataverse.name != "Default":
                     if not self.cbas_util.drop_dataverse(
-                        self.cluster, dataverse.name):
+                            self.cluster, dataverse.name):
                         raise Exception(
                             "Unable to drop dataverse " + dataverse.name)
         except Exception as e:
@@ -7872,9 +8000,9 @@ class ExecuteQueryTask(Task):
                                                                      connection=connection,
                                                                      isIndexerQuery=self.isIndexerQuery)
                 self.log.debug("Status of the query {}".format(status))
-                #self.log.debug("Content of the query is {}".format(content))
+                # self.log.debug("Content of the query is {}".format(content))
                 self.set_result(status)
-                self.log.debug("check isIndexQuery status"+str(self.isIndexerQuery))
+                self.log.debug("check isIndexQuery status" + str(self.isIndexerQuery))
                 json_parsed = json.loads(content)
                 if json_parsed["status"] == 'errors':
                     self.log.debug("parsed error body {}".format(json_parsed))
@@ -7891,9 +8019,840 @@ class ExecuteQueryTask(Task):
             result = indexer_rest.polling_create_index_status(self.bucket,
                                                               index=self.index_name,
                                                               timeout=self.timeout)
-            self.log.debug("Sending polling status for index:{0} as:{1}".format(self.index_name,result))
+            self.log.debug("Sending polling status for index:{0} as:{1}".format(self.index_name, result))
             self.set_result(result)
         if isException:
             self.log.info("Got exception, marking task status as fail")
             self.set_result(False)
         self.complete_task()
+
+
+class RestBasedDocLoader(Task):
+
+    def __init__(self, cluster, task_manager, bucket, generator: DocumentGenerator,
+                 op_type, exp, exp_unit="seconds", random_exp=False, flag=0,
+                 persist_to=0, replicate_to=0, time_unit="seconds",
+                 timeout_secs=5, compression=None, retries=5, durability="None",
+                 task_identifier="", skip_read_on_error=False,
+                 suppress_error_table=False,
+                 scope=CbServer.default_scope,
+                 collection=CbServer.default_collection,
+                 track_failures=True,
+                 preserve_expiry=None,
+                 sdk_retry_strategy=None,
+                 iterations=1,
+                 readYourOwnWrite=False, fieldsToChange=[], template="Person",
+                 sirius_base_url="http://0.0.0.0:4000", scheme="http",
+                 retry=1000, retry_interval=0.2, delete_record=False,
+                 ignore_exceptions=[], retry_exception=[],
+                 retry_attempts=0
+                 ):
+        self.thread_name = "Sirius_Based_Load_task_%s_%s_%s".format(bucket, scope, collection)
+        super(RestBasedDocLoader, self).__init__(self.thread_name)
+        self.cluster = cluster
+        self.exp = exp
+        self.random_exp = random_exp
+        self.exp_unit = exp_unit
+        self.flag = flag
+        self.persist_to = persist_to
+        self.replicate_to = replicate_to
+        self.time_unit = time_unit
+        self.timeout_secs = timeout_secs
+        self.compression = compression
+        self.task_manager = task_manager
+        self.generator = generator
+        self.op_type = op_type
+        self.bucket = bucket
+        self.retries = retries
+        self.durability = durability
+        self.task_identifier = task_identifier
+        self.skip_read_on_error = skip_read_on_error
+        self.suppress_error_table = suppress_error_table
+        self.scope = scope
+        self.collection = collection
+        self.preserve_expiry = preserve_expiry
+        self.sdk_retry_strategy = sdk_retry_strategy
+        self.req_iterations = iterations
+        self.doc_op_iterations_done = 0
+        self.num_loaded = 0
+        self.track_failures = track_failures
+        self.fail = dict()
+        self.success = dict()
+        self.print_ops_rate_tasks = list()
+        self.__tasks = list()
+
+        self.identifier_token = IDENTIFIER_TOKEN
+        self.scheme = scheme
+        self.username = self.cluster.username
+        self.password = self.cluster.password
+        self.start = int(self.generator.start)
+        self.end = int(self.generator.end)
+        self.count = self.end - self.start
+        self.doc_size = self.generator.doc_size
+        self.key_size = self.generator.key_size
+        self.doc_type = self.generator.doc_type
+        self.key_prefix = self.generator.name
+        self.key_suffix = ""
+        self.expiry = self.exp
+        self.readYourOwnWrite = readYourOwnWrite
+        self.fieldsToChange = fieldsToChange
+        self.template = template
+        self.sirius_base_url = sirius_base_url
+        self.retry = retry
+        self.retry_interval = retry_interval
+        self.delete_record = delete_record
+        self.ignore_exceptions = ignore_exceptions
+        self.retry_exceptions = retry_exception
+        self.retry_attempts = retry_attempts
+        self.fail_count = 0
+        self.success_count = 0
+        self.resultSeed = ""
+        self.errors = {}
+        self.response = {}
+        self.result = False
+
+    def call(self):
+        try:
+            self.start_task()
+
+            sirius_client_object = SiriusClient(servers=[self.cluster.master], bucket=self.bucket, scope=self.scope,
+                                                collection=self.collection, username=self.username,
+                                                password=self.password,
+                                                compression_settings=self.compression, sirius_base_url
+                                                =self.sirius_base_url)
+
+            insert_options = sirius_client_object.create_payload_insert_options(
+                self.exp, persist_to=self.persist_to,
+                replicate_to=self.replicate_to, durability=self.durability,
+                timeout=self.timeout_secs)
+
+            remove_options = sirius_client_object.create_payload_remove_options(persist_to=self.persist_to,
+                                                                                replicate_to=self.replicate_to,
+                                                                                durability=self.durability,
+                                                                                timeout=self.timeout_secs)
+
+            touch_options = sirius_client_object.create_payload_touch_options(timeout=self.timeout_secs)
+
+            operation_config = sirius_client_object.create_payload_operation_config(
+                count=self.count,
+                doc_size=self.doc_size,
+                doc_type=self.doc_type,
+                key_size=self.key_size,
+                key_prefix=self.key_prefix,
+                key_suffix=self.key_suffix,
+                read_your_own_write=self.readYourOwnWrite,
+                start=self.start, end=self.end,
+                fields_to_change=self.fieldsToChange,
+                ignore_exceptions=self.ignore_exceptions,
+                retry_exception=self.retry_exceptions,
+                retry_attempts=self.retry_attempts)
+
+            self.fail, self.success_count, self.fail_count, self.resultSeed = sirius_client_object.do_bulk_operation(
+                op_type=self.op_type,
+                identifier_token=self.identifier_token,
+                insert_options=insert_options,
+                remove_options=remove_options,
+                touch_options=touch_options,
+                operation_config=operation_config,
+                expiry=self.exp,
+                retry=self.retry,
+                retry_interval=self.retry_interval,
+                delete_record=self.delete_record)
+
+            if self.op_type == "validate":
+                if len(self.fail) > 0:
+                    for key, failed_doc in list(self.fail.items()):
+                        print((key, failed_doc))
+
+                    self.set_result(True)
+                    self.complete_task()
+                    raise Exception("Validation Failed")
+
+            self.set_result(True)
+            self.complete_task()
+        except Exception as e:
+            self.log.debug((traceback.format_exc()))
+            self.log.error(str(e))
+            raise e
+        self.set_result(True)
+        self.complete_task()
+
+    def get_total_doc_ops(self):
+        return self.end - self.start
+
+
+class RestBasedDocLoaderAbstract(Task):
+    def __init__(self, cluster, task_manager, bucket, generator: list[DocumentGenerator],
+                 op_type, exp, exp_unit="seconds", random_exp=False, flag=0,
+                 persist_to=0, replicate_to=0, time_unit="seconds",
+                 batch_size=1,
+                 timeout_secs=5, compression=None, process_concurrency=8,
+                 print_ops_rate=True, retries=5, durability="None",
+                 task_identifier="", skip_read_on_error=False,
+                 scope=CbServer.default_scope,
+                 collection=CbServer.default_collection,
+                 monitor_stats=["doc_ops"],
+                 track_failures=True,
+                 preserve_expiry=None,
+                 sdk_retry_strategy=None,
+                 iterations=1, readYourOwnWrite=False, fieldsToChange=[],
+                 template="Person", sirius_base_url="http://0.0.0.0:4000", retry=1000, retry_interval=0.2,
+                 delete_record=False, ignore_exceptions=[], retry_exception=[], retry_attempts=0):
+
+        self.thread_name = "Sirius_Based_Load_task_Abstract_%s_%s_%s".format(bucket, scope, collection)
+        super(RestBasedDocLoaderAbstract, self).__init__(self.thread_name)
+        self.op_type = None
+        self.bucket = None
+        self.cluster = cluster
+        self.exp = exp
+        self.random_exp = random_exp
+        self.exp_unit = exp_unit
+        self.flag = flag
+        self.persist_to = persist_to
+        self.replicate_to = replicate_to
+        self.time_unit = time_unit
+        self.timeout_secs = timeout_secs
+        self.compression = compression
+        self.process_concurrency = process_concurrency
+        self.task_manager = task_manager
+        self.batch_size = batch_size
+        self.generators = generator
+        self.input_generators = generator
+        self.op_types = None
+        self.buckets = None
+        self.print_ops_rate = print_ops_rate
+        self.retries = retries
+        self.durability = durability
+        self.task_identifier = task_identifier
+        self.skip_read_on_error = skip_read_on_error
+        self.monitor_stats = monitor_stats
+        self.scope = scope
+        self.collection = collection
+        self.preserve_expiry = preserve_expiry
+        self.sdk_retry_strategy = sdk_retry_strategy
+        self.req_iterations = iterations
+        self.doc_op_iterations_done = 0
+        if isinstance(op_type, list):
+            self.op_types = op_type
+        else:
+            self.op_types = [op_type]
+        if isinstance(bucket, list):
+            self.buckets = bucket
+        else:
+            self.buckets = [bucket]
+        self.num_loaded = 0
+        self.track_failures = track_failures
+        self.fail = dict()
+        self.success = dict()
+        self.print_ops_rate_tasks = list()
+        self.__tasks = list()
+        self.expiry = exp
+        self.readYourOwnWrite = readYourOwnWrite
+        self.fieldsToChange = fieldsToChange
+        self.template = template
+        self.sirius_base_url = sirius_base_url
+        self.retry = retry
+        self.retry_interval = retry_interval
+        self.delete_record = delete_record
+        self.ignore_exceptions = ignore_exceptions
+        self.retry_exceptions = retry_exception
+        self.retry_attempts = retry_attempts
+        self.fail_count = 0
+        self.success_count = 0
+        self.resultSeed = ""
+        self.errors = {}
+        self.response = {}
+        self.result = False
+
+    def call(self):
+        try:
+            self.start_task()
+            buckets_for_ops_rate_task = list()
+            if self.op_types:
+                if len(self.op_types) != len(self.generators):
+                    self.set_exception(
+                        Exception("Not all generators have op_type!"))
+                    self.complete_task()
+            if self.buckets:
+                if len(self.op_types) != len(self.buckets):
+                    self.set_exception(
+                        Exception("Not all generators have bucket specified!"))
+                    self.complete_task()
+            iterator = 0
+            for generator in self.generators:
+                if self.op_types:
+                    self.op_type = self.op_types[iterator]
+                if self.buckets:
+                    self.bucket = self.buckets[iterator]
+                self.__tasks.append(RestBasedDocLoader(cluster=self.cluster, task_manager=self.task_manager,
+                                                       bucket=self.bucket, generator=generator,
+                                                       op_type=self.op_type, exp=self.exp, exp_unit=self.exp_unit,
+                                                       random_exp=self.random_exp, flag=self.flag,
+                                                       persist_to=self.persist_to, replicate_to=self.replicate_to,
+                                                       time_unit="seconds", timeout_secs=self.timeout_secs,
+                                                       compression=self.compression, retries=5,
+                                                       durability=self.durability, task_identifier=self.thread_name,
+                                                       skip_read_on_error=self.skip_read_on_error,
+                                                       scope=self.scope, collection=self.collection,
+                                                       track_failures=self.track_failures,
+                                                       preserve_expiry=self.preserve_expiry,
+                                                       sdk_retry_strategy=self.sdk_retry_strategy,
+                                                       iterations=1, readYourOwnWrite=self.readYourOwnWrite,
+                                                       fieldsToChange=self.fieldsToChange, template=self.template,
+                                                       sirius_base_url=self.sirius_base_url,
+                                                       retry_interval=self.retry_interval,
+                                                       delete_record=self.delete_record,
+                                                       ignore_exceptions=self.ignore_exceptions,
+                                                       retry_exception=self.retry_exceptions,
+                                                       retry_attempts=self.retry_attempts))
+                iterator += 1
+            if self.print_ops_rate:
+                if self.buckets:
+                    buckets_for_ops_rate_task = self.buckets
+                else:
+                    buckets_for_ops_rate_task = [self.bucket]
+                for bucket in buckets_for_ops_rate_task:
+                    bucket.stats.manage_task(
+                        "start", self.task_manager,
+                        cluster=self.cluster,
+                        bucket=bucket,
+                        monitor_stats=self.monitor_stats,
+                        sleep=1)
+            try:
+                for task in self.__tasks:
+                    self.task_manager.add_new_task(task)
+                for task in self.__tasks:
+                    try:
+                        self.task_manager.get_task_result(task)
+                        self.log.debug("{0} - Items loaded {1}".format(task.thread_name, task.get_total_doc_ops()))
+                    except Exception as e:
+                        self.test_log.error(e)
+                    finally:
+                        self.fail.update(task.fail)
+                        self.success.update(task.success)
+                        self.fail_count += task.fail_count
+                        self.success_count += task.success_count
+                        self.resultSeed = task.resultSeed
+                        self.log.warning("Failed to load {0} sub_docs from {1} to {2}".format(task.fail.__len__(),
+                                                                                              task.generator.start,
+                                                                                              task.generator.end))
+            except Exception as e:
+                self.test_log.error(e)
+                self.set_exception(e)
+            finally:
+                if self.print_ops_rate:
+                    for bucket in buckets_for_ops_rate_task:
+                        bucket.stats.manage_task("stop", self.task_manager)
+                self.log.debug("========= Tasks in loadgen pool=======")
+                self.task_manager.print_tasks_in_pool()
+                self.log.debug("======================================")
+                for task in self.__tasks:
+                    self.task_manager.stop_task(task)
+                    self.log.debug("Task '{0}' complete. Loaded {1} items"
+                                   .format(task.thread_name, task.get_total_doc_ops))
+
+        except Exception as e:
+            self.test_log.error(e)
+            self.set_exception(e)
+        self.complete_task()
+        return self.fail
+
+    def end_task(self):
+        self.log.debug("%s - Stopping load" % self.thread_name)
+        for task in self.__tasks:
+            task.end_task()
+
+    def get_total_doc_ops(self):
+        total_ops = 0
+        for sub_task in self.__tasks:
+            total_ops += sub_task.get_total_doc_ops()
+        return total_ops
+
+
+class RestBasedDocLoaderCleaner(Task):
+    def __init__(self, cluster, task_manager, bucket=None,
+                 scope=CbServer.default_scope,
+                 collection=CbServer.default_collection,
+                 sirius_base_url="http://0.0.0.0:4000"
+                 ):
+        self.thread_name = "sirius_clean_task_%s_%s_%s".format(bucket, scope, collection)
+        super(RestBasedDocLoaderCleaner, self).__init__(self.thread_name)
+        self.cluster = cluster
+        if isinstance(bucket, list):
+            self.buckets = bucket
+        else:
+            self.buckets = [bucket]
+        self.scope = scope
+        self.collection = collection
+        self.username = self.cluster.username
+        self.password = self.cluster.password
+        self.identifier_token = IDENTIFIER_TOKEN
+        input = TestInputSingleton.input
+        self.sirius_base_url = input.param("sirius_url", sirius_base_url)
+
+    def call(self):
+        self.start_task()
+        try:
+            for bucket in self.buckets:
+                if bucket is None:
+                    bucket = Bucket()
+
+                clear_test_information(base_urls=self.sirius_base_url, identifier_token=self.identifier_token,
+                                       username=self.username, password=self.password, bucket=bucket.name,
+                                       scope=self.scope, collection=self.collection)
+                self.set_result(True)
+                self.complete_task()
+        except Exception as e:
+            self.log.debug((traceback.format_exc()))
+            self.log.error(str(e))
+            raise e
+
+
+class RestBasedSubDocLoaderAbstract(Task):
+    def __init__(self, cluster, task_manager, bucket,
+                 generators: list[SubdocDocumentGenerator],
+                 op_type, exp, create_paths=False,
+                 xattr=False, exp_unit="seconds", flag=0,
+                 persist_to=0, replicate_to=0, time_unit="seconds",
+                 batch_size=1,
+                 timeout_secs=5, compression=None,
+                 process_concurrency=8,
+                 print_ops_rate=True, retries=5, durability="",
+                 task_identifier="",
+                 scope=CbServer.default_scope,
+                 collection=CbServer.default_collection,
+                 preserve_expiry=None, sdk_retry_strategy=None,
+                 store_semantics=None,
+                 access_deleted=False,
+                 create_as_deleted=False,
+                 template="Person", sirius_base_url="http://0.0.0.0:4000",
+                 retry=1000, retry_interval=0.2, delete_record=False,
+                 ignore_exceptions=[], retry_exception=[], retry_attempts=0):
+
+        self.thread_name = "Sirius_Based_Sub_doc_Load_task_Abstract%s_%s_%s".format(bucket, scope, collection)
+        super(RestBasedSubDocLoaderAbstract, self).__init__(self.thread_name)
+        self.cluster = cluster
+        self.exp = exp
+        self.create_path = create_paths
+        self.xattr = xattr
+        self.exp_unit = exp_unit
+        self.flag = flag
+        self.persist_to = persist_to
+        self.replicate_to = replicate_to
+        self.time_unit = time_unit
+        self.timeout_secs = timeout_secs
+        self.compression = compression
+        self.process_concurrency = process_concurrency
+        self.task_manager = task_manager
+        self.batch_size = batch_size
+        self.generators = generators
+        self.input_generators = generators
+        self.op_types = None
+        self.buckets = None
+        self.print_ops_rate = print_ops_rate
+        self.retries = retries
+        self.durability = durability
+        self.scope = scope
+        self.collection = collection
+        self.preserve_expiry = preserve_expiry
+        self.sdk_retry_strategy = sdk_retry_strategy
+        self.store_semantics = store_semantics
+        self.access_deleted = access_deleted
+        self.create_as_deleted = create_as_deleted
+        if isinstance(op_type, list):
+            self.op_types = op_type
+        else:
+            self.op_type = op_type
+        if isinstance(bucket, list):
+            self.buckets = bucket
+        else:
+            self.bucket = bucket
+        self.print_ops_rate_tasks = list()
+        self.num_loaded = 0
+        self.fail = dict()
+        self.success = dict()
+        self.expiry = exp
+        self.template = template
+        self.sirius_base_url = sirius_base_url
+        self.retry = retry
+        self.retry_interval = retry_interval
+        self.delete_record = delete_record
+        self.ignore_exceptions = ignore_exceptions
+        self.retry_exceptions = retry_exception
+        self.retry_attempts = retry_attempts
+        self.fail_count = 0
+        self.success_count = 0
+        self.resultSeed = ""
+
+    def call(self):
+        self.start_task()
+        buckets_for_ops_rate_task = list()
+        if self.op_types:
+            if len(self.op_types) != len(self.generators):
+                self.set_exception(
+                    Exception("Not all generators have op_type!"))
+                self.complete_task()
+        if self.buckets:
+            if len(self.op_types) != len(self.buckets):
+                self.set_exception(
+                    Exception(
+                        "Not all generators have bucket specified!"))
+                self.complete_task()
+        iterator = 0
+        tasks = list()
+        for generator in self.generators:
+            if self.op_types:
+                self.op_type = self.op_types[iterator]
+            if self.buckets:
+                self.bucket = self.buckets[iterator]
+            tasks.append(self.get_tasks(generator))
+            iterator += 1
+        if self.print_ops_rate:
+            if self.buckets:
+                buckets_for_ops_rate_task = self.buckets
+            else:
+                buckets_for_ops_rate_task = [self.bucket]
+            for bucket in buckets_for_ops_rate_task:
+                bucket.stats.manage_task(
+                    "start", self.task_manager,
+                    cluster=self.cluster,
+                    bucket=bucket,
+                    monitor_stats=["doc_ops"],
+                    sleep=1)
+        try:
+            for task in tasks:
+                self.task_manager.add_new_task(task)
+            for task in tasks:
+                try:
+                    self.task_manager.get_task_result(task)
+                except Exception as e:
+                    self.log.error(e)
+                finally:
+                    self.fail.update(task.fail)
+                    self.success.update(task.success)
+                    self.fail_count += task.fail_count
+                    self.success_count += task.success_count
+                    self.resultSeed = task.resultSeed
+                    self.log.warning("Failed to load {0} sub_docs from {1} to {2}".format(task.fail.__len__(),
+                                                                                          task.generator.start,
+                                                                                          task.generator.end))
+        except Exception as e:
+            self.log.error(e)
+            self.set_exception(e)
+        finally:
+            if self.print_ops_rate:
+                for bucket in buckets_for_ops_rate_task:
+                    bucket.stats.manage_task("stop", self.task_manager)
+            self.log.debug("===========Tasks in loadgen pool=======")
+            self.task_manager.print_tasks_in_pool()
+            self.log.debug("=======================================")
+            for task in tasks:
+                self.task_manager.stop_task(task)
+        self.complete_task()
+        return self.fail
+
+    def get_tasks(self, generator):
+        task = RestBasedSubDocLoader(
+            self.cluster, self.bucket, generator,
+            self.op_type, self.exp,
+            create_paths=self.create_path,
+            xattr=self.xattr,
+            exp_unit=self.exp_unit,
+            flag=self.flag,
+            persist_to=self.persist_to,
+            replicate_to=self.replicate_to,
+            time_unit=self.time_unit,
+            timeout_secs=self.timeout_secs,
+            compression=self.compression,
+            durability=self.durability,
+            scope=self.scope,
+            collection=self.collection,
+            preserve_expiry=self.preserve_expiry,
+            store_semantics=self.store_semantics,
+            access_deleted=self.access_deleted,
+            create_as_deleted=self.create_as_deleted, template=self.template,
+            sirius_base_url=self.sirius_base_url, retry=self.retry, retry_interval=self.retry_interval,
+            delete_record=self.delete_record, ignore_exceptions=self.ignore_exceptions,
+            retry_exception=self.ignore_exceptions, retry_attempts=self.retry_attempts)
+        return task
+
+
+class RestBasedSubDocLoader(Task):
+    def __init__(self, cluster, bucket, generator: SubdocDocumentGenerator,
+                 op_type, exp, create_paths=False,
+                 xattr=False, exp_unit="seconds", flag=0,
+                 persist_to=0, replicate_to=0, time_unit="seconds",
+                 timeout_secs=5, compression=None,
+                 durability="", task_identifier="",
+                 scope=CbServer.default_scope,
+                 collection=CbServer.default_collection,
+                 preserve_expiry=None,
+                 store_semantics=None,
+                 access_deleted=False,
+                 create_as_deleted=False,
+                 template="Person", sirius_base_url="http://0.0.0.0:4000",
+                 retry=1000, retry_interval=0.2, delete_record=False,
+                 ignore_exceptions=[], retry_exception=[], retry_attempts=0):
+
+        self.thread_name = "Sirius_Based_Sub_doc_Load_task%s_%s_%s".format(bucket, scope, collection)
+        super(RestBasedSubDocLoader, self).__init__(self.thread_name)
+
+        self.generator = generator
+        self.skip_doc_gen_value = False
+        self.op_type = op_type
+        self.exp = exp
+        self.create_path = create_paths
+        self.xattr = xattr
+        self.exp_unit = exp_unit
+        self.flag = flag
+        self.persist_to = persist_to
+        self.replicate_to = replicate_to
+        self.time_unit = time_unit
+        self.num_loaded = 0
+        self.durability = durability
+        self.store_semantics = store_semantics
+        self.access_deleted = access_deleted
+        self.create_as_deleted = create_as_deleted
+        self.fail = dict()
+        self.success = dict()
+
+        self.cluster = cluster
+        self.bucket = bucket
+        self.compression = compression
+        self.timeout_secs = timeout_secs
+        self.preserve_expiry = preserve_expiry
+
+        self.identifier_token = IDENTIFIER_TOKEN
+        self.username = self.cluster.username
+        self.password = self.cluster.password
+        self.start = self.generator.start
+        self.end = self.generator.end
+        self.count = self.end - self.start
+        self.scope = scope
+        self.collection = collection
+        self.doc_type = self.generator.doc_type
+        self.key_prefix = self.generator.name
+        self.key_suffix = ""
+        self.doc_size = self.generator.doc_size
+        self.key_size = self.generator.key_size
+        self.expiry = exp
+        self.template = template
+        self.sirius_base_url = sirius_base_url
+        self.retry = retry
+        self.retry_interval = retry_interval
+        self.delete_record = delete_record
+        self.ignore_exceptions = ignore_exceptions
+        self.retry_exceptions = retry_exception
+        self.retry_attempts = retry_attempts
+        self.fail_count = 0
+        self.success_count = 0
+        self.resultSeed = ""
+
+    def call(self):
+        try:
+            self.start_task()
+
+            sirius_client_object = SiriusClient(
+                servers=[self.cluster.master], bucket=self.bucket, scope=self.scope,
+                collection=self.collection, username=self.username, password=self.password,
+                compression_settings=self.compression, sirius_base_url
+                =self.sirius_base_url)
+
+            operation_config = sirius_client_object.create_payload_operation_config(
+                count=self.count,
+                doc_size=self.doc_size,
+                doc_type=self.doc_type,
+                key_size=self.key_size,
+                key_prefix=self.key_prefix,
+                key_suffix=self.key_suffix,
+                read_your_own_write=None,
+                start=self.start, end=self.end,
+                fields_to_change=None,
+                ignore_exceptions=self.ignore_exceptions,
+                retry_exception=self.retry_exceptions,
+                retry_attempts=self.retry_attempts)
+
+            insert_spec_options = sirius_client_object.build_insert_spec_options(create_path=self.create_path,
+                                                                                 is_xattr=self.xattr)
+
+            replace_spec_options = sirius_client_object.build_replace_spec_options(is_xattr=self.xattr)
+
+            remove_spec_options = sirius_client_object.build_remove_spec_options(is_xattr=self.xattr)
+
+            get_spec_options = sirius_client_object.build_get_spec_options(is_xattr=self.xattr)
+
+            lookup_in_options = sirius_client_object.build_lookup_in_options(timeout=self.timeout_secs)
+
+            mutate_in_options = sirius_client_object.build_mutate_in_options(expiry=self.expiry,
+                                                                             persist_to=self.persist_to,
+                                                                             replicate_to=self.replicate_to,
+                                                                             durability=self.durability,
+                                                                             store_semantic=self.store_semantics,
+                                                                             timeout=self.timeout_secs,
+                                                                             preserve_expiry=self.preserve_expiry)
+
+            self.fail, self.success_count, self.fail_count, self.resultSeed = \
+                sirius_client_object.do_bulk_sub_doc_operation(
+                    op_type=self.op_type, identifier_token=self.identifier_token,
+                    insert_spec_options=insert_spec_options,
+                    remove_spec_options=remove_spec_options,
+                    replace_spec_options=replace_spec_options,
+                    get_spec_options=get_spec_options,
+                    lookup_in_options=lookup_in_options,
+                    mutate_in_options=mutate_in_options,
+                    operation_config=operation_config,
+                    retry=self.retry, retry_interval=self.retry_interval,
+                    delete_record=self.delete_record
+                )
+
+            self.set_result(True)
+            self.complete_task()
+        except Exception as e:
+            self.log.debug((traceback.format_exc()))
+            self.log.error(str(e))
+            raise e
+        self.set_result(True)
+        self.complete_task()
+
+    def get_total_doc_ops(self):
+        return self.end - self.start
+
+
+class LoadDocumentsForDgmTask(Task):
+    def __init__(self, cluster, task_manager, bucket, doc_gen, exp,
+                 batch_size=50,
+                 persist_to=0, replicate_to=0,
+                 durability="",
+                 timeout_secs=5,
+                 process_concurrency=4, print_ops_rate=True,
+                 active_resident_threshold=99,
+                 dgm_batch=5000,
+                 scope=CbServer.default_scope,
+                 collection=CbServer.default_collection,
+                 skip_read_on_error=False,
+                 suppress_error_table=False,
+                 track_failures=True,
+                 task_identifier="",
+                 sdk_client_pool=None,
+                 sdk_retry_strategy=None):
+
+        self.thread_name = "SLoadDocumentsForDgmTask%s_%s_%s".format(bucket, scope, collection)
+        super(LoadDocumentsForDgmTask, self).__init__(thread_name=self.thread_name)
+
+        self.cluster = cluster
+        self.exp = exp
+        self.doc_gen = doc_gen
+        self.persist_to = persist_to
+        self.replicate_to = replicate_to
+        self.durability = durability
+        self.timeout_secs = timeout_secs
+        self.process_concurrency = process_concurrency
+        self.task_manager = task_manager
+        self.batch_size = batch_size
+        self.op_types = None
+        self.buckets = None
+        self.print_ops_rate = print_ops_rate
+        self.active_resident_threshold = active_resident_threshold
+        self.dgm_batch = dgm_batch
+        self.task_identifier = task_identifier
+        self.skip_read_on_error = skip_read_on_error
+        self.suppress_error_table = suppress_error_table
+        self.track_failures = track_failures
+        self.op_type = "create"
+        self.rest_client = BucketHelper(self.cluster.master)
+        self.doc_index = self.doc_gen.start
+        self.docs_loaded_per_bucket = dict()
+        if isinstance(bucket, list):
+            self.buckets = bucket
+        else:
+            self.buckets = [bucket]
+        self.scope = scope
+        self.collection = collection
+        self.sdk_client_pool = sdk_client_pool
+        self.sdk_retry_strategy = sdk_retry_strategy
+
+    def _get_bucket_dgm(self, bucket):
+        """
+        Returns a tuple of (active_rr, replica_rr)
+        """
+        try:
+            active_resident_items_ratio = self.rest_client.fetch_bucket_stats(
+                bucket.name)["op"]["samples"][
+                "vb_active_resident_items_ratio"][-1]
+            replica_resident_items_ratio = self.rest_client.fetch_bucket_stats(
+                bucket.name)["op"]["samples"][
+                "vb_replica_resident_items_ratio"][-1]
+        except KeyError:
+            active_resident_items_ratio = replica_resident_items_ratio = 100
+        return active_resident_items_ratio, replica_resident_items_ratio
+
+    def _load_next_batch_of_docs(self, bucket):
+
+        doc_gens = [deepcopy(self.doc_gen)
+                    for _ in range(self.process_concurrency)]
+        doc_tasks = list()
+        self.test_log.debug("Doc load from index %d" % self.doc_index)
+        for index in range(self.process_concurrency):
+            doc_gens[index].start = self.doc_index
+            doc_gens[index].itr = self.doc_index
+            doc_gens[index].end = self.doc_index + self.dgm_batch
+            self.doc_index += self.dgm_batch
+            self.docs_loaded_per_bucket[bucket] += self.dgm_batch
+
+        # Start doc_loading tasks
+        for index, doc_gen in enumerate(doc_gens):
+            task = RestBasedDocLoader(cluster=self.cluster, task_manager=self.task_manager,
+                                      bucket=bucket, generator=doc_gen,
+                                      op_type=self.op_type, exp=self.exp,
+                                      persist_to=self.persist_to, replicate_to=self.replicate_to,
+                                      time_unit="seconds", timeout_secs=self.timeout_secs, retries=5,
+                                      durability=self.durability, task_identifier=self.thread_name,
+                                      skip_read_on_error=self.skip_read_on_error,
+                                      suppress_error_table=self.suppress_error_table,
+                                      scope=self.scope, collection=self.collection)
+
+        # Appending the task
+        self.task_manager.add_new_task(task)
+        doc_tasks.append(task)
+
+        # Wait for doc_loading tasks to complete
+        for task in doc_tasks:
+            self.task_manager.get_task_result(task)
+
+    def _load_bucket_into_dgm(self, bucket):
+        """
+        Load bucket into dgm until either active_rr or replica_rr
+        goes below self.active_resident_threshold
+        """
+        active_dgm_value, replica_dgm_value = self._get_bucket_dgm(bucket)
+        self.test_log.info("DGM doc loading for '%s' to atleast %s%%"
+                           % (bucket.name, self.active_resident_threshold))
+        while active_dgm_value > self.active_resident_threshold and \
+                replica_dgm_value > self.active_resident_threshold:
+            self.test_log.info("Active_resident_items_ratio for {0} is {1}"
+                               .format(bucket.name, active_dgm_value))
+            self.test_log.info("Replica_resident_items_ratio for {0} is {1}"
+                               .format(bucket.name, replica_dgm_value))
+            self._load_next_batch_of_docs(bucket)
+            active_dgm_value, replica_dgm_value = self._get_bucket_dgm(bucket)
+        self.test_log.info(
+            "Active DGM %s%% Replica DGM %s%% achieved for '%s'. Loaded docs: %s"
+            % (active_dgm_value, replica_dgm_value, bucket.name,
+               self.docs_loaded_per_bucket[bucket]))
+
+    def call(self):
+        self.test_log.info("Starting DGM doc loading task")
+        self.start_task()
+        for bucket in self.buckets:
+            self.docs_loaded_per_bucket[bucket] = 0
+            self._load_bucket_into_dgm(bucket)
+            collection = bucket.scopes[self.scope].collections[self.collection]
+            collection.num_items += self.docs_loaded_per_bucket[bucket]
+            collection.doc_index = (collection.doc_index[0],
+                                    collection.doc_index[1] +
+                                    self.docs_loaded_per_bucket[bucket])
+
+        # Close all SDK clients
+
+        self.complete_task()
+        self.test_log.info("Done loading docs for DGM")

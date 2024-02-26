@@ -353,7 +353,7 @@ class CapellaUtils(object):
         if resp.status_code != 200:
             CapellaUtils.log.critical("LOG A BUG: Internal API returns :\
             {}".format(resp.status_code))
-            print(resp.content)
+            print((resp.content))
             time.sleep(5)
             return CapellaUtils.jobs(capella_api, pod, tenant, cluster_id)
         try:
@@ -361,7 +361,7 @@ class CapellaUtils(object):
         except Exception as e:
             CapellaUtils.log.critical("LOG A BUG: Internal API returns :\
             {}".format(resp.status_code))
-            print(resp.content)
+            print((resp.content))
             time.sleep(5)
             return CapellaUtils.jobs(capella_api, pod, tenant, cluster_id)
         return content
@@ -377,7 +377,7 @@ class CapellaUtils(object):
         if resp.status_code != 200:
             CapellaUtils.log.critical("LOG A BUG: Fetch Cluster API returns :\
             {}".format(resp.status_code))
-            print(resp.content)
+            print((resp.content))
             time.sleep(5)
             return CapellaUtils.get_cluster_info(pod, tenant, cluster_id)
         return json.loads(resp.content)
@@ -404,7 +404,7 @@ class CapellaUtils(object):
         if resp.status_code != 200:
             CapellaUtils.log.critical("LOG A BUG: Fetch Cluster Node API returns :\
             {}".format(resp.status_code))
-            print(resp.content)
+            print((resp.content))
             time.sleep(5)
             return CapellaUtils.get_nodes(pod, tenant, cluster_id)
         return [server.get("data")

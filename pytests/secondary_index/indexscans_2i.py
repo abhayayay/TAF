@@ -1,5 +1,5 @@
 from Cb_constants import CbServer, DocLoading
-from base_2i import BaseSecondaryIndexingTests
+from .base_2i import BaseSecondaryIndexingTests
 from cb_tools.cbstats import Cbstats
 from couchbase_helper.documentgenerator import doc_generator
 from couchbase_helper.durability_helper import DurabilityHelper
@@ -67,7 +67,7 @@ class SecondaryIndexingScanTests(BaseSecondaryIndexingTests):
             for task in tasks:
                 self.task.jython_task_manager.get_task_result(task)
             if self.defer_build:
-                for bucket_name in build_index_map.keys():
+                for bucket_name in list(build_index_map.keys()):
                     if len(build_index_map[bucket_name]) > 0:
                         build_index_task = self.async_build_index(
                             bucket_name,
@@ -75,7 +75,7 @@ class SecondaryIndexingScanTests(BaseSecondaryIndexingTests):
                         self.task.jython_task_manager.get_task_result(
                             build_index_task)
                 monitor_index_tasks = []
-                for bucket_name in build_index_map.keys():
+                for bucket_name in list(build_index_map.keys()):
                     for index_name in build_index_map[bucket_name]:
                         monitor_index_tasks.append(
                             self.async_monitor_index(bucket_name, index_name))
@@ -100,7 +100,7 @@ class SecondaryIndexingScanTests(BaseSecondaryIndexingTests):
         self.indexer_rest.wait_for_indexing_to_complete(bucket.name)
         self.sleep(5, "Wait for indexing to complete")
         self.log.info("Validate indexed item count")
-        for m_type in index_item_count.keys():
+        for m_type in list(index_item_count.keys()):
             if m_type == "#primary":
                 result = self.n1ql_helper.get_index_count_using_primary_index(
                     self.cluster.buckets)
@@ -125,7 +125,7 @@ class SecondaryIndexingScanTests(BaseSecondaryIndexingTests):
                                           expected_num_indexed,
                                           index_item_count):
         gsi_stats = self.indexer_rest.get_index_stats()
-        for gsi_index, stats in gsi_stats[bucket.name].items():
+        for gsi_index, stats in list(gsi_stats[bucket.name].items()):
             if stats["num_docs_indexed"] != expected_num_indexed[gsi_index]:
                 self.log_failure("Bucket::Index - %s:%s:num_docs_indexed "
                                  "%s, expected: %s"
@@ -346,7 +346,7 @@ class SecondaryIndexingScanTests(BaseSecondaryIndexingTests):
                     timeout_secs=self.sdk_timeout)
                 self.task.jython_task_manager.get_task_result(task)
 
-                if len(task.fail.keys()) != 0:
+                if len(list(task.fail.keys())) != 0:
                     self.log_failure("Some failures seen during doc_ops")
 
                 index_item_count["#primary"] += crud_batch_size
@@ -364,7 +364,7 @@ class SecondaryIndexingScanTests(BaseSecondaryIndexingTests):
                     timeout_secs=self.sdk_timeout)
                 self.task.jython_task_manager.get_task_result(task)
 
-                if len(task.fail.keys()) != 0:
+                if len(list(task.fail.keys())) != 0:
                     self.log_failure("Some failures seen during doc_ops")
 
                 index_item_count["durable_add_aborts"] -= crud_batch_size

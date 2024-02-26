@@ -56,11 +56,11 @@ class couch_dbinfo_Runner(object):
             self.server.ip, time_stamp())
         if not self.local:
             remote_client = RemoteMachineShellConnection(self.server)
-            print("Collecting dbinfo from %s\n" % self.server.ip)
+            print(("Collecting dbinfo from %s\n" % self.server.ip))
             output, error = remote_client.execute_couch_dbinfo(
                 file_name)
-            print("\n".join(output))
-            print("\n".join(error))
+            print(("\n".join(output)))
+            print(("\n".join(error)))
 
             user_path = "/home/"
             if remote_client.info.distribution_type.lower() == 'mac':
@@ -78,7 +78,7 @@ class couch_dbinfo_Runner(object):
                                             "%s/%s" % (
                                                 self.path, file_name))
             if status:
-                print("Downloading dbinfo logs from %s" % self.server.ip)
+                print(("Downloading dbinfo logs from %s" % self.server.ip))
             else:
                 raise Exception("Fail to download db logs from %s"
                                 % self.server.ip)
@@ -97,10 +97,10 @@ class cbcollectRunner(object):
         file_name = "%s-%s-diag.zip" % (self.server.ip, time_stamp())
         if not self.local:
             remote_client = RemoteMachineShellConnection(self.server)
-            print("Collecting logs from %s\n" % self.server.ip)
+            print(("Collecting logs from %s\n" % self.server.ip))
             output, error = remote_client.execute_cbcollect_info(
                 file_name)
-            print("\n".join(error))
+            print(("\n".join(error)))
 
             user_path = "/home/"
             if remote_client.info.distribution_type.lower() == 'mac':
@@ -118,7 +118,7 @@ class cbcollectRunner(object):
                                             "%s/%s" % (
                                                 self.path, file_name))
             if status:
-                print("Downloading zipped logs from %s" % self.server.ip)
+                print(("Downloading zipped logs from %s" % self.server.ip))
             else:
                 raise Exception("Fail to download zipped logs from %s"
                                 % self.server.ip)
@@ -180,7 +180,7 @@ def main():
         cbcollect_command = Windows.COUCHBASE_BIN_PATH_RAW + "cbcollect_info.exe"
         result = subprocess.check_call([cbcollect_command, file_name])
         if result == 0:
-            print("Log file name is \n %s" % file_name)
+            print(("Log file name is \n %s" % file_name))
         else:
             print("Failed to collect log")
 

@@ -22,7 +22,8 @@ from com.couchbase.test.docgen import DocRange
 from java.util import HashMap
 from couchbase.test.docgen import DRConstants
 from serverless.serverless_onprem_basetest import ServerlessOnPremBaseTest
-from com.couchbase.client.core.error import ServerOutOfMemoryException,\
+from constants.sdk_constants.sdk_client_constants import SDKConstants
+from com.couchbase.client.core.error import ServerOutOfMemoryException, \
     DocumentExistsException, DocumentNotFoundException, TimeoutException
 from cb_tools.cbstats import Cbstats
 from com.couchbase.test.transactions import SimpleTransaction as Transaction
@@ -126,7 +127,7 @@ class LMT(ServerlessOnPremBaseTest):
                                               bucket,
                                               {"name": scope_name})
                 self.sleep(2)
-        self.scopes = self.buckets[0].scopes.keys()
+        self.scopes = list(self.buckets[0].scopes.keys())
         self.log.info("Scopes list is {}".format(self.scopes))
 
         # Collection Creation
@@ -143,7 +144,7 @@ class LMT(ServerlessOnPremBaseTest):
                         self.cluster.master, bucket,
                         scope_name, {"name": collection_name})
                     self.sleep(2)
-        self.collections = self.buckets[0].scopes[CbServer.default_scope].collections.keys()
+        self.collections = list(self.buckets[0].scopes[CbServer.default_scope].collections.keys())
         self.log.debug("Collections list == {}".format(self.collections))
 
         if not self.dynamic_throttling:
@@ -179,13 +180,13 @@ class LMT(ServerlessOnPremBaseTest):
         super(LMT, self).tearDown()
 
     def PrintStep(self, msg=None):
-        print "\n"
-        print "\t", "#"*60
-        print "\t", "#"
-        print "\t", "#  %s" % msg
-        print "\t", "#"
-        print "\t", "#"*60
-        print "\n"
+        print("\n")
+        print(("\t", "#"*60))
+        print(("\t", "#"))
+        print(("\t", "#  %s" % msg))
+        print(("\t", "#"))
+        print(("\t", "#"*60))
+        print("\n")
 
     def genrate_docs_basic(self, start, end, target_vbucket=None, mutate=0):
         return doc_generator(self.key, start, end,
@@ -296,16 +297,16 @@ class LMT(ServerlessOnPremBaseTest):
 
                                                       mutate=expiry_mutate)
 
-        print "Read Start: %s" % self.read_start
-        print "Read End: %s" % self.read_end
-        print "Update Start: %s" % self.update_start
-        print "Update End: %s" % self.update_end
-        print "Expiry Start: %s" % self.expire_start
-        print "Expiry End: %s" % self.expire_end
-        print "Delete Start: %s" % self.delete_start
-        print "Delete End: %s" % self.delete_end
-        print "Create Start: %s" % self.create_start
-        print "Create End: %s" % self.create_end
+        print(("Read Start: %s" % self.read_start))
+        print(("Read End: %s" % self.read_end))
+        print(("Update Start: %s" % self.update_start))
+        print(("Update End: %s" % self.update_end))
+        print(("Expiry Start: %s" % self.expire_start))
+        print(("Expiry End: %s" % self.expire_end))
+        print(("Delete Start: %s" % self.delete_start))
+        print(("Delete End: %s" % self.delete_end))
+        print(("Create Start: %s" % self.create_start))
+        print(("Create End: %s" % self.create_end))
 
     def loadgen_docs(self,
                      retry_exceptions=[],
@@ -346,7 +347,7 @@ class LMT(ServerlessOnPremBaseTest):
                 track_failures=track_failures,
                 sdk_client_pool=self.sdk_client_pool,
                 sdk_retry_strategy=sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
         if "create" in doc_ops and self.gen_create is not None:
             tem_tasks_info = self.bucket_util._async_load_all_buckets(
                 self.cluster, self.gen_create, "create", 0,
@@ -366,7 +367,7 @@ class LMT(ServerlessOnPremBaseTest):
                 track_failures=track_failures,
                 sdk_client_pool=self.sdk_client_pool,
                 sdk_retry_strategy=sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items += (self.gen_create.end - self.gen_create.start)
         if "expiry" in doc_ops and self.gen_expiry is not None and self.maxttl:
             tem_tasks_info = self.bucket_util._async_load_all_buckets(
@@ -388,7 +389,7 @@ class LMT(ServerlessOnPremBaseTest):
                 track_failures=track_failures,
                 sdk_client_pool=self.sdk_client_pool,
                 sdk_retry_strategy=sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items -= (self.gen_expiry.end - self.gen_expiry.start)
         if "read" in doc_ops and self.gen_read is not None:
             read_tasks_info = self.bucket_util._async_validate_docs(
@@ -424,7 +425,7 @@ class LMT(ServerlessOnPremBaseTest):
                 track_failures=track_failures,
                 sdk_client_pool=self.sdk_client_pool,
                 sdk_retry_strategy=sdk_retry_strategy)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
             self.num_items -= (self.gen_delete.end - self.gen_delete.start)
 
         if _sync:
@@ -439,7 +440,7 @@ class LMT(ServerlessOnPremBaseTest):
         if read_task:
             # TODO: Need to converge read_tasks_info into tasks_info before
             #       itself to avoid confusions during _sync=False case
-            tasks_info.update(read_tasks_info.items())
+            tasks_info.update(list(read_tasks_info.items()))
             if _sync:
                 for task in read_tasks_info:
                     self.task_manager.get_task_result(task)
@@ -449,8 +450,8 @@ class LMT(ServerlessOnPremBaseTest):
     def _loader_dict(self, cmd={}):
         self.loader_map = dict()
         for bucket in self.cluster.buckets:
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     if collection == "_default" and scope == "_default":
@@ -499,8 +500,8 @@ class LMT(ServerlessOnPremBaseTest):
         i = self.process_concurrency
         while i > 0:
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
-                    for collection in bucket.scopes[scope].collections.keys():
+                for scope in list(bucket.scopes.keys()):
+                    for collection in list(bucket.scopes[scope].collections.keys()):
                         if scope == CbServer.system_scope:
                             continue
                         if collection == "_default" and scope == "_default":
@@ -530,10 +531,10 @@ class LMT(ServerlessOnPremBaseTest):
         for task in tasks:
             task.result = True
             unique_str = "{}:{}:{}:".format(task.sdk.bucket, task.sdk.scope, task.sdk.collection)
-            for optype, failures in task.failedMutations.items():
+            for optype, failures in list(task.failedMutations.items()):
                 for failure in failures:
                     if failure is not None:
-                        print("Test Retrying {}: {}{} -> {}".format(optype, unique_str, failure.id(), failure.err().getClass().getSimpleName()))
+                        print(("Test Retrying {}: {}{} -> {}".format(optype, unique_str, failure.id(), failure.err().getClass().getSimpleName())))
                         try:
                             if optype == "create":
                                 task.docops.insert(failure.id(), failure.document(), task.sdk.connection, task.setOptions)
@@ -542,7 +543,7 @@ class LMT(ServerlessOnPremBaseTest):
                             if optype == "delete":
                                 task.docops.delete(failure.id(), task.sdk.connection, task.removeOptions)
                         except (ServerOutOfMemoryException, TimeoutException) as e:
-                            print("Retry {} failed for key: {} - {}".format(optype, failure.id(), e))
+                            print(("Retry {} failed for key: {} - {}".format(optype, failure.id(), e)))
                             task.result = False
                         except (DocumentNotFoundException, DocumentExistsException) as e:
                             pass
@@ -575,8 +576,8 @@ class LMT(ServerlessOnPremBaseTest):
                             str(self.cluster.master.memcached_port))
             self.loader_map = dict()
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
-                    for collection in bucket.scopes[scope].collections.keys():
+                for scope in list(bucket.scopes.keys()):
+                    for collection in list(bucket.scopes[scope].collections.keys()):
                         if scope == CbServer.system_scope:
                             continue
                         if collection == "_default" and scope == "_default":
@@ -622,8 +623,8 @@ class LMT(ServerlessOnPremBaseTest):
             i = pc
             while i > 0:
                 for bucket in self.cluster.buckets:
-                    for scope in bucket.scopes.keys():
-                        for collection in bucket.scopes[scope].collections.keys():
+                    for scope in list(bucket.scopes.keys()):
+                        for collection in list(bucket.scopes[scope].collections.keys()):
                             if collection == "_default" and scope == "_default":
                                 continue
                             for op_type in doc_ops:
@@ -847,13 +848,13 @@ class LMT(ServerlessOnPremBaseTest):
             self.num_items_per_collection -= (self.expiry_end - self.expiry_start)
 
     def __durability_level(self):
-        if self.durability_level == Bucket.DurabilityLevel.MAJORITY:
+        if self.durability_level == SDKConstants.DurabilityLevel.MAJORITY:
             self.durability = 1
         elif self.durability_level \
-                == Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
+                == SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
             self.durability = 2
         elif self.durability_level \
-                == Bucket.DurabilityLevel.PERSIST_TO_MAJORITY:
+                == SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY:
             self.durability = 3
         else:
             self.durability = 5
@@ -861,7 +862,7 @@ class LMT(ServerlessOnPremBaseTest):
     def create_Transaction(self, client):
         self.__durability_level()
         self.log.info("durability_level is %s and self.durability is %s"
-                      %(self.durability_level, self.durability))
+                      % (self.durability_level, self.durability))
         transaction_config = Transaction().createTransactionConfig(
             self.transaction_timeout, self.durability)
         try:
@@ -874,22 +875,11 @@ class LMT(ServerlessOnPremBaseTest):
     def transaction_operations(self, client, create_docs=[],
                                update_docs=[], delete_docs=[],
                                commit=True):
-        if self.defer:
-            ret = Transaction().DeferTransaction(
-                    client.cluster,
-                    self.transaction, [client.collection], create_docs,
-                    update_docs, delete_docs, self.update_count)
-            encoded = ret.getT1()
-            self.sleep(5) # wait before commit/rollback defer transactions
-            exception = Transaction().DefferedTransaction(
-                            client.cluster,
-                            self.transaction, commit, encoded)
-        else:
-            exception = Transaction().RunTransaction(
-                    client.cluster,
-                    self.transaction, [client.collection], create_docs,
-                    update_docs, delete_docs, commit,
-                    self.sync, self.update_count)
+        exception = Transaction().RunTransaction(
+                client.cluster,
+                self.transaction, [client.collection], create_docs,
+                update_docs, delete_docs, commit,
+                self.sync, self.update_count)
         if exception:
             self.log.info("txn failed")
         self.sleep(1)

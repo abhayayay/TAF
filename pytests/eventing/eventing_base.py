@@ -534,7 +534,7 @@ class EventingBaseTest(BaseTestCase):
 
     def undeploy_delete_all_functions(self):
         content=self.eventing_helper.get_deployed_eventing_apps()
-        res = content.keys()
+        res = list(content.keys())
         self.log.info("all keys {}".format(res))
         for a in res:
             self.eventing_helper.undeploy_function(a)
@@ -672,13 +672,13 @@ class EventingBaseTest(BaseTestCase):
     def insall_dependencies(self):
         try:
             import docker
-        except ImportError, e:
+        except ImportError as e:
             o = os.system("python scripts/install_docker.py docker")
             self.log.info("docker installation done: {}".format(o))
             self.sleep(30)
             try:
                 import docker
-            except ImportError, e:
+            except ImportError as e:
                 raise Exception("docker installation fails with {}".format(o))
 
     def load_sample_buckets(self, server, bucketName):

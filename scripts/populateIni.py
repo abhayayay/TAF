@@ -22,7 +22,7 @@ def main():
     parser.add_option('-r', '--replaceValue', dest='replaceValue')
     options, args = parser.parse_args()
 
-    print('the ini file is', options.inifile)
+    print(('the ini file is', options.inifile))
 
     servers = []
     if options.servers and len(servers) > 0:
@@ -30,14 +30,14 @@ def main():
             options.servers='['+options.servers+']'
         servers = json.loads(options.servers)
 
-    print('the server info is', options.servers)
+    print(('the server info is', options.servers))
 
     addPoolServers = []
 
     if options.addPoolServers != None and options.addPoolServers != "None":
         if not options.addPoolServers.startswith('['):
             options.addPoolServers = '[' + options.addPoolServers + ']'
-        print('the additional server pool info is', options.addPoolServers)
+        print(('the additional server pool info is', options.addPoolServers))
         addPoolServers = json.loads(options.addPoolServers)
 
     if options.keyValue:
@@ -75,21 +75,21 @@ def main():
 
 
     for d in data:
-          print(d.strip())
+          print((d.strip()))
 
     if options.outputFile:
         f = open(options.outputFile, 'w')
         f.writelines(data)
     else:
         for d in data:
-            print(d.strip())
+            print((d.strip()))
 
 def update_config(config_in_file, json_object, config_out_file):
     config = configparser.RawConfigParser(delimiters=(':', ':'))
     config.read(config_in_file)
     key_values = json.loads(json_object)
     for section in config.sections():
-        for key in key_values.keys():
+        for key in list(key_values.keys()):
             try:
                 old_value = config.get(section, key)
                 config.set(section, key, key_values.get(key))

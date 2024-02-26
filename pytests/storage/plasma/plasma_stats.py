@@ -60,7 +60,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
                                                                                   str(indexStatMap['memory_used']),
                                                                                   str(baseURL)))
                 total_count = 0
-                if indexStatMap.has_key(self.buckets[0].name):
+                if self.buckets[0].name in indexStatMap:
                     for key in indexStatMap[self.buckets[0].name]:
                         ipIndexDict[key] = ip + ":" + self.query_client.port
                         self.assertEqual(indexStatMap[self.buckets[0].name][key]['num_docs_indexed'], self.num_items,
@@ -75,7 +75,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
                         self.log.info("Fragmentation for index {} is {}".format(key, str(
                             indexStatMap[self.buckets[0].name][key]['frag_percent'])))
 
-                        for dist in dict(indexStatMap[self.buckets[0].name][key]['key_size_distribution']).items():
+                        for dist in list(dict(indexStatMap[self.buckets[0].name][key]['key_size_distribution']).items()):
                             total_count = total_count + dist[1]
 
                         self.assertEqual(total_count, self.num_items,
@@ -84,7 +84,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
                         total_count = 0
         for x in range(5):
             result = indexer_rest.index_status()
-            if result[self.buckets[0].name].has_key(indexDict.items()[0][0]):
+            if list(indexDict.items())[0][0] in result[self.buckets[0].name]:
                 break
             self.sleep(1)
 
@@ -151,7 +151,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
             index_instance = x % count
             queryString = self.randStr(Num=4)
             query = "select * from `%s` data USE INDEX (%s USING GSI) where body like '%%%s%%' limit 10" % (
-                self.buckets[0].name, indexDict.keys()[index_instance], queryString)
+                self.buckets[0].name, list(indexDict.keys())[index_instance], queryString)
             task = self.task.aysnc_execute_query(query_nodes_list[0], query, contentType, connection)
             tasks_info.append(task)
 
@@ -206,7 +206,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
             self.log.info("Index for query node is:" + str(query_node_index))
             queryString = self.randStr(Num=8)
             query = "select * from `%s` data USE INDEX (%s USING GSI) where body like '%%%s%%' limit 10" % (
-                self.buckets[0].name, indexDict.keys()[index_instance], queryString)
+                self.buckets[0].name, list(indexDict.keys())[index_instance], queryString)
             task = self.task.async_execute_query(query_nodes_list[query_node_index], query, contentType, connection)
             tasks_info.append(task)
 
@@ -221,7 +221,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
             index_instance = x % count
             queryString = self.randStr(Num=8)
             query = "select * from `%s` data USE INDEX (%s USING GSI) where body like '%%%s%%' limit 10" % (
-                self.buckets[0].name, indexDict.keys()[index_instance], queryString)
+                self.buckets[0].name, list(indexDict.keys())[index_instance], queryString)
             task = self.task.aysnc_execute_query(query_nodes_list[query_node_index], query, contentType, connection)
             new_task_info.append(task)
 
@@ -234,7 +234,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
             queryString = self.randStr(Num=8)
             index_instance = x % count
             query = "select * from `%s` data USE INDEX (%s USING GSI) where body like '%%%s%%' limit 10" % (
-                self.buckets[0].name, indexDict.keys()[index_instance], queryString)
+                self.buckets[0].name, list(indexDict.keys())[index_instance], queryString)
             task = self.task.aysnc_execute_query(query_nodes_list[query_node_index], query, contentType, connection)
             task_list.append(task)
 
@@ -296,7 +296,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
 
         interMediatePlasmaStats = indexer_rest.get_plasma_stats(nodes_list=indexer_nodes_list)
 
-        for indexName in indexDict.items():
+        for indexName in list(indexDict.items()):
             bucket_Index_key = self.buckets[0].name + ":" + indexName[0]
             self.assertEqual(interMediatePlasmaStats[bucket_Index_key + '_items_count'], self.num_items,
                              "Count is expected")
@@ -317,7 +317,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
             timeout_secs=self.sdk_timeout,
             sdk_client_pool=self.sdk_client_pool)
 
-        for indexName in indexDict.items():
+        for indexName in list(indexDict.items()):
             drop_query = "Drop INDEX `%s`.`%s` Using GSI" % (self.buckets[0].name, indexName[0])
             self.query_client = RestConnection(query_nodes_list[0])
             self.query_client.query_tool(drop_query)
@@ -325,7 +325,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
 
         p_stats_with_Five_index = indexer_rest.get_plasma_stats(nodes_list=indexer_nodes_list)
 
-        for indexName in indexDict.items():
+        for indexName in list(indexDict.items()):
             bucket_Index_key = self.buckets[0].name + ":" + indexName[0]
             self.assertTrue(p_stats_with_Five_index.get(bucket_Index_key + "_memory_size") is None,
                             "Dropped index are still present in the plams stats")
@@ -348,7 +348,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
 
         timer = 0
         flag = False
-        for item, itemValue in index_Mem_Map.items():
+        for item, itemValue in list(index_Mem_Map.items()):
             flag = False
             while (True):
                 cluster_stat = rest.get_cluster_stats()
@@ -391,8 +391,8 @@ class PlasmaStatsTest(PlasmaBaseTest):
         index_list = list()
         listCounter = 0
         for bucket in self.cluster.buckets:
-            for scope_name in bucket.scopes.keys():
-                for collection in bucket.scopes[scope_name].collections.keys():
+            for scope_name in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope_name].collections.keys()):
                     index_list_instance = list()
                     for i in range(self.index_count):
                         indexName = "Index" + str(listCounter) + str(i)
@@ -409,8 +409,8 @@ class PlasmaStatsTest(PlasmaBaseTest):
         i = 0
 
         for bucket in self.cluster.buckets:
-            for scope_name in bucket.scopes.keys():
-                for collection in bucket.scopes[scope_name].collections.keys():
+            for scope_name in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope_name].collections.keys()):
                     index_query = "Build INDEX  ON `%s`.`%s`.`%s` (%s) USING GSI" % (
                         bucket.name, scope_name, collection, index_list[i])
                     self.query_client = RestConnection(query_nodes_list[0])
@@ -429,7 +429,7 @@ class PlasmaStatsTest(PlasmaBaseTest):
         self.time_counter = self.input.param("time_counter", 300)
         timer = 0
         flag = False
-        for item, itemValue in index_Mem_Map.items():
+        for item, itemValue in list(index_Mem_Map.items()):
             status = self.isServerListContainsNode(serverList=nodes_out, ip=item)
             while (status == False):
                 flag = False
@@ -534,8 +534,8 @@ class PlasmaStatsTest(PlasmaBaseTest):
         x = 0
         query_len = len(self.cluster.query_nodes)
         for bucket in self.cluster.buckets[-2:]:
-            for scope_name in bucket.scopes.keys():
-                for collection in bucket.scopes[scope_name].collections.keys():
+            for scope_name in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope_name].collections.keys()):
                     gsi_index_names = indexes_to_build[bucket.name][scope_name][collection]
                     for gsi_index_name in gsi_index_names:
                         full_keyspace_name = "default:`" + bucket.name + "`.`" + scope_name + "`.`" + \

@@ -222,7 +222,7 @@ class SecurityTest(BaseTestCase):
                 }
             }
         }
-        for key, test in test_cases.items():
+        for key, test in list(test_cases.items()):
 
             resp = self.capellaAPI.org_ops_apis.invite_users_to_organization(
                                                                     organizationId=test['organizationId'],
@@ -534,7 +534,7 @@ class SecurityTest(BaseTestCase):
             total_pages = (total_items + page_size - 1) // page_size
 
             # Randomly select a few pages
-            selected_pages = random.sample(range(1, total_pages+1), 3)
+            selected_pages = random.sample(list(range(1, total_pages+1)), 3)
             selected_pages.extend([1, total_pages])
 
             # Iterate through the selected pages and verify the expected results
@@ -712,7 +712,7 @@ class SecurityTest(BaseTestCase):
                 content = resp.json()
 
                 self.assertEqual(resp.status_code, 200)
-                filtered_list = filter(lambda d: d.get("email") == dummy_email, content['data'])
+                filtered_list = [d for d in content['data'] if d.get("email") == dummy_email]
 
                 if user == "organizationOwner":
                     self.assertIn('resources', list(filtered_list[0].keys()))

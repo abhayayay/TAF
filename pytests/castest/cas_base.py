@@ -54,7 +54,7 @@ class CasBaseTest(ClusterSetup):
         try:
             self.log.info("Modifying timeSynchronization value after bucket creation .....")
             self._modify_bucket()
-        except Exception, e:
+        except Exception as e:
             traceback.print_exc()
             self.fail('[ERROR] Modify testcase failed .., {0}'.format(e))
 
@@ -64,7 +64,7 @@ class CasBaseTest(ClusterSetup):
             self._restart_server(self.servers[:])
             self.log.info("Verifying bucket settings after restart ..")
             self._check_config()
-        except Exception, e:
+        except Exception as e:
             traceback.print_exc()
             self.fail("[ERROR] Check data after restart failed with exception {0}".format(e))
 
@@ -76,7 +76,7 @@ class CasBaseTest(ClusterSetup):
             self.cluster.rebalance(self.cluster, [], self.servers[1:num_nodes])
             self.log.info("Verifying bucket settings after failover ..")
             self._check_config()
-        except Exception, e:
+        except Exception as e:
             traceback.print_exc()
             self.fail('[ERROR]Failed to failover .. , {0}'.format(e))
 
@@ -86,7 +86,7 @@ class CasBaseTest(ClusterSetup):
             ClusterOperationHelper.add_and_rebalance(self.servers)
             self.log.info("Verifying bucket settings after rebalance ..")
             self._check_config()
-        except Exception, e:
+        except Exception as e:
             self.fail('[ERROR]Rebalance failed .. , {0}'.format(e))
 
     def test_backup_same_cluster(self):

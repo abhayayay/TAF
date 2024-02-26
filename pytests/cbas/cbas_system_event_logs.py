@@ -20,7 +20,7 @@ class CBASSystemEventLogs(CBASBaseTest):
         super(CBASSystemEventLogs, self).setUp()
 
         # Since all the test cases are being run on 1 cluster only
-        self.cluster = self.cb_clusters.values()[0]
+        self.cluster = list(self.cb_clusters.values())[0]
 
         self.rebalance_util = CBASRebalanceUtil(
             self.cluster_util, self.bucket_util, self.task,

@@ -101,7 +101,7 @@ class DoctorFTS:
 
     def create_fts_indexes(self):
         status = False
-        for name, index in self.indexes.items():
+        for name, index in list(self.indexes.items()):
             self.log.debug("Creating fts index: {}".format(name))
             status, _ = self.fts_helper.create_fts_index_from_json(
                 name, str(index[0]))
@@ -109,7 +109,7 @@ class DoctorFTS:
 
     def wait_for_fts_index_online(self, item_count, timeout=86400):
         status = False
-        for index_name, details in self.indexes.items():
+        for index_name, details in list(self.indexes.items()):
             b, s = details[1], details[2]
             status = False
             stop_time = time.time() + timeout

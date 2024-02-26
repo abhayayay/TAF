@@ -3,7 +3,6 @@ from random import sample
 
 import time
 
-from BucketLib.bucket import Bucket
 from Cb_constants import CbServer
 from Cb_constants.DocLoading import Bucket as Bucket_Op
 from bucket_collections.collections_base import CollectionBase
@@ -15,7 +14,8 @@ from couchbase_helper.documentgenerator import doc_generator, \
 from couchbase_helper.durability_helper import DurabilityHelper
 from error_simulation.cb_error import CouchbaseError
 from remote.remote_util import RemoteMachineShellConnection
-from sdk_exceptions import SDKException
+from sdk_exceptions import SDKException, check_if_exception_exists
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 from table_view import TableView
 
 from com.couchbase.client.core.error import \
@@ -83,8 +83,8 @@ class SDKExceptionTests(CollectionBase):
         sync_write_enabled = DurabilityHelper.is_sync_write_enabled(
             self.bucket_durability_level, self.durability_level)
         num_cols_in_bucket = 0
-        for _, scope in self.bucket.scopes.items():
-            for _, _ in scope.collections.items():
+        for _, scope in list(self.bucket.scopes.items()):
+            for _, _ in list(scope.collections.items()):
                 num_cols_in_bucket += 1
 
         verification_dict = dict()
@@ -124,7 +124,7 @@ class SDKExceptionTests(CollectionBase):
 
         retry_reason = SDKException.RetryReason
         while doc_gen.has_next():
-            key, value = doc_gen.next()
+            key, value = next(doc_gen)
             result = client.crud("create", key, value,
                                  exp=doc_ttl,
                                  durability=self.durability_level,
@@ -142,13 +142,11 @@ class SDKExceptionTests(CollectionBase):
             elif result["status"] is True:
                 self.log_failure("Create didn't fail as expected for key: %s"
                                  % key)
-            elif (SDKException.AmbiguousTimeoutException
-                    not in str(result["error"])
+            elif (not check_if_exception_exists(str(result["error"]), SDKException.AmbiguousTimeoutException)
                     or retry_reason.COLLECTION_NOT_FOUND
                     not in str(result["error"])) \
                     and (
-                    SDKException.RequestCanceledException
-                    not in str(result["error"])
+                    not check_if_exception_exists(str(result["error"]), SDKException.RequestCanceledException)
                     or retry_reason.COLLECTION_MAP_REFRESH_IN_PROGRESS
                     not in str(result["error"])):
                 self.log_failure("Invalid exception for key %s: %s"
@@ -172,7 +170,7 @@ class SDKExceptionTests(CollectionBase):
             op_type = "update"
 
         while doc_gen.has_next():
-            key, value = doc_gen.next()
+            key, value = next(doc_gen)
             result = client.crud(op_type, key, value,
                                  exp=doc_ttl,
                                  durability=self.durability_level)
@@ -211,7 +209,7 @@ class SDKExceptionTests(CollectionBase):
         # Reset doc_gen itr value for retry purpose
         doc_gen.reset()
         while doc_gen.has_next():
-            key, value = doc_gen.next()
+            key, value = next(doc_gen)
             result = client.crud("create", key, value,
                                  exp=doc_ttl,
                                  durability=self.durability_level)
@@ -226,7 +224,7 @@ class SDKExceptionTests(CollectionBase):
         if self.collection_name != CbServer.default_collection:
             doc_gen.reset()
             while doc_gen.has_next():
-                key, value = doc_gen.next()
+                key, value = next(doc_gen)
                 result = client.crud("create", key, value,
                                      exp=doc_ttl,
                                      durability=self.durability_level)
@@ -298,8 +296,7 @@ class SDKExceptionTests(CollectionBase):
         result = client.crud("create", "key", "value")
         if result["status"] is True:
             self.log_failure("Collection create successful")
-        elif SDKException.AmbiguousTimeoutException \
-                not in str(result["error"]):
+        elif not check_if_exception_exists(str(result["error"]),  SDKException.AmbiguousTimeoutException):
             self.log_failure("Invalid exception during doc create")
 
         # Drop scope
@@ -481,7 +478,7 @@ class SDKExceptionTests(CollectionBase):
             keys_to_check = ["high_seqno", "high_completed_seqno"]
             result = True
             for key in keys_to_check:
-                if vb in stat_1.keys():
+                if vb in list(stat_1.keys()):
                     if stat_1[vb]["uuid"] != stat_2[vb]["uuid"]:
                         self.log_failure("Mismatch in vb-%s UUID. %s != %s"
                                          % (vb, stat_1[vb]["uuid"],
@@ -553,7 +550,7 @@ class SDKExceptionTests(CollectionBase):
         target_vb_type = "replica"
         if self.simulate_error == CouchbaseError.STOP_PERSISTENCE \
                 and self.durability_level \
-                == Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
+                == SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
             target_vb_type = "active"
 
         # Create required scope/collection for successful CRUD operation
@@ -695,16 +692,15 @@ class SDKExceptionTests(CollectionBase):
             # Validate task failures
             if op_type == Bucket_Op.DocOps.READ:
                 # Validation for read task
-                if len(tasks[op_type].fail.keys()) != 0:
+                if len(list(tasks[op_type].fail.keys())) != 0:
                     self.log_failure("Read failed for few docs: %s"
-                                     % tasks[op_type].fail.keys())
+                                     % list(tasks[op_type].fail.keys()))
             else:
                 # Validation of CRUDs - Update / Create / Delete
-                for doc_id, crud_result in tasks[op_type].fail.items():
+                for doc_id, crud_result in list(tasks[op_type].fail.items()):
                     vb_num = self.bucket_util.get_vbucket_num_for_key(
                         doc_id, self.cluster.vbuckets)
-                    if SDKException.DurabilityAmbiguousException \
-                            not in str(crud_result["error"]):
+                    if not check_if_exception_exists(str(crud_result["error"]), SDKException.DurabilityAmbiguousException):
                         self.log_failure(
                             "Invalid exception for doc %s, vb %s: %s"
                             % (doc_id, vb_num, crud_result))
@@ -722,7 +718,7 @@ class SDKExceptionTests(CollectionBase):
             if op_type == Bucket_Op.DocOps.READ:
                 continue
             while doc_gen[op_type].has_next():
-                doc_id, _ = doc_gen[op_type].next()
+                doc_id, _ = next(doc_gen[op_type])
                 affected_vbs.append(
                     str(self.bucket_util.get_vbucket_num_for_key(
                         doc_id,
@@ -759,10 +755,10 @@ class SDKExceptionTests(CollectionBase):
 
             if self.nodes_init == 1 \
                     and op_type != Bucket_Op.DocOps.READ \
-                    and len(task.fail.keys()) != (doc_gen[op_type].end
+                    and len(list(task.fail.keys())) != (doc_gen[op_type].end
                                                   - doc_gen[op_type].start):
                 self.log_failure("Failed keys %d are less than expected %d"
-                                 % (len(task.fail.keys()),
+                                 % (len(list(task.fail.keys())),
                                     (doc_gen[op_type].end
                                      - doc_gen[op_type].start)))
 
@@ -773,11 +769,10 @@ class SDKExceptionTests(CollectionBase):
             ambiguous_table_view.set_headers(["Key", "vBucket"])
 
             # Iterate failed keys for validation
-            for doc_key, doc_info in task.fail.items():
+            for doc_key, doc_info in list(task.fail.items()):
                 vb_for_key = self.bucket_util.get_vbucket_num_for_key(doc_key)
 
-                if SDKException.DurabilityAmbiguousException \
-                        not in str(doc_info["error"]):
+                if not check_if_exception_exists(str(doc_info["error"]), SDKException.DurabilityAmbiguousException):
                     table_view.add_row([doc_key, vb_for_key,
                                         doc_info["error"]])
 

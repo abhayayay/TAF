@@ -1,7 +1,7 @@
 import getopt
 import re
 import logging
-import ConfigParser
+import configparser
 import os
 
 from builds.build_query import BuildQuery
@@ -149,8 +149,8 @@ class TestInputParser:
                 """
                 argument_split = [a.strip() for a in re.split("[,]?([^,=]+)=",
                                                               argument)[1:]]
-                pairs = dict(zip(argument_split[::2], argument_split[1::2]))
-                for pair in pairs.iteritems():
+                pairs = dict(list(zip(argument_split[::2], argument_split[1::2])))
+                for pair in list(pairs.items()):
                     argument_list = [a.strip() for a in pair[1].split(",")]
                     if len(argument_list) > 1:
                         # if the parameter had multiple entries separated
@@ -170,9 +170,9 @@ class TestInputParser:
         t_input.test_params = params
 
         # Do not override the command line value
-        if "num_clients" not in t_input.test_params.keys() and t_input.clients:
+        if "num_clients" not in list(t_input.test_params.keys()) and t_input.clients:
             t_input.test_params["num_clients"] = len(t_input.clients)
-        if "num_nodes" not in t_input.test_params.keys() and t_input.servers:
+        if "num_nodes" not in list(t_input.test_params.keys()) and t_input.servers:
             t_input.test_params["num_nodes"] = len(t_input.servers)
 
         return t_input
@@ -182,7 +182,7 @@ class TestInputParser:
         servers = []
         ips = []
         t_input = TestInput()
-        config = ConfigParser.ConfigParser()
+        config = configparser.ConfigParser()
         config.read(input_file)
         sections = config.sections()
         global_properties = {}
@@ -241,7 +241,7 @@ class TestInputParser:
                 [t_input.tuq_client['client']],
                 t_input.membase_settings,
                 global_properties)[0]
-        for key, value in clusters.items():
+        for key, value in list(clusters.items()):
             end += value
             t_input.clusters[key] = servers[start:end]
             start += value

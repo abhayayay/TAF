@@ -3,7 +3,7 @@ import time
 
 from Cb_constants import CbServer
 from gsiLib.gsiHelper import GsiHelper
-from newtuq import QueryTests
+from .newtuq import QueryTests
 from couchbase_helper.tuq_generators import TuqGenerators
 from couchbase_helper.query_definitions import SQLDefinitionGenerator
 from membase.api.rest_client import RestConnection
@@ -172,7 +172,7 @@ class BaseSecondaryIndexingTests(QueryTests):
         if not query_definitions:
             query_definitions = self.query_definitions
         for bucket in buckets:
-            if bucket not in self.index_id_map.keys():
+            if bucket not in list(self.index_id_map.keys()):
                 self.index_id_map[bucket] = {}
             for query_definition in query_definitions:
                 id_map = self.create_index_using_rest(
@@ -270,7 +270,7 @@ class BaseSecondaryIndexingTests(QueryTests):
             if verify_drop:
                 check = self.n1ql_helper._is_index_in_list(bucket, query_definition.index_name, server = self.n1ql_node)
                 self.assertFalse(check, "index {0} failed to be deleted".format(query_definition.index_name))
-        except Exception, ex:
+        except Exception as ex:
             self.log.info(ex)
             query = "select * from system:indexes"
             actual_result = self.n1ql_helper.run_cbq_query(
@@ -520,7 +520,7 @@ class BaseSecondaryIndexingTests(QueryTests):
                     expected_results,
                     scan_consistency=scan_consistency,
                     scan_vectors=scan_vectors)
-        except Exception, ex:
+        except Exception as ex:
             self.log.info(ex)
             raise
         finally:
@@ -550,7 +550,7 @@ class BaseSecondaryIndexingTests(QueryTests):
             if drop_index:
                 tasks += self.async_multi_drop_index(self.cluster.buckets,
                                                      query_definitions)
-        except Exception, ex:
+        except Exception as ex:
             self.log.info(ex)
             raise
         return tasks
@@ -599,7 +599,7 @@ class BaseSecondaryIndexingTests(QueryTests):
                     else:
                         tasks += self.async_multi_drop_index(
                             self.cluster.buckets, query_definitions)
-            except Exception, ex:
+            except Exception as ex:
                 self.log.error(ex)
                 raise
         return tasks
@@ -614,7 +614,7 @@ class BaseSecondaryIndexingTests(QueryTests):
         temp = self.gen_results.generate_expected_result(
             print_expected_result=False)
         for item in temp:
-            expected_result.append(item.values())
+            expected_result.append(list(item.values()))
         if self.scan_consistency == "request_plus":
             body = {"stale": "False"}
         else:
@@ -662,14 +662,14 @@ class BaseSecondaryIndexingTests(QueryTests):
             for bucket in self.cluster.buckets:
                 scan_vector = {}
                 total = int(self.cluster.vbuckets*use_percentage)
-                vbuckets_number_list = range(0, total)
+                vbuckets_number_list = list(range(0, total))
                 if use_random:
                     vbuckets_number_list = random.sample(
-                        xrange(0, self.cluster.vbuckets),
+                        list(range(0, self.cluster.vbuckets)),
                         total)
                 self.log.debug("analyzing for bucket {0}".format(bucket.name))
                 map = sequence_bucket_map[bucket.name]
-                for key in map.keys():
+                for key in list(map.keys()):
                     vb = int(key.split("vb_")[1])
                     if vb in vbuckets_number_list:
                         value = [int(map[key]["abs_high_seqno"]), map[key]["uuid"]]
@@ -725,7 +725,7 @@ class BaseSecondaryIndexingTests(QueryTests):
         result_set = []
         if result is not None and len(result) > 0:
             for val in result:
-                for key in val.keys():
+                for key in list(val.keys()):
                     result_set.append(val[key])
         return result_set
 
@@ -735,15 +735,15 @@ class BaseSecondaryIndexingTests(QueryTests):
         index_map = self.indexer_rest.index_status()
         index_bucket_map = self.n1ql_helper.gen_index_map(self.n1ql_node)
         msg = "difference in index map found, expected {0} \n actual {1}".format(index_bucket_map,index_map)
-        self.assertTrue(len(index_map.keys()) == len(self.cluster.buckets),
+        self.assertTrue(len(list(index_map.keys())) == len(self.cluster.buckets),
             "numer of buckets mismatch :: "+msg)
         for bucket in self.cluster.buckets:
-            self.assertTrue((bucket.name in index_map.keys()), " bucket name not present in index map {0}".format(index_map))
-        for bucket_name in index_bucket_map.keys():
-            self.assertTrue(len(index_bucket_map[bucket_name].keys()) == len(index_map[bucket_name].keys()),"number of indexes mismatch ::"+msg)
-            for index_name in index_bucket_map[bucket_name].keys():
-                msg1 ="index_name {0} not found in {1}".format(index_name, index_map[bucket_name].keys())
-                self.assertTrue(index_name in index_map[bucket_name].keys(), msg1+" :: "+ msg)
+            self.assertTrue((bucket.name in list(index_map.keys())), " bucket name not present in index map {0}".format(index_map))
+        for bucket_name in list(index_bucket_map.keys()):
+            self.assertTrue(len(list(index_bucket_map[bucket_name].keys())) == len(list(index_map[bucket_name].keys())),"number of indexes mismatch ::"+msg)
+            for index_name in list(index_bucket_map[bucket_name].keys()):
+                msg1 ="index_name {0} not found in {1}".format(index_name, list(index_map[bucket_name].keys()))
+                self.assertTrue(index_name in list(index_map[bucket_name].keys()), msg1+" :: "+ msg)
 
     def _verify_primary_index_count(self):
         bucket_map = self.bucket_util.get_buckets_itemCount(self.cluster)
@@ -758,7 +758,7 @@ class BaseSecondaryIndexingTests(QueryTests):
         index_bucket_map = self.n1ql_helper.get_index_count_using_primary_index(self.cluster.buckets, self.n1ql_node)
         self.log.info(bucket_map)
         self.log.info(index_bucket_map)
-        for bucket_name in bucket_map.keys():
+        for bucket_name in list(bucket_map.keys()):
             actual_item_count = index_bucket_map[bucket_name]
             expected_item_count = bucket_map[bucket_name]
             self.assertTrue(str(actual_item_count) == str(expected_item_count),
@@ -771,9 +771,9 @@ class BaseSecondaryIndexingTests(QueryTests):
         as items in the bucket.
         """
         index_map = self.cluster_util.get_index_stats()
-        for bucket_name in index_map.keys():
+        for bucket_name in list(index_map.keys()):
             self.log.info("Bucket: {0}".format(bucket_name))
-            for index_name, index_val in index_map[bucket_name].iteritems():
+            for index_name, index_val in list(index_map[bucket_name].items()):
                 self.log.info("Index: {0}".format(index_name))
                 self.log.info("number of docs pending: {0}".format(index_val["num_docs_pending"]))
                 self.log.info("number of docs queued: {0}".format(index_val["num_docs_queued"]))
@@ -879,13 +879,13 @@ class BaseSecondaryIndexingTests(QueryTests):
             self.task.jython_task_manager.get_task_result(task)
 
     def _set_query_explain_flags(self, phase):
-        if ("query_ops" in self.ops_map[phase].keys()) and self.ops_map[phase]["query_ops"]:
+        if ("query_ops" in list(self.ops_map[phase].keys())) and self.ops_map[phase]["query_ops"]:
             self.ops_map[phase]["query_explain_ops"] = True
-        if ("do_not_verify_query_result" in self.ops_map[phase].keys()) \
+        if ("do_not_verify_query_result" in list(self.ops_map[phase].keys())) \
                 and self.ops_map[phase]["do_not_verify_query_result"]:
             self.verify_query_result = False
             self.ops_map[phase]["query_explain_ops"] = False
-        if ("do_not_verify_explain_result" in self.ops_map[phase].keys()) \
+        if ("do_not_verify_explain_result" in list(self.ops_map[phase].keys())) \
                 and self.ops_map[phase]["do_not_verify_explain_result"]:
             self.verify_explain_result = False
             self.ops_map[phase]["query_explain_ops"] = False
@@ -941,8 +941,8 @@ class BaseSecondaryIndexingTests(QueryTests):
         next_time = init_time
         while not check:
             index_status = self.indexer_rest.index_status()
-            for index_info in index_status.values():
-                for index_state in index_info.values():
+            for index_info in list(index_status.values()):
+                for index_state in list(index_info.values()):
                     if index_state["status"] == "Ready":
                         check = True
                     else:
@@ -967,8 +967,8 @@ class BaseSecondaryIndexingTests(QueryTests):
             for node in index_nodes:
                 indexer_rest = GsiHelper(node, self.log)
                 content = indexer_rest.get_index_storage_stats()
-                for index in content.values():
-                    for stats in index.values():
+                for index in list(content.values()):
+                    for stats in list(index.values()):
                         if stats["MainStore"]["resident_ratio"] >= 1.00:
                             return False
             return True

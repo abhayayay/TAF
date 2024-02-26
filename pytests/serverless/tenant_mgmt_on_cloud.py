@@ -12,9 +12,8 @@ from bucket_utils.bucket_ready_functions import DocLoaderUtils
 from cb_tools.cbstats import Cbstats
 from cluster_utils.cluster_ready_functions import Nebula
 from collections_helper.collections_spec_constants import MetaConstants
-from serverlessbasetestcase import OnCloudBaseTest
+from serverlessBase.serverlessbasetestcase import OnCloudBaseTest
 from Cb_constants import CbServer
-from capellaAPI.capella.serverless.CapellaAPI import CapellaAPI
 
 from com.couchbase.test.docgen import DocumentGenerator
 from com.couchbase.test.sdk import Server
@@ -88,7 +87,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
 
     def get_random_weight_for_width(self, width=1):
         return self.weight_start[width] \
-                 + (self.weight_incr[width] * choice(range(1, 13)))
+            + (self.weight_incr[width] * choice(list(range(1, 13))))
 
     def validate_cluster_deployment(self, cluster, req_nodes_dict):
         req_kv_nodes = req_nodes_dict.get(CbServer.Services.KV)
@@ -237,7 +236,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
             max_scenarios = 20
             # Creates 20 random scenarios of random width/weight update
             for scenario_index in range(max_scenarios):
-                width = choice(range(1, 5))
+                width = choice(list(range(1, 5)))
                 weight = self.get_random_weight_for_width(width)
                 scenarios.append({bucket_name: {Bucket.width: width,
                                                 Bucket.weight: weight}})
@@ -489,7 +488,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
                 buckets[15].name: {Bucket.width: 4},
             })
         if target_scenario == "twenty_buckets_weight_update":
-            weights = range(30, 504)
+            weights = list(range(30, 504))
             for n in range(3):
                 scenario_dict = dict()
                 for i in range(20):
@@ -685,8 +684,8 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
                                     req_clients_per_bucket=1)
 
         for bucket in self.cluster.buckets:
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     work_load_settings = DocLoaderUtils.get_workload_settings(
@@ -798,7 +797,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
         name_to_err_map = {"123,": invalid_char_err,
                            "1": name_too_short_err,
                            "a"*49: name_too_long_err}
-        for name, expected_err in name_to_err_map.items():
+        for name, expected_err in list(name_to_err_map.items()):
             self.log.info("Trying to create database with name=%s" % name)
             bucket = self.get_serverless_bucket_obj(name, 1, 30)
             task = self.bucket_util.async_create_database(self.cluster, bucket)
@@ -819,7 +818,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
         :return:
         """
         to_track = list()
-        for bucket_name, s_dict in scenario.items():
+        for bucket_name, s_dict in list(scenario.items()):
             bucket_obj = self.__get_bucket_with_name(bucket_name)
             db_info = {
                 "cluster": self.cluster,
@@ -1229,16 +1228,16 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
         b3 = self.cluster.buckets[2]
 
         bucket_with_max_scopes_thread = Thread(target=create_scopes,
-                                               args=(b1, range(scope_limit)))
+                                               args=(b1, list(range(scope_limit))))
         bucket_with_max_cols_thread = Thread(target=create_collections,
                                              args=(b2, CbServer.default_scope,
-                                                   range(collection_limit)))
+                                                   list(range(collection_limit))))
         bucket_with_max_scopes_thread.start()
         bucket_with_max_cols_thread.start()
 
         try:
             server = b3.servers[0]
-            create_scopes(b3, range(scope_limit))
+            create_scopes(b3, list(range(scope_limit)))
             self.log.info("Creating an extra scope in %s" % b3.name)
             try:
                 self.bucket_util.create_scope(server, b3,
@@ -1269,7 +1268,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
 
             self.log.info("Creating 10 collections per existing scope")
             for i in range(10):
-                c_range = range(10)
+                c_range = list(range(10))
                 c_range.pop(i)
                 create_collections(b3, "scope-%s" % i, c_range)
 
@@ -1285,7 +1284,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
                     self.fail("Collection created violating the limits")
 
             self.log.info("Creating 90 scopes with 0 collections")
-            create_scopes(b3, range(10, scope_limit))
+            create_scopes(b3, list(range(10, scope_limit)))
             try:
                 self.bucket_util.create_scope(server, b3, {"name": "errscope"})
             except Exception as e:
@@ -1518,7 +1517,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
                     for t_node in str(status[v_bucket]["topology"])\
                             .split("\""):
                         if "ns_1@" in t_node:
-                            if t_node not in node_map.keys():
+                            if t_node not in list(node_map.keys()):
                                 node_map[t_node] = dict()
                                 node_map[t_node]["bucket"] = set()
                                 node_map[t_node]["node"] = server
@@ -1535,7 +1534,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
         node_dict = get_bucket_stats()
         target_node = None
         bucket_to_update = []
-        for node in node_dict.keys():
+        for node in list(node_dict.keys()):
             if len(node_dict[node]["bucket"]) > 2:
                 for buck in node_dict[node]["bucket"]:
                     if buck.serverless.width <= 1:
@@ -1579,8 +1578,8 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
         storage_quota_init = self.bucket_util.get_storage_quota(self.cluster.buckets[0])
 
         for bucket in self.cluster.buckets:
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     work_load_settings = DocLoaderUtils.get_workload_settings(
@@ -1638,9 +1637,9 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
         def start_data_load(buckets=None):
             loader_map = dict()
             for bucket in buckets:
-                for scope in bucket.scopes.keys():
-                    for collection in bucket.scopes[
-                        scope].collections.keys():
+                for scope in list(bucket.scopes.keys()):
+                    for collection in list(bucket.scopes[
+                                               scope].collections.keys()):
                         if scope == CbServer.system_scope:
                             continue
                     work_load_settings = DocLoaderUtils.get_workload_settings(
@@ -1725,7 +1724,7 @@ class TenantMgmtOnCloud(OnCloudBaseTest):
             # marking bucket to leave for next iteration if num items not
             # changed
             for task in loading_tasks:
-                for optype, failures in task.failedMutations.items():
+                for optype, failures in list(task.failedMutations.items()):
                     for failure in failures:
                         if failure is not None and failure.err().getClass().getSimpleName() == "CouchbaseException":
                             sleep_iterations = [90, 50, 40]

@@ -96,8 +96,8 @@ class SystemEventLogs(ClusterSetup):
             Event.Fields.COMPONENT: component,
             Event.Fields.SEVERITY: choice(severities),
             Event.Fields.EVENT_ID:
-                choice(range(self.id_range[component][0],
-                             self.id_range[component][1])),
+                choice(list(range(self.id_range[component][0],
+                             self.id_range[component][1]))),
             Event.Fields.UUID: self.system_events.get_rand_uuid(),
             Event.Fields.DESCRIPTION: description,
             Event.Fields.NODE_NAME: self.cluster.master.ip
@@ -129,19 +129,19 @@ class SystemEventLogs(ClusterSetup):
 
         if is_range_valid:
             # event_id_range is a range. Eg: 0:1023
-            event_id_range = range(self.id_range[component][0],
-                                   self.id_range[component][1])
+            event_id_range = list(range(self.id_range[component][0],
+                                   self.id_range[component][1]))
         else:
             # Construct a list of event_ids from the other components
             # event_id_range to validate the negative scenarios
             event_id_range = list()
-            for component_key, v_range in self.id_range.items():
+            for component_key, v_range in list(self.id_range.items()):
                 if component_key == component:
                     continue
                 for _ in range(5):
                     event_id_range.append(randint(v_range[0], v_range[1]-1))
 
-        event_severity = Event.Severity.values()
+        event_severity = list(Event.Severity.values())
         self.log.info("Creating %s events in cluster" % component)
         for event_id in event_id_range:
             timestamp += timedelta(seconds=1)
@@ -218,8 +218,8 @@ class SystemEventLogs(ClusterSetup):
         """
         self.__reset_events()
 
-        components = Event.Component.values()
-        event_severity = Event.Severity.values()
+        components = list(Event.Component.values())
+        event_severity = list(Event.Severity.values())
         self.log.info("Creating %s events in cluster" % self.max_event_count)
         for event_count in range(0, self.max_event_count):
             event_dict = self.__generate_random_event(
@@ -285,7 +285,7 @@ class SystemEventLogs(ClusterSetup):
                 self.fail("Description error message mismatch: %s" % content)
 
         # Success case
-        desc_len = choice(range(1, 81))
+        desc_len = choice(list(range(1, 81)))
         self.log.info("Testing with description string len=%d" % desc_len)
         event_dict[Event.Fields.DESCRIPTION] = "a" * desc_len
         status, content = \
@@ -861,10 +861,10 @@ class SystemEventLogs(ClusterSetup):
             EventHelper.max_events = value
             self.max_event_count = value
 
-        initial_val = choice(range(CbServer.sys_event_min_logs+10,
-                                   CbServer.sys_event_max_logs))
-        new_val = choice(range(CbServer.sys_event_min_logs,
-                               CbServer.sys_event_min_logs+10))
+        initial_val = choice(list(range(CbServer.sys_event_min_logs+10,
+                                   CbServer.sys_event_max_logs)))
+        new_val = choice(list(range(CbServer.sys_event_min_logs,
+                               CbServer.sys_event_min_logs+10)))
 
         self.log.info("Updating max_event_counter=%s" % initial_val)
         update_lib_counters(initial_val)
@@ -908,8 +908,8 @@ class SystemEventLogs(ClusterSetup):
         involve_master = self.input.param("involve_master_node", False)
         doc_loading = self.input.param("with_doc_loading", False)
         failure = None
-        components = Event.Component.values()
-        event_severity = Event.Severity.values()
+        components = list(Event.Component.values())
+        event_severity = list(Event.Severity.values())
 
         nodes_in_cluster = deepcopy(self.cluster.nodes_in_cluster)
         if doc_loading:
@@ -1006,8 +1006,8 @@ class SystemEventLogs(ClusterSetup):
         """
 
         num_events = 100
-        components = Event.Component.values()
-        severities = Event.Severity.values()
+        components = list(Event.Component.values())
+        severities = list(Event.Severity.values())
 
         self.log.info("Loading few events before rebalance operation")
         for index in range(num_events):
@@ -1532,7 +1532,7 @@ class SystemEventLogs(ClusterSetup):
         bucket_updated_event = DataServiceEvents.bucket_updated(
             self.cluster.master.ip, bucket.name, bucket.uuid,
             bucket.bucketType, dict(), dict())
-        for param, value in bucket_updated_event.items():
+        for param, value in list(bucket_updated_event.items()):
             if param == Event.Fields.EXTRA_ATTRS:
                 continue
             if event[param] != value:
@@ -1540,7 +1540,7 @@ class SystemEventLogs(ClusterSetup):
                           % (param, value, event[param]))
 
         # Test other mandatory fields
-        event_keys = event.keys()
+        event_keys = list(event.keys())
         for param in [Event.Fields.TIMESTAMP, Event.Fields.UUID]:
             if param not in event_keys:
                 self.fail("%s key missing in bucket update event" % param)
@@ -1555,7 +1555,7 @@ class SystemEventLogs(ClusterSetup):
 
         act_val = event[Event.Fields.EXTRA_ATTRS]["old_settings"]
         for param in ["ram_quota", "purge_interval"]:
-            if param not in act_val.keys():
+            if param not in list(act_val.keys()):
                 self.fail("'%s' missing in old_settings: %s"
                           % (param, act_val))
             act_val.pop(param)
@@ -1570,7 +1570,7 @@ class SystemEventLogs(ClusterSetup):
             expected_keys -= 1
 
         act_val = event[Event.Fields.EXTRA_ATTRS]["new_settings"]
-        act_val_keys = act_val.keys()
+        act_val_keys = list(act_val.keys())
         if len(act_val_keys) != expected_keys \
                 or 'ram_quota' not in act_val_keys:
             self.fail("Mismatch in new-setting params: %s" % act_val_keys)
@@ -1592,7 +1592,7 @@ class SystemEventLogs(ClusterSetup):
                 event = None
 
         act_val = event[Event.Fields.EXTRA_ATTRS]["new_settings"]
-        act_val_keys = act_val.keys()
+        act_val_keys = list(act_val.keys())
         if len(act_val_keys) != expected_keys \
                 or 'num_replicas' not in act_val_keys:
             self.fail("Mismatch in new-setting params: %s" % act_val_keys)
@@ -1751,7 +1751,7 @@ class SystemEventLogs(ClusterSetup):
 
         self.log.info("Validating rebalance specific events")
         # Validate fields existence in event dict
-        for reb_type, event in cluster_event.items():
+        for reb_type, event in list(cluster_event.items()):
             validate_rebalance_event_fields(reb_type, event)
 
         # Validate cluster event with local event dict

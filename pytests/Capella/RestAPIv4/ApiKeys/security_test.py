@@ -537,7 +537,7 @@ class SecurityTest(BaseTestCase):
             total_pages = (total_items + page_size - 1) // page_size
 
             # Randomly select a few pages
-            selected_pages = random.sample(range(1, total_pages+1), 3)
+            selected_pages = random.sample(list(range(1, total_pages+1)), 3)
             selected_pages.extend([1, total_pages])
 
             # Iterate through the selected pages and verify the expected results
@@ -706,7 +706,7 @@ class SecurityTest(BaseTestCase):
                 content = resp.json()
 
                 self.assertEqual(resp.status_code, 200)
-                filtered_list = filter(lambda d: d.get("name") == name_to_sort_at_the_beginning, content['data'])
+                filtered_list = [d for d in content['data'] if d.get("name") == name_to_sort_at_the_beginning]
 
                 self.log.info("filter: {}".format(filtered_list))
 

@@ -4,7 +4,7 @@ Created on Feb 16, 2022
 @author: ritesh.agarwal
 """
 from Cb_constants import CbServer
-from Jython_tasks.task import DeployDataplane
+from tasks.task import DeployDataplane
 from TestInput import TestInputSingleton
 from bucket_utils.bucket_ready_functions import BucketUtils, DocLoaderUtils
 from capella_utils.common_utils import Pod, Tenant
@@ -12,7 +12,7 @@ from capella_utils.dedicated import CapellaUtils as DedicatedUtils
 from capella_utils.serverless import CapellaUtils as ServerlessUtils, \
     CapellaUtils
 from cb_basetest import CouchbaseBaseTest
-from cluster_utils.cluster_ready_functions import ClusterUtils, CBCluster,\
+from cluster_utils.cluster_ready_functions import ClusterUtils, CBCluster, \
     Dataplane
 from constants.cloud_constants.capella_constants import AWS
 from security_config import trust_all_certs
@@ -22,7 +22,7 @@ from uuid import uuid4
 from capellaAPI.capella.common.CapellaAPI import CommonCapellaAPI
 from membase.api.rest_client import RestConnection
 from table_view import TableView
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import re
 
 
@@ -159,10 +159,10 @@ class OnCloudBaseTest(CouchbaseBaseTest):
             throttling_limit = self.input.param("throttling_limit", False)
             if throttling_limit is not False:
                 api = rest.baseUrl + "internalSettings"
-                params = urllib.urlencode({'dataThrottleLimit': throttling_limit,
-                                           'indexThrottleLimit': throttling_limit,
-                                           'searchThrottleLimit': throttling_limit,
-                                           'queryThrottleLimit': throttling_limit})
+                params = urllib.parse.urlencode({'dataThrottleLimit': throttling_limit,
+                                                 'indexThrottleLimit': throttling_limit,
+                                                 'searchThrottleLimit': throttling_limit,
+                                                 'queryThrottleLimit': throttling_limit})
                 status, content, _ = rest._http_request(
                     api, "POST", params=params,
                     headers=rest.get_headers_for_content_type_json())
@@ -230,9 +230,9 @@ class OnCloudBaseTest(CouchbaseBaseTest):
             self.sdk_client_pool.shutdown()
 
         if self.is_test_failed() and self.get_cbcollect_info:
-            for dataplane in self.dataplane_objs.values():
+            for dataplane in list(self.dataplane_objs.values()):
                 self.serverless_util.trigger_log_collection(dataplane.cluster_id)
-            for dataplane in self.dataplane_objs.values():
+            for dataplane in list(self.dataplane_objs.values()):
                 table = TableView(self.log.info)
                 table.add_row(["URL"])
                 while True:

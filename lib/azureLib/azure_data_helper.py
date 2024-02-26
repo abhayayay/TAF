@@ -73,9 +73,9 @@ class AzureDataHelper():
         if record_type == "json":
             data_to_write = json.dumps(sample_data)
         elif record_type == "csv":
-            data_to_write = ",".join(str(x) for x in sample_data.values())
+            data_to_write = ",".join(str(x) for x in list(sample_data.values()))
         elif record_type == "tsv":
-            data_to_write = "\t".join(str(x) for x in sample_data.values())
+            data_to_write = "\t".join(str(x) for x in list(sample_data.values()))
 
         for i in range(0, no_of_files):
             filename = "file{0}_{1}KB.{2}".format(str(i), file_size_in_KB,
@@ -116,10 +116,10 @@ class AzureDataHelper():
         if not no_of_folder or not max_depth:
             return folder_paths
         else:
-            for i in xrange(0, no_of_folder):
+            for i in range(0, no_of_folder):
                 depth = random.randint(1, max_depth)
                 path = copy.deepcopy(root_path)
-                for j in xrange(0, depth):
+                for j in range(0, depth):
                     path += "folder{0}/".format(str(random.randint(0, no_of_folder)))
                 folder_paths.append(path)
             return folder_paths
@@ -133,7 +133,7 @@ class AzureDataHelper():
         :return: list of file names.
         """
         filenames = list()
-        for i in xrange(0, no_of_files ):
+        for i in range(0, no_of_files ):
             #filenames.append("file_{0}.{1}".format(str(i), random.choice(formats)))
             filenames.append("file_{0}.{1}".format(str(i), random.choice(formats)))
         return filenames
@@ -233,7 +233,7 @@ class AzureDataHelper():
         files_per_thread = abs(len(item_list) / self.max_thread_count) + 1
         start = 0
         count = 0
-        for i in xrange(0, len(item_list)):
+        for i in range(0, len(item_list)):
             if count > self.max_thread_count or start >= len(item_list):
                 break
             else:
@@ -297,12 +297,12 @@ class AzureDataHelper():
             if randomize_header:
                 header = random.choice(["True", "False"])
             if ("csv" in filename) and header:
-                fh.write(",".join(str(x) for x in n1ql_result[0][
-                    self.bucket.name].keys()))
+                fh.write(",".join(str(x) for x in list(n1ql_result[0][
+                    self.bucket.name].keys())))
                 fh.write("\n")
             elif ("tsv" in filename) and header:
-                fh.write("\t".join(str(x) for x in n1ql_result[0][
-                    self.bucket.name].keys()))
+                fh.write("\t".join(str(x) for x in list(n1ql_result[0][
+                    self.bucket.name].keys())))
                 fh.write("\n")
             for result in n1ql_result:
                 result = result[self.bucket.name]
@@ -377,9 +377,9 @@ class AzureDataHelper():
         with open(filepath, "a+") as fh:
             fh.write(json.dumps(sample_data))
             fh.write("\n")
-            fh.write(",".join(str(x) for x in sample_data.values()))
+            fh.write(",".join(str(x) for x in list(sample_data.values())))
             fh.write("\n")
-            fh.write("\t".join(str(x) for x in sample_data.values()))
+            fh.write("\t".join(str(x) for x in list(sample_data.values())))
             fh.write("\n")
         if upload_to_azure:
             try:
@@ -433,9 +433,9 @@ class AzureDataHelper():
             if file_format == "json":
                 fh.write(json.dumps(sample_data))
             elif file_format == "csv":
-                fh.write(",".join(str(x) for x in sample_data.values()))
+                fh.write(",".join(str(x) for x in list(sample_data.values())))
             elif file_format == "tsv":
-                fh.write("\t".join(str(x) for x in sample_data.values()))
+                fh.write("\t".join(str(x) for x in list(sample_data.values())))
         if upload_to_azure:
             try:
                 blobClient = self.blob_container_client.getBlobClient(filename)

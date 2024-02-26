@@ -20,7 +20,7 @@ class DcpTestCase(DCPBase):
     def check_dcp_event(self, collection_name, output_string, event="create_collection", count=1):
         if event == "create_collection":
             cmd = "CollectionCREATED, name:" + collection_name
-            event_count = len(set(list(filter(lambda x: cmd in x, output_string))))
+            event_count = len(set(list([x for x in output_string if cmd in x])))
             if event_count == (len(self.vbuckets) * count):
                 self.log.info("number of collection creation event matches %s" % event_count)
             else:
@@ -29,7 +29,7 @@ class DcpTestCase(DCPBase):
 
         if event == "drop_collection":
             event_count = \
-                len(set(list(filter(lambda x: "CollectionDROPPED" in x, output_string))))
+                len(set(list([x for x in output_string if "CollectionDROPPED" in x])))
             if event_count == (len(self.vbuckets) * count):
                 self.log.info("number of collection drop event matches %s" % event_count)
             else:
@@ -38,7 +38,7 @@ class DcpTestCase(DCPBase):
 
         if event == "create_scope":
             cmd = "ScopeCREATED, name:" + collection_name
-            event_count = len(set(list(filter(lambda x: cmd in x, output_string))))
+            event_count = len(set(list([x for x in output_string if cmd in x])))
             if event_count == len(self.vbuckets):
                 self.log.info("number of scope creation event matches %s" % event_count)
             else:
@@ -46,7 +46,7 @@ class DcpTestCase(DCPBase):
                                  "expected:%s but actual %s" % (len(self.vbuckets), event_count))
 
         if event == "drop_scope":
-            event_count = len(set(list(filter(lambda x: "ScopeDROPPED" in x, output_string))))
+            event_count = len(set(list([x for x in output_string if "ScopeDROPPED" in x])))
             if event_count == len(self.vbuckets):
                 self.log.info("number of Scope drop event matches %s" % event_count)
             else:
@@ -64,7 +64,7 @@ class DcpTestCase(DCPBase):
         return output
 
     def close_dcp_streams(self):
-        for client_stream in self.dcp_client_dict.values():
+        for client_stream in list(self.dcp_client_dict.values()):
             client_stream['stream'].close()
 
     def get_collection_id(self, bucket_name, scope_name, collection_name=None):
@@ -87,7 +87,7 @@ class DcpTestCase(DCPBase):
         scope_list = self.bucket_util.get_active_scopes(bucket)
         for scope in scope_list:
             if scope.name == scope_name:
-                collection_list = scope.collections.values()
+                collection_list = list(scope.collections.values())
                 for collection in collection_list:
                     scope_items += collection.num_items
         return scope_items
@@ -98,7 +98,7 @@ class DcpTestCase(DCPBase):
         while retry > 0:
             scope_dict = self.bucket_util.get_random_scopes(
                 self.cluster.buckets, 1, 1)
-            scope_name = scope_dict[self.bucket.name]["scopes"].keys()[0]
+            scope_name = list(scope_dict[self.bucket.name]["scopes"].keys())[0]
             if scope_name != CbServer.default_scope:
                 break
             retry -= 1
@@ -124,8 +124,8 @@ class DcpTestCase(DCPBase):
         collections = self.bucket_util.get_random_collections(
             [self.bucket], 1, 1, 1)
         scope_dict = collections[self.bucket.name]["scopes"]
-        scope_name = scope_dict.keys()[0]
-        collection_name = scope_dict[scope_name]["collections"].keys()[0]
+        scope_name = list(scope_dict.keys())[0]
+        collection_name = list(scope_dict[scope_name]["collections"].keys())[0]
         self.bucket_util.drop_collection(self.cluster.master,
                                          self.bucket,
                                          scope_name,
@@ -181,8 +181,7 @@ class DcpTestCase(DCPBase):
     def verify_operation(self, operation, mutation_count, verify=True):
         self.dcp_client = self.initialise_cluster_connections()
         output_string = self.get_dcp_event()
-        actual_item_count = len(list(filter(
-            lambda x: 'CMD_MUTATION' in x, output_string)))
+        actual_item_count = len(list([x for x in output_string if 'CMD_MUTATION' in x]))
 
         if operation == "drop_scope":
             self.check_dcp_event(self.scope_name,
@@ -227,7 +226,7 @@ class DcpTestCase(DCPBase):
 
         # stream dcp events and verify events
         output_string = self.get_dcp_event()
-        actual_item_count = len(list(filter(lambda x: 'CMD_MUTATION' in x, output_string)))
+        actual_item_count = len(list([x for x in output_string if 'CMD_MUTATION' in x]))
         if expected_item_count != actual_item_count:
             self.log_failure("item count mismatch, expected %s actual %s" \
                              % (expected_item_count, actual_item_count))
@@ -235,7 +234,7 @@ class DcpTestCase(DCPBase):
         for scope in scope_list:
             if scope.name != CbServer.default_scope:
                 self.check_dcp_event(scope.name, output_string, "create_scope")
-            collection_list = scope.collections.values()
+            collection_list = list(scope.collections.values())
             for collection in collection_list:
                 if collection.name != CbServer.default_collection:
                     self.check_dcp_event(collection.name, output_string)
@@ -264,8 +263,8 @@ class DcpTestCase(DCPBase):
         collections = self.bucket_util.get_random_collections(
             [self.bucket], 1, 1, 1)
         scope_dict = collections[self.bucket.name]["scopes"]
-        scope_name = scope_dict.keys()[0]
-        collection_name = scope_dict[scope_name]["collections"].keys()[0]
+        scope_name = list(scope_dict.keys())[0]
+        collection_name = list(scope_dict[scope_name]["collections"].keys())[0]
         bucket = self.bucket_util.get_bucket_obj(self.cluster.buckets,
                                                  self.bucket.name)
         bucket.scopes[scope_name] \
@@ -296,7 +295,7 @@ class DcpTestCase(DCPBase):
         output_string = self.get_dcp_event()
 
         # verify item count
-        actual_item_count = len(list(filter(lambda x: 'CMD_MUTATION' in x, output_string)))
+        actual_item_count = len(list([x for x in output_string if 'CMD_MUTATION' in x]))
         if actual_item_count != self.bucket.scopes[scope_name] \
                 .collections[collection_name].num_items:
             self.log_failure("item count mismatch, expected %s actual %s" \
@@ -310,7 +309,7 @@ class DcpTestCase(DCPBase):
         # get a random scope
         scope_dict = self.bucket_util.get_random_scopes(
             self.cluster.buckets, 1, 1)
-        scope_name = scope_dict[self.bucket.name]["scopes"].keys()[0]
+        scope_name = list(scope_dict[self.bucket.name]["scopes"].keys())[0]
 
         if self.create_collection:
             collection_name = self.bucket_util.get_random_name()
@@ -327,7 +326,7 @@ class DcpTestCase(DCPBase):
 
         # verify the item count
         total_items_scope = self.get_total_items_scope(self.bucket, scope_name)
-        actual_item_count = len(list(filter(lambda x: 'CMD_MUTATION' in x, output_string)))
+        actual_item_count = len(list([x for x in output_string if 'CMD_MUTATION' in x]))
         if actual_item_count != total_items_scope:
             self.log_failure("item count mismatch, expected %s actual %s" \
                              % (total_items_scope, actual_item_count))
@@ -344,13 +343,13 @@ class DcpTestCase(DCPBase):
 
         list_uid = []
         total_items = 0
-        for self.bucket_name, scope_dict in collections.iteritems():
+        for self.bucket_name, scope_dict in list(collections.items()):
             bucket = self.bucket_util.get_bucket_obj(self.cluster.buckets,
                                                      self.bucket_name)
             scope_dict = scope_dict["scopes"]
-            for scope_name, collection_dict in scope_dict.items():
+            for scope_name, collection_dict in list(scope_dict.items()):
                 collection_dict = collection_dict["collections"]
-                for c_name, _ in collection_dict.items():
+                for c_name, _ in list(collection_dict.items()):
                     list_uid.append(self.get_collection_id(self.bucket_name,
                                                            scope_name, c_name))
                     total_items += bucket.scopes[scope_name] \
@@ -361,7 +360,7 @@ class DcpTestCase(DCPBase):
         output_string = self.get_dcp_event()
 
         # verify item count
-        actual_item_count = len(list(filter(lambda x: 'CMD_MUTATION' in x, output_string)))
+        actual_item_count = len(list([x for x in output_string if 'CMD_MUTATION' in x]))
         if actual_item_count != total_items:
             self.log_failure("item count mismatch, expected %s actual %s" \
                              % (total_items, actual_item_count))
@@ -409,8 +408,8 @@ class DcpTestCase(DCPBase):
         collections = self.bucket_util.get_random_collections(
             [self.bucket], 1, 1, 1)
         scope_dict = collections[self.bucket.name]["scopes"]
-        scope_name = scope_dict.keys()[0]
-        collection_name = scope_dict[scope_name]["collections"].keys()[0]
+        scope_name = list(scope_dict.keys())[0]
+        collection_name = list(scope_dict[scope_name]["collections"].keys())[0]
 
         self.load_gen = doc_generator(self.key, 0, self.num_items)
         self.task.load_gen_docs(
@@ -428,10 +427,10 @@ class DcpTestCase(DCPBase):
         output_string = self.get_dcp_event()
         if self.enable_expiry:
             actual_item_count = \
-                len(list(filter(lambda x: "CMD_EXPIRATION" in x, output_string)))
+                len(list([x for x in output_string if "CMD_EXPIRATION" in x]))
         else:
             actual_item_count = \
-                len(list(filter(lambda x: "CMD_DELETION" in x, output_string)))
+                len(list([x for x in output_string if "CMD_DELETION" in x]))
 
         if self.doc_expiry == 0:
             bucket = self.bucket_util.get_bucket_obj(self.cluster.buckets,

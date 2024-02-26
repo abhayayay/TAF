@@ -9,22 +9,55 @@ import json
 import re
 import time
 import os
+from datetime import datetime,timedelta
 from threading import Lock
 
 from Cb_constants import constants, CbServer, ClusterRun
-from Jython_tasks.task import MonitorActiveTask, FunctionCallTask
+from tasks.task import MonitorActiveTask, FunctionCallTask
 from TestInput import TestInputSingleton, TestInputServer
 from cb_tools.cb_collectinfo import CbCollectInfo
 from common_lib import sleep, humanbytes
 from couchbase_cli import CouchbaseCLI
 from couchbase_utils.cb_tools.cb_cli import CbCli
 from global_vars import logger
+import global_vars
 from membase.api.rest_client import RestConnection
 from platform_constants.os_constants import Linux, Mac, Windows
 from remote.remote_util import RemoteMachineShellConnection, RemoteUtilHelper
 from table_view import TableView
 from copy import deepcopy
 # import srvlookup
+
+
+class GoldfishNebula:
+    def __init__(self, srv, server):
+        self.servers = dict()
+        self.endpoint = server
+        self.endpoint.type = "columnar"
+        self.endpoint.srv = srv
+
+
+class Nebula:
+    def __init__(self, srv, server):
+        self.servers = dict()
+        self.endpoint = server
+        self.endpoint.type = "nebula"
+        self.endpoint.srv = srv
+        self.update_server_list()
+
+    def update_server_list(self):
+        self.servers = dict()
+        self.rest = RestConnection(self.endpoint)
+        _, content, _ = self.rest._http_request(self.rest.baseUrl + "pools/default/nodeServices")
+        content = json.loads(content)
+        for server in content["nodesExt"]:
+            temp = deepcopy(self.endpoint)
+            temp.ip = server["hostname"]
+            portdata = server["services"]
+            temp.port = portdata.get("mgmt") or portdata.get("mgmtSSL")
+            temp.memcached_port = portdata.get("kvSSL") or portdata.get("kv")
+            temp.memcached = temp.memcached_port
+            self.servers[str(temp.ip) + ":" + str(temp.port)] = temp
 
 
 class CBCluster:
@@ -49,7 +82,10 @@ class CBCluster:
         self.xdcr_remote_clusters = list()
         self.buckets = list()
         self.vbuckets = vbuckets
-        # edition = community/enterprise
+        # version = 9.9.9-9999
+        # edition = community / enterprise
+        # type = default / serverless / dedicated
+        self.version = None
         self.edition = None
         self.type = "default"
 
@@ -137,6 +173,38 @@ class ClusterUtils:
         self.log = logger.get("test")
 
     @staticmethod
+    def flush_network_rules(node):
+        shell = RemoteMachineShellConnection(node)
+        for command in ["iptables -F",
+                        "nft flush ruleset",
+                        "nft add table ip filter",
+                        "nft add chain ip filter INPUT '{ type filter hook "
+                        "input priority 0; }'"]:
+            shell.execute_command(command)
+        shell.disconnect()
+
+    @staticmethod
+    def get_orchestrator_node(node):
+        orchestrator_node = None
+        status = None
+        retry_index = 0
+        max_retry = 10
+        rest = RestConnection(node)
+        while retry_index < max_retry:
+            status, content = rest.get_terse_cluster_info()
+            json_content = json.loads(content)
+            orchestrator_node = json_content["orchestrator"]
+            if orchestrator_node == "undefined":
+                sleep(2, message="orchestrator='undefined'", log_type="test")
+                retry_index += 1
+            else:
+                break
+        orchestrator_node = \
+            orchestrator_node.split("@")[1] \
+                .replace("\\", '').replace("'", "")
+        return status, orchestrator_node
+
+    @staticmethod
     def find_orchestrator(cluster, node=None):
         """
         Update the orchestrator of the cluster
@@ -144,25 +212,8 @@ class ClusterUtils:
         :param node: Any node that is still part of the cluster
         :return:
         """
-        retry_index = 0
-        max_retry = 12
-        orchestrator_node = None
-        status = None
         node = cluster.master if node is None else node
-
-        rest = RestConnection(node)
-        while retry_index < max_retry:
-            status, content = rest.get_terse_cluster_info()
-            json_content = json.loads(content)
-            orchestrator_node = json_content["orchestrator"]
-            if orchestrator_node == "undefined":
-                sleep(1, message="orchestrator='undefined'", log_type="test")
-            else:
-                break
-        orchestrator_node = \
-            orchestrator_node.split("@")[1] \
-            .replace("\\", '').replace("'", "")
-
+        status, orchestrator_node = ClusterUtils.get_orchestrator_node(node)
         cluster.master = [server for server in cluster.servers
                           if server.ip == orchestrator_node][0]
         # Type cast to str - match the previous dial/eval return value
@@ -281,6 +332,128 @@ class ClusterUtils:
                 nodes.append(node.ip)
         return nodes
 
+    def validate_bucket_ranking(self, cluster, cluster_node=None,
+                                fetch_latest_buckets=False):
+
+        def parse_timestamp(timestamp):
+            time_format = "%Y-%m-%dT%H:%M:%S.%f"
+            result = datetime.strptime(timestamp[:23], time_format)
+            if timestamp[23]=='+':
+                result -= timedelta(hours=int(timestamp[24:26]),
+                                    minutes=int(timestamp[27:29]))
+            elif timestamp[23]=='-':
+                result += timedelta(hours=int(timestamp[24:26]),
+                                    minutes=int(timestamp[27:29]))
+            return result
+
+        def validate_order_of_rebalance(rank_map, bucket_list):
+            for bucket in rank_map:
+                if not rank_map[bucket]:
+                    rank_map[bucket] = 0
+
+            if len(bucket_list):
+                bucket_name_prev = bucket_list[0]["bucket_name"]
+                i = 1
+                while i < len(bucket_list):
+                    bucket_name_curr = bucket_list[i]["bucket_name"]
+                    if rank_map[bucket_name_curr] > rank_map[bucket_name_prev]:
+                        return False
+                    bucket_name_prev = bucket_name_curr
+                    i += 1
+            return True
+
+        result = True
+        cluster_node = cluster_node if cluster_node else cluster.master
+        rest_orchestrator = RestConnection(cluster_node)
+
+        # Fetch task from /pools/default/tasks
+        cluster_tasks = rest_orchestrator.ns_server_tasks()
+        for cluster_task in cluster_tasks:
+            # Check if task type is rebalance
+            if cluster_task["type"] != "rebalance":
+                continue
+
+            # Check if task is complete
+            if cluster_task["status"] != "notRunning":
+                continue
+
+            self.log.debug("Task type : {} Task subtype : {}".format(cluster_task["type"],
+                                                                     cluster_task.get("subtype", None)))
+
+            # Get the endpoint for rebalance report and fetch
+            if "lastReportURI" not in cluster_task:
+                self.log.critical("The result of /pools/default/tasks from {} is \n{}".format(cluster_node.ip, cluster_tasks))
+
+                # Re-trying and checking if the /pools/default/tasks is returning same results each time
+                # This code block can be removed if no errors are seen
+                retry = 1
+                while retry <= 5:
+                    sleep(5, "Sleeping before re-trying request to /pools/default/tasks")
+                    cluster_tasks = rest_orchestrator.ns_server_tasks()
+                    self.log.critical("Retry {} : The result of /pools/default/tasks from {} is \n{}".format(retry, cluster_node.ip, cluster_tasks))
+                    retry += 1
+
+                raise Exception("Unable to fetch all details from /pools/default/tasks endpoint")
+
+            report_url = cluster_task["lastReportURI"]
+            rebalance_report = rest_orchestrator.fetch_rebalance_report(report_url)
+
+            rebalance_start_time_report = rebalance_report["startTime"]
+            self.log.debug("The rebalance report is fetched from {}".format(report_url))
+            self.log.debug("The rebalance startTime in the report is {}".format(rebalance_start_time_report))
+
+            # Create a list based on rebalance startTime
+            data_buckets = []
+            if "data" in rebalance_report["stageInfo"]:
+                if "details" in rebalance_report["stageInfo"]["data"]:
+                    for bucket in rebalance_report["stageInfo"]["data"]["details"]:
+                        startTime = rebalance_report["stageInfo"]["data"]["details"][bucket]["startTime"]
+                        completedTime = rebalance_report["stageInfo"]["data"]["details"][bucket]["completedTime"]
+
+                        # startTime and completedTime can be False
+                        startTime = parse_timestamp(startTime) if startTime else startTime
+                        completedTime = parse_timestamp(completedTime) if completedTime else completedTime
+
+                        data_buckets.append({
+                            "bucket_name": bucket,
+                            "startTime": startTime,
+                            "completedTime": completedTime
+                        })
+            failover_buckets = []
+            if "failover" in rebalance_report["stageInfo"]:
+                if "subStages" in rebalance_report["stageInfo"]["failover"]:
+                    for bucket in rebalance_report["stageInfo"]["failover"]["subStages"]:
+                        startTime = rebalance_report["stageInfo"]["failover"]["subStages"][bucket]["startTime"]
+                        completedTime = rebalance_report["stageInfo"]["failover"]["subStages"][bucket]["completedTime"]
+
+                        # startTime and completedTime can be False
+                        startTime = parse_timestamp(startTime) if startTime else startTime
+                        completedTime =  parse_timestamp(completedTime) if completedTime else completedTime
+                        failover_buckets.append({
+                            "bucket_name": bucket,
+                            "startTime": startTime,
+                            "completedTime": completedTime
+                        })
+
+            # Creating a sorted list based on startTime
+            data_buckets = sorted(data_buckets, key=lambda x: x['startTime'])
+            failover_buckets = sorted(failover_buckets, key=lambda x: x['startTime'])
+
+            # Validate that with rank map
+            rank_map = global_vars.bucket_util.fetch_rank_map(cluster,
+                                                              cluster_node,
+                                                              fetch_latest_buckets=fetch_latest_buckets)
+            self.log.debug("Rank map : {}".format(rank_map))
+            self.log.debug("Order of bucket movement : {}".format(data_buckets))
+            self.log.debug("Order of failover bucket movement : {}".format(failover_buckets))
+            data_validation = validate_order_of_rebalance(rank_map=rank_map,
+                                                          bucket_list=data_buckets)
+            failover_validation = validate_order_of_rebalance(rank_map=rank_map,
+                                                              bucket_list=failover_buckets)
+            result = result and data_validation and failover_validation
+
+        return result
+
     def validate_orchestrator_selection(self, cluster, removed_nodes=[]):
         result = False
         target_node = cluster.master
@@ -291,7 +464,9 @@ class ClusterUtils:
         status, ns_node = self.find_orchestrator(cluster, node=target_node)
         if not status:
             return result
-        self.update_cluster_nodes_service_list(cluster, inactive_added=True)
+        self.update_cluster_nodes_service_list(cluster,
+                                               inactive_added=True,
+                                               inactive_failed=True)
         nodes = self.get_possible_orchestrator_nodes(cluster)
         ns_node = ns_node.split("@")[1]
         self.log.critical("Orchestrator: {}".format(ns_node))
@@ -395,7 +570,7 @@ class ClusterUtils:
         nodes = rest.node_statuses()
         master_id = rest.get_nodes_self().id
         for node in nodes:
-            if int(node.port) in xrange(9091, 9991):
+            if int(node.port) in range(9091, 9991):
                 rest.eject_node(node)
                 nodes.remove(node)
 
@@ -409,6 +584,7 @@ class ClusterUtils:
                 ejectedNodes=[node.id for node in nodes
                               if node.id != master_id],
                 wait_for_rebalance=wait_for_rebalance)
+
             success_cleaned = []
             for removed in [node for node in nodes if (node.id != master_id)]:
                 removed.rest_password = cluster.master.rest_password
@@ -749,7 +925,8 @@ class ClusterUtils:
                 remote_client.disable_firewall()
                 remote_client.disconnect()
 
-    def update_cluster_nodes_service_list(self, cluster, inactive_added=False):
+    def update_cluster_nodes_service_list(self, cluster, inactive_added=False,
+                                          inactive_failed=False):
         def append_nodes_to_list(nodes, list_to_append):
             for t_node in nodes:
                 t_node = t_node.split(":")
@@ -762,7 +939,8 @@ class ClusterUtils:
                         break
 
         service_map = self.get_services_map(cluster,
-                                            inactive_added=inactive_added)
+                                            inactive_added=inactive_added,
+                                            inactive_failed=inactive_failed)
         cluster.kv_nodes = list()
         cluster.fts_nodes = list()
         cluster.cbas_nodes = list()
@@ -772,7 +950,7 @@ class ClusterUtils:
         cluster.backup_nodes = list()
         cluster.serviceless_nodes = list()
         cluster.nodes_in_cluster = list()
-        for service_type, node_list in service_map.items():
+        for service_type, node_list in list(service_map.items()):
             if service_type == constants.Services.KV:
                 append_nodes_to_list(node_list, cluster.kv_nodes)
             elif service_type == constants.Services.INDEX:
@@ -852,11 +1030,12 @@ class ClusterUtils:
                 return node_list[0]
 
     @staticmethod
-    def get_services_map(cluster, inactive_added=False):
+    def get_services_map(cluster, inactive_added=False, inactive_failed=False):
         services_map = dict()
         rest = RestConnection(cluster.master)
-        tem_map = rest.get_nodes_services(inactive_added=inactive_added)
-        for key, val in tem_map.items():
+        tem_map = rest.get_nodes_services(inactive_added=inactive_added,
+                                          inactive_failed=inactive_failed)
+        for key, val in list(tem_map.items()):
             if not val:
                 # None means service-less node
                 if None not in services_map:
@@ -864,7 +1043,7 @@ class ClusterUtils:
                 services_map[None].append(key)
             else:
                 for service in val:
-                    if service not in services_map.keys():
+                    if service not in list(services_map.keys()):
                         services_map[service] = list()
                     services_map[service].append(key)
         return services_map
@@ -910,7 +1089,7 @@ class ClusterUtils:
             compare_string_index_manager = "{0}:{1}" \
                                            .format(cluster.master.ip,
                                                    cluster.master.port)
-            if service_type in services_map.keys():
+            if service_type in list(services_map.keys()):
                 for node_info in services_map[service_type]:
                     for server in cluster.servers:
                         compare_string_server = "{0}:{1}".format(server.ip,
@@ -1038,24 +1217,29 @@ class ClusterUtils:
                         remoteIp=server.ip, port=constants.port,
                         services=server.services.split(",")))
 
-            self.rebalance(cluster.master, wait_for_completion)
+            self.rebalance(cluster, wait_for_completion)
         else:
             self.log.warning("No Nodes provided to add in cluster")
 
         return otp_nodes
 
     @staticmethod
-    def rebalance(cluster, wait_for_completion=True, ejected_nodes=[]):
+    def rebalance(cluster, wait_for_completion=True, ejected_nodes=[], validate_bucket_ranking=True):
         rest = RestConnection(cluster.master)
         nodes = rest.node_statuses()
         result, _ = rest.rebalance(otpNodes=[node.id for node in nodes],
                                    ejectedNodes=ejected_nodes)
         if result and wait_for_completion:
             result = rest.monitorRebalance()
+            if validate_bucket_ranking:
+                # Validating bucket ranking post rebalance
+                validate_ranking_res = global_vars.cluster_util.validate_bucket_ranking(cluster)
+                result = result and validate_ranking_res
         return result
 
-    def rebalance_reached(self, rest, percentage=100, wait_step=2,
-                          num_retry=40):
+    def rebalance_reached(self, node, percentage=100, wait_step=2,
+                          num_retry=40, validate_bucket_ranking=True):
+        rest = RestConnection(node)
         start = time.time()
         progress = 0
         previous_progress = 0
@@ -1075,6 +1259,14 @@ class ClusterUtils:
                     previous_progress = progress
             # Wait before fetching rebalance progress
             sleep(wait_step)
+        if validate_bucket_ranking:
+            # Validating bucket ranking post rebalance
+            validate_ranking_res = global_vars.cluster_util.validate_bucket_ranking(cluster=None,
+                                                                                cluster_node=node,
+                                                                                fetch_latest_buckets=True)
+            if not validate_ranking_res:
+                self.log.error("Vbucket movement during rebalance did not occur as per bucket ranking")
+                return False
         if progress <= 0:
             self.log.error("Rebalance progress: {0}".format(progress))
 
@@ -1115,7 +1307,7 @@ class ClusterUtils:
                            wait_for_completion=wait_for_rebalance_completion)
         return otpnode
 
-    def remove_node(self, cluster, otpnode=None, wait_for_rebalance=True):
+    def remove_node(self, cluster, otpnode=None, wait_for_rebalance=True, validate_bucket_ranking=True):
         rest = RestConnection(cluster.master)
         nodes = rest.node_statuses()
         '''This is the case when master node is running cbas service as well'''
@@ -1132,11 +1324,26 @@ class ClusterUtils:
             self.log.error("First time rebalance failed on Removal. "
                            "Wait and try again. THIS IS A BUG.")
             sleep(5)
+
+            if validate_bucket_ranking:
+                # Validating bucket ranking post rebalance
+                validate_ranking_res = global_vars.cluster_util.validate_bucket_ranking(cluster)
+                if not validate_ranking_res:
+                    self.log.error("Vbucket movement during rebalance did not occur as per bucket ranking")
+                    raise Exception("Vbucket movement during rebalance did not occur as per bucket ranking")
+
             _ = self.remove_nodes(
                 rest,
                 knownNodes=[node.id for node in nodes],
                 ejectedNodes=[node.id for node in otpnode],
                 wait_for_rebalance=wait_for_rebalance)
+            if validate_bucket_ranking:
+                # Validating bucket ranking post rebalance
+                validate_ranking_res = global_vars.cluster_util.validate_bucket_ranking(cluster)
+                if not validate_ranking_res:
+                    self.log.error("Vbucket movement during rebalance did not occur as per bucket ranking")
+                    raise Exception("Vbucket movement during rebalance did not occur as per bucket ranking")
+
         # if wait_for_rebalance:
         #     self.assertTrue(
         #         removed,
@@ -1184,7 +1391,7 @@ class ClusterUtils:
                            "Active / Replica ", "Version / Config"])
         rest = RestConnection(cluster.master)
         cluster_stat = rest.get_cluster_stats()
-        for cluster_node, node_stats in cluster_stat.items():
+        for cluster_node, node_stats in list(cluster_stat.items()):
             row = list()
             row.append(cluster_node.split(':')[0])
             if "serverGroup" in node_stats:
@@ -1335,7 +1542,7 @@ class ClusterUtils:
         for server in servers:
             shell = RemoteMachineShellConnection(server)
             # service should listen on non-ssl port only on localhost/no-address
-            for port in port_map.keys():
+            for port in list(port_map.keys()):
                 addresses = shell.get_port_recvq(port)
                 for address in addresses:
                     expected_address = "127.0.0.1:" + port + '\n'
@@ -1345,7 +1552,7 @@ class ClusterUtils:
                         shell.disconnect()
                         return False
             # service should listen on tls_port(if there is one) for all outside addresses
-            for port in port_map.keys():
+            for port in list(port_map.keys()):
                 ssl_port = CbServer.ssl_port_map.get(port)
                 if ssl_port is None:
                     continue

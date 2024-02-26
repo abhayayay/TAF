@@ -93,7 +93,7 @@ class OPD:
 
         def create_collections(bucket):
             node = cluster.master or bucket.serverless.nebula_endpoint
-            for scope in bucket.scopes.keys():
+            for scope in list(bucket.scopes.keys()):
                 if scope == CbServer.system_scope:
                     continue
                 if bucket.loadDefn.get("collections") > 0:
@@ -108,7 +108,7 @@ class OPD:
                                                            {"name": collection_name})
                         self.sleep(0.1)
 
-                collections = bucket.scopes[scope].collections.keys()
+                collections = list(bucket.scopes[scope].collections.keys())
                 self.log.debug("Collections list == {}".format(collections))
 
         for bucket in buckets:
@@ -228,20 +228,20 @@ class OPD:
             bucket.end = bucket.create_end
 
             bucket.final_items += (abs(bucket.create_end - bucket.create_start)) * bucket.loadDefn.get("collections") * bucket.loadDefn.get("scopes")
-        print "================{}=================".format(bucket.name)
-        print "Read Start: %s" % bucket.read_start
-        print "Read End: %s" % bucket.read_end
-        print "Update Start: %s" % bucket.update_start
-        print "Update End: %s" % bucket.update_end
-        print "Expiry Start: %s" % bucket.expire_start
-        print "Expiry End: %s" % bucket.expire_end
-        print "Delete Start: %s" % bucket.delete_start
-        print "Delete End: %s" % bucket.delete_end
-        print "Create Start: %s" % bucket.create_start
-        print "Create End: %s" % bucket.create_end
-        print "Final Start: %s" % bucket.start
-        print "Final End: %s" % bucket.end
-        print "================{}=================".format(bucket.name)
+        print(("================{}=================".format(bucket.name)))
+        print(("Read Start: %s" % bucket.read_start))
+        print(("Read End: %s" % bucket.read_end))
+        print(("Update Start: %s" % bucket.update_start))
+        print(("Update End: %s" % bucket.update_end))
+        print(("Expiry Start: %s" % bucket.expire_start))
+        print(("Expiry End: %s" % bucket.expire_end))
+        print(("Delete Start: %s" % bucket.delete_start))
+        print(("Delete End: %s" % bucket.delete_end))
+        print(("Create Start: %s" % bucket.create_start))
+        print(("Create End: %s" % bucket.create_end))
+        print(("Final Start: %s" % bucket.start))
+        print(("Final End: %s" % bucket.end))
+        print(("================{}=================".format(bucket.name)))
 
     def _loader_dict(self, buckets, overRidePattern=None, cmd={}):
         self.loader_map = dict()
@@ -250,8 +250,8 @@ class OPD:
         for bucket in buckets:
             process_concurrency = bucket.loadDefn.get("scopes") * bucket.loadDefn.get("collections")
             pattern = overRidePattern or bucket.loadDefn.get("pattern", self.default_pattern)
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     if collection == "_default" and scope == "_default":
@@ -296,10 +296,10 @@ class OPD:
         for task in tasks:
             task.result = True
             unique_str = "{}:{}:{}:".format(task.sdk.bucket, task.sdk.scope, task.sdk.collection)
-            for optype, failures in task.failedMutations.items():
+            for optype, failures in list(task.failedMutations.items()):
                 for failure in failures:
                     if failure is not None:
-                        print("Test Retrying {}: {}{} -> {}".format(optype, unique_str, failure.id(), failure.err().getClass().getSimpleName()))
+                        print(("Test Retrying {}: {}{} -> {}".format(optype, unique_str, failure.id(), failure.err().getClass().getSimpleName())))
                         retry = 5
                         while retry > 0:
                             retry -= 1
@@ -314,7 +314,7 @@ class OPD:
                             except (DocumentNotFoundException, DocumentExistsException) as e:
                                 break
                             except (ServerOutOfMemoryException, TimeoutException, RequestCanceledException, CouchbaseException) as e:
-                                print("{} failed for key: {} - {}. Retrying in 2s".format(optype, failure.id(), e))
+                                print(("{} failed for key: {} - {}. Retrying in 2s".format(optype, failure.id(), e)))
                                 time.sleep(2)
                             if retry == 0:
                                 task.result = False
@@ -345,10 +345,10 @@ class OPD:
             self.loader_map = dict()
             for bucket in self.cluster.buckets:
                 pc = min(bucket.loadDefn.get("scopes") * bucket.loadDefn.get("collections"), 5)
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     if scope == CbServer.system_scope:
                             continue
-                    for collection in bucket.scopes[scope].collections.keys():
+                    for collection in list(bucket.scopes[scope].collections.keys()):
                         if collection == "_default" and scope == "_default":
                             continue
                         for op_type in bucket.loadDefn.get("load_type"):
@@ -392,10 +392,10 @@ class OPD:
             # i = pc
             # while i > 0:
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     if scope == CbServer.system_scope:
                         continue
-                    for collection in bucket.scopes[scope].collections.keys():
+                    for collection in list(bucket.scopes[scope].collections.keys()):
                         if collection == "_default" and scope == "_default":
                             continue
                         for op_type in bucket.loadDefn.get("load_type"):
@@ -442,10 +442,10 @@ class OPD:
         self._loader_dict(buckets, overRidePattern)
         tasks = list()
         for bucket in buckets:
-            for scope in bucket.scopes.keys():
+            for scope in list(bucket.scopes.keys()):
                 if scope == CbServer.system_scope:
                     continue
-                for collection in bucket.scopes[scope].collections.keys():
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     if collection == "_default" and scope == "_default":
@@ -491,13 +491,13 @@ class OPD:
             self.print_crud_stats(bucket)
 
     def PrintStep(self, msg=None):
-        print "\n"
-        print "\t", "#"*60
-        print "\t", "#"
-        print "\t", "#  %s" % msg
-        print "\t", "#"
-        print "\t", "#"*60
-        print "\n"
+        print("\n")
+        print(("\t", "#"*60))
+        print(("\t", "#"))
+        print(("\t", "#  %s" % msg))
+        print(("\t", "#"))
+        print(("\t", "#"*60))
+        print("\n")
 
     def check_cluster_scaling(self, dataplane_id=None, service="kv", state="scaling"):
         self.lock.acquire()
@@ -622,7 +622,7 @@ class OPD:
 
     def check_cluster_state(self):
         def start_check():
-            for dataplane in self.dataplane_objs.values():
+            for dataplane in list(self.dataplane_objs.values()):
                 state = self.get_cluster_balanced_state(dataplane)
                 if not state:
                     self.log.critical("Dataplane State {}: {}".format(
@@ -640,7 +640,7 @@ class OPD:
 
         def check_disk():
             while not self.stop_run:
-                for dataplane in self.dataplane_objs.values():
+                for dataplane in list(self.dataplane_objs.values()):
                     self.refresh_dp_obj(dataplane.id)
                     table = TableView(self.log.info)
                     table.set_headers(["Node",
@@ -678,7 +678,7 @@ class OPD:
         def check_ram():
             while not self.stop_run:
                 try:
-                    for dataplane in self.dataplane_objs.values():
+                    for dataplane in list(self.dataplane_objs.values()):
                         self.rest = BucketHelper(dataplane.master)
                         table = TableView(self.log.info)
                         table.set_headers(["Bucket",
@@ -753,7 +753,7 @@ class OPD:
                                                           ql.query_stats[query][1],
                                                           ql.query_stats[query][0]/ql.query_stats[query][1]])
                         except Exception as e:
-                            print e
+                            print(e)
                         self.table.add_row([
                             str(ql.bucket.name),
                             str(ql.total_query_count),

@@ -257,9 +257,9 @@ class volume(CollectionBase):
         Build secondary indexes that were deferred
         """
         self.log.info("Building indexes")
-        for bucket, bucket_data in indexes_to_build.items():
-            for scope, collection_data in bucket_data.items():
-                for collection, gsi_index_names in collection_data.items():
+        for bucket, bucket_data in list(indexes_to_build.items()):
+            for scope, collection_data in list(bucket_data.items()):
+                for collection, gsi_index_names in list(collection_data.items()):
                     build_query = "BUILD INDEX on `%s`.`%s`.`%s`(`%s`) " \
                                   "USING GSI" \
                                   % (bucket, scope, collection, ",".join(gsi_index_names))
@@ -288,9 +288,9 @@ class volume(CollectionBase):
         couchbase_buckets = [bucket for bucket in self.cluster.buckets if bucket.bucketType == "couchbase"]
         for bucket in couchbase_buckets:
             indexes_to_build[bucket.name] = dict()
-            for _, scope in bucket.scopes.items():
+            for _, scope in list(bucket.scopes.items()):
                 indexes_to_build[bucket.name][scope.name] = dict()
-                for _, collection in scope.collections.items():
+                for _, collection in list(scope.collections.items()):
                     gsi_index_name = "gsi-" + str(count)
                     create_index_query = "CREATE INDEX `%s` " \
                                          "ON `%s`.`%s`.`%s`(`age`)" \
@@ -398,9 +398,9 @@ class volume(CollectionBase):
         fts_indexes = dict()
         for bucket in couchbase_buckets:
             fts_indexes[bucket.name] = dict()
-            for _, scope in bucket.scopes.items():
+            for _, scope in list(bucket.scopes.items()):
                 fts_indexes[bucket.name][scope.name] = dict()
-                for _, collection in scope.collections.items():
+                for _, collection in list(scope.collections.items()):
                     fts_index_name = base_name + str(created_count)
                     fts_param_template = self.get_fts_param_template()
                     status, content = fts_helper.create_fts_index_from_json(
@@ -432,11 +432,11 @@ class volume(CollectionBase):
             get_all_nodes=False))
         indexes_dropped = dict()
         dropped_count = 0
-        for bucket, bucket_data in fts_dict.items():
+        for bucket, bucket_data in list(fts_dict.items()):
             indexes_dropped[bucket] = dict()
-            for scope, collection_data in bucket_data.items():
+            for scope, collection_data in list(bucket_data.items()):
                 indexes_dropped[bucket][scope] = dict()
-                for collection, fts_index_names in collection_data.items():
+                for collection, fts_index_names in list(collection_data.items()):
                     for fts_index_name in fts_index_names:
                         status, content = fts_helper.delete_fts_index(fts_index_name)
                         if status is False:

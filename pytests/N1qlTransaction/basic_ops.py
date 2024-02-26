@@ -81,10 +81,10 @@ class BasicOps(N1qlBase):
             self.bucket_util.get_random_scopes(self.buckets,
                                           2, "all")
         collection = self.bucket_util.get_random_name()
-        for bucket_name, scope_dict in scope_considered.items():
+        for bucket_name, scope_dict in list(scope_considered.items()):
             bucket = self.bucket_util.get_bucket_obj(self.cluster.buckets,
                                                 bucket_name)
-            for scope in scope_dict["scopes"].keys():
+            for scope in list(scope_dict["scopes"].keys()):
                 self.bucket_util.create_collection(self.cluster.master,
                                               bucket,
                                               scope,

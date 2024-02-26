@@ -23,7 +23,7 @@ from custom_exceptions.exception import RebalanceFailedException
 import math
 import subprocess
 from math import ceil
-from Jython_tasks.task_manager import TaskManager as local_tm
+from tasks.task_manager import TaskManager as local_tm
 
 from com.couchbase.test.taskmanager import TaskManager
 from com.couchbase.test.sdk import Server, SDKClient
@@ -170,7 +170,7 @@ class volume(BaseTestCase):
                     self.sleep(0.5)
             self.num_scopes += 1
         for bucket in self.cluster.buckets:
-            for scope in bucket.scopes.keys():
+            for scope in list(bucket.scopes.keys()):
                 if self.num_collections >= 1:
                     self.collection_prefix = self.input.param("collection_prefix",
                                                               "VolumeCollection")
@@ -328,23 +328,24 @@ class volume(BaseTestCase):
             if create_end is not None:
                 self.create_end = create_end
             else:
-                self.create_end = self.end + (self.expire_end - self.expire_start) + (self.delete_end - self.delete_start)
+                self.create_end = self.end + (self.expire_end - self.expire_start) + (
+                            self.delete_end - self.delete_start)
             self.end = self.create_end
 
             self.final_items += (abs(self.create_end - self.create_start)) * self.num_collections * self.num_scopes
 
-        print "Read Start: %s" % self.read_start
-        print "Read End: %s" % self.read_end
-        print "Update Start: %s" % self.update_start
-        print "Update End: %s" % self.update_end
-        print "Delete Start: %s" % self.delete_start
-        print "Delete End: %s" % self.delete_end
-        print "Expiry End: %s" % self.expire_start
-        print "Expiry End: %s" % self.expire_end
-        print "Create Start: %s" % self.create_start
-        print "Create End: %s" % self.create_end
-        print "Final Start: %s" % self.start
-        print "Final End: %s" % self.end
+        print(("Read Start: %s" % self.read_start))
+        print(("Read End: %s" % self.read_end))
+        print(("Update Start: %s" % self.update_start))
+        print(("Update End: %s" % self.update_end))
+        print(("Delete Start: %s" % self.delete_start))
+        print(("Delete End: %s" % self.delete_end))
+        print(("Expiry End: %s" % self.expire_start))
+        print(("Expiry End: %s" % self.expire_end))
+        print(("Create Start: %s" % self.create_start))
+        print(("Create End: %s" % self.create_end))
+        print(("Final Start: %s" % self.start))
+        print(("Final End: %s" % self.end))
 
     def data_load(self, cmd=dict()):
         self.ops_rate = self.input.param("ops_rate", 2000)
@@ -354,8 +355,8 @@ class volume(BaseTestCase):
         self.tm = TaskManager(self.process_concurrency)
         self.loader_map = dict()
         for bucket in self.cluster.buckets:
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if collection == "_default" and scope == "_default":
                         continue
                     ws = WorkLoadSettings(cmd.get("keyPrefix", self.key),
@@ -396,15 +397,15 @@ class volume(BaseTestCase):
         i = self.process_concurrency
         while i > 0:
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
-                    for collection in bucket.scopes[scope].collections.keys():
+                for scope in list(bucket.scopes.keys()):
+                    for collection in list(bucket.scopes[scope].collections.keys()):
                         if collection == "_default" and scope == "_default":
                             continue
                         client = NewSDKClient(master, bucket.name, scope, collection)
                         client.initialiseSDK()
                         self.sleep(1)
                         taskName = "Loader_%s_%s_%s_%s_%s" % (bucket.name, scope, collection, str(i), time.time())
-                        task = WorkLoadGenerate(taskName, self.loader_map[bucket.name+scope+collection],
+                        task = WorkLoadGenerate(taskName, self.loader_map[bucket.name + scope + collection],
                                                 client, self.durability_level,
                                                 self.maxttl, self.time_unit,
                                                 self.track_failures, 0)
@@ -417,15 +418,16 @@ class volume(BaseTestCase):
         self.tm.getAllTaskResult()
         for task in tasks:
             task.result = True
-            for optype, failures in task.failedMutations.items():
+            for optype, failures in list(task.failedMutations.items()):
                 for failure in failures:
-                    print("Test Retrying {}: {} -> {}".format(optype, failure.id(), failure.err().getClass().getSimpleName()))
+                    print(("Test Retrying {}: {} -> {}".format(optype, failure.id(),
+                                                               failure.err().getClass().getSimpleName())))
                     if optype == "create":
                         try:
                             task.docops.insert(failure.id(), failure.document(), task.sdk.connection, task.setOptions);
-#                             task.failedMutations.get(optype).remove(failure)
+                        #                             task.failedMutations.get(optype).remove(failure)
                         except (ServerOutOfMemoryException, TimeoutException) as e:
-                            print("Retry Create failed for key: " + failure.id())
+                            print(("Retry Create failed for key: " + failure.id()))
                             task.result = False
                         except DocumentExistsException as e:
                             pass
@@ -434,7 +436,7 @@ class volume(BaseTestCase):
                             task.docops.upsert(failure.id(), failure.document(), task.sdk.connection, task.upsertOptions);
 #                             task.failedMutations.get(optype).remove(failure)
                         except (ServerOutOfMemoryException, TimeoutException) as e:
-                            print("Retry update failed for key: " + failure.id())
+                            print(("Retry update failed for key: " + failure.id()))
                             task.result = False
                         except DocumentExistsException as e:
                             pass
@@ -443,7 +445,7 @@ class volume(BaseTestCase):
                             task.docops.delete(failure.id(), task.sdk.connection, task.removeOptions);
 #                             task.failedMutations.get(optype).remove(failure)
                         except (ServerOutOfMemoryException, TimeoutException) as e:
-                            print("Retry delete failed for key: " + failure.id())
+                            print(("Retry delete failed for key: " + failure.id()))
                             task.result = False
                         except DocumentNotFoundException as e:
                             pass
@@ -481,8 +483,8 @@ class volume(BaseTestCase):
             self.tm = TaskManager(self.process_concurrency)
             self.loader_map = dict()
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
-                    for collection in bucket.scopes[scope].collections.keys():
+                for scope in list(bucket.scopes.keys()):
+                    for collection in list(bucket.scopes[scope].collections.keys()):
                         if collection == "_default" and scope == "_default":
                             continue
                         for op_type in doc_ops:
@@ -526,8 +528,8 @@ class volume(BaseTestCase):
             i = self.process_concurrency
             while i > 0:
                 for bucket in self.cluster.buckets:
-                    for scope in bucket.scopes.keys():
-                        for collection in bucket.scopes[scope].collections.keys():
+                    for scope in list(bucket.scopes.keys()):
+                        for collection in list(bucket.scopes[scope].collections.keys()):
                             if collection == "_default" and scope == "_default":
                                 continue
                             for op_type in doc_ops:
@@ -536,8 +538,10 @@ class volume(BaseTestCase):
                                 client = NewSDKClient(master, bucket.name, scope, collection)
                                 client.initialiseSDK()
                                 self.sleep(1)
-                                taskName = "Validate_%s_%s_%s_%s_%s_%s" % (bucket.name, scope, collection, op_type, str(i), time.time())
-                                task = WorkLoadGenerate(taskName, self.loader_map[bucket.name+scope+collection+op_type],
+                                taskName = "Validate_%s_%s_%s_%s_%s_%s" % (
+                                bucket.name, scope, collection, op_type, str(i), time.time())
+                                task = WorkLoadGenerate(taskName,
+                                                        self.loader_map[bucket.name + scope + collection + op_type],
                                                         client, "NONE",
                                                         self.maxttl, self.time_unit,
                                                         self.track_failures, 0)
@@ -718,7 +722,7 @@ class volume(BaseTestCase):
             result.update({server.ip: fragmentation_values})
             shell.disconnect()
         res = list()
-        for value in result.values():
+        for value in list(result.values()):
             res.append(max(value))
         if max(res) < float(self.fragmentation)/100:
             self.log.info("magma stats fragmentation result {} \
@@ -798,7 +802,7 @@ class volume(BaseTestCase):
         if not servers:
             servers = self.cluster.nodes_in_cluster
 
-        for _ in xrange(num_kills):
+        for _ in range(num_kills):
             self.sleep(5, "Sleep for 5 seconds between continuous memc kill")
             for server in servers:
                 shell = RemoteMachineShellConnection(server)
@@ -1027,11 +1031,11 @@ class volume(BaseTestCase):
 
     def PrintStep(self, msg=None):
         print("\n")
-        print("#"*60)
+        print(("#" * 60))
         print("#")
-        print("#  %s" % msg)
+        print(("#  %s" % msg))
         print("#")
-        print("#"*60)
+        print(("#" * 60))
         print("\n")
 
     def ClusterOpsVolume(self):
@@ -1591,7 +1595,7 @@ class volume(BaseTestCase):
             total_scopes = self.num_scopes
             drop = 0
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     drop = 0
                     for i in range(1, total_collections, 2):
                         collection = self.collection_prefix + str(i)
@@ -1720,7 +1724,7 @@ class volume(BaseTestCase):
             total_items = self.final_items
             drop = 0
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     drop = 0
                     for i in range(1, total_collections, 2):
                         collection = self.collection_prefix + str(i)
@@ -1755,7 +1759,7 @@ class volume(BaseTestCase):
                 exit(13)
             #######################################################################
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     for i in range(1, total_collections, 2):
                         collection = self.collection_prefix + str(i)
                         self.bucket_util.create_collection(self.cluster.master,
@@ -1952,7 +1956,7 @@ class volume(BaseTestCase):
             total_scopes = self.num_scopes
             drop = 0
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     drop = 0
                     for i in range(1, total_collections, 2):
                         collection = self.collection_prefix + str(i)
@@ -2055,7 +2059,7 @@ class volume(BaseTestCase):
                     exit(17)
             #######################################################################
             for bucket in self.cluster.buckets:
-                for scope in bucket.scopes.keys():
+                for scope in list(bucket.scopes.keys()):
                     for i in range(1, total_collections, 2):
                         collection = self.collection_prefix + str(i)
                         self.bucket_util.create_collection(self.cluster.master,

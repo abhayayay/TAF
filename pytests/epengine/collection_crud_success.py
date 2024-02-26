@@ -10,7 +10,7 @@ from couchbase_helper.durability_helper import DurabilityHelper
 from error_simulation.cb_error import CouchbaseError
 from error_simulation.disk_error import DiskError
 from remote.remote_util import RemoteMachineShellConnection
-
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 
 class CollectionsSuccessTests(CollectionBase):
     def setUp(self):
@@ -65,8 +65,8 @@ class CollectionsSuccessTests(CollectionBase):
         verification_dict["sync_write_aborted_count"] = 0
         verification_dict["sync_write_committed_count"] = 0
 
-        for _, scope in self.bucket.scopes.items():
-            for _, collection in scope.collections.items():
+        for _, scope in list(self.bucket.scopes.items()):
+            for _, collection in list(scope.collections.items()):
                 verification_dict["ops_create"] += collection.num_items
                 if self.durability_level in self.supported_d_levels:
                     verification_dict["sync_write_committed_count"] \
@@ -143,8 +143,8 @@ class CollectionsSuccessTests(CollectionBase):
         """
 
         if self.durability_level in [
-                Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
-                Bucket.DurabilityLevel.PERSIST_TO_MAJORITY]:
+                SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
+                SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY]:
             self.log.critical("Test not valid for persistence durability")
             return
 
@@ -179,7 +179,7 @@ class CollectionsSuccessTests(CollectionBase):
                 in [DiskError.DISK_FULL, DiskError.DISK_FAILURE]:
             error_sim = DiskError(self.log, self.task_manager,
                                   self.cluster.master, target_nodes,
-                                  60, 0, False, 120,
+                                  60, 0, False, 10,
                                   disk_location="/data")
             error_sim.create(action=self.simulate_error)
         else:
@@ -449,8 +449,8 @@ class CollectionsSuccessTests(CollectionBase):
         verification_dict["sync_write_aborted_count"] = 0
         verification_dict["sync_write_committed_count"] = 0
 
-        for _, scope in self.bucket.scopes.items():
-            for _, collection in scope.collections.items():
+        for _, scope in list(self.bucket.scopes.items()):
+            for _, collection in list(scope.collections.items()):
                 verification_dict["ops_create"] += collection.num_items
                 if self.durability_level in self.supported_d_levels:
                     verification_dict["sync_write_committed_count"] \
@@ -556,7 +556,7 @@ class CollectionsSuccessTests(CollectionBase):
             transaction_timeout=self.transaction_timeout,
             commit=self.transaction_commit,
             durability=self.durability_level,
-            sync=True, defer=self.defer,
+            sync=True,
             start_task=False)
 
         if transaction_time == "before_collection_crud":
@@ -601,8 +601,8 @@ class CollectionsSuccessTests(CollectionBase):
         verification_dict["sync_write_aborted_count"] = 0
         verification_dict["sync_write_committed_count"] = 0
 
-        for _, scope in self.bucket.scopes.items():
-            for _, collection in scope.collections.items():
+        for _, scope in list(self.bucket.scopes.items()):
+            for _, collection in list(scope.collections.items()):
                 verification_dict["ops_create"] += collection.num_items
                 if self.durability_level in self.supported_d_levels:
                     verification_dict["sync_write_committed_count"] \
@@ -804,8 +804,8 @@ class CollectionsSuccessTests(CollectionBase):
         """
 
         if self.durability_level.upper() in [
-                Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
-                Bucket.DurabilityLevel.PERSIST_TO_MAJORITY]:
+                SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE,
+                SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY]:
             self.log.critical("Test not valid for persistence durability")
             return
 

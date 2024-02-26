@@ -4,20 +4,10 @@ from random import randint
 from math import floor
 
 from BucketLib.BucketOperations import BucketHelper
-from BucketLib.bucket import Bucket
 from cb_tools.cbstats import Cbstats
 from error_simulation.cb_error import CouchbaseError
-from remote.remote_util import RemoteMachineShellConnection
-
-
-# Required since the str(values) are different for bucket-create
-BucketDurability = dict()
-BucketDurability[Bucket.DurabilityLevel.NONE] = "none"
-BucketDurability[Bucket.DurabilityLevel.MAJORITY] = "majority"
-BucketDurability[Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE] = \
-    "majorityAndPersistActive"
-BucketDurability[Bucket.DurabilityLevel.PERSIST_TO_MAJORITY] = \
-    "persistToMajority"
+from constants.sdk_constants.sdk_client_constants import SDKConstants
+from sdk_exceptions import check_if_exception_exists
 
 
 class DurabilityHelper:
@@ -25,7 +15,7 @@ class DurabilityHelper:
     GREATER_THAN_EQ = '>='
 
     def __init__(self, logger, cluster_len,
-                 durability=Bucket.DurabilityLevel.MAJORITY,
+                 durability=SDKConstants.DurabilityLevel.MAJORITY,
                  replicate_to=0, persist_to=0):
         """
         :param logger:       Logger object to log the errors/warnings
@@ -108,7 +98,7 @@ class DurabilityHelper:
             if (self.cluster_len-failed_nodes) < majority_value:
                 durability_succeeds = False
         else:
-            if (self.durability == Bucket.DurabilityLevel.MAJORITY
+            if (self.durability == SDKConstants.DurabilityLevel.MAJORITY
                     and induced_error in self.disk_error_types):
                 durability_succeeds = True
             elif (self.cluster_len-len(failed_nodes)) < majority_value:
@@ -129,8 +119,8 @@ class DurabilityHelper:
         :return validation_passed: Validation result of doc's exceptions (bool)
         """
         validation_passed = True
-        for key, failed_doc in failed_docs.items():
-            if expected_exception not in str(failed_doc["error"]):
+        for key, failed_doc in list(failed_docs.items()):
+            if not check_if_exception_exists(str(failed_doc["error"]), expected_exception):
                 validation_passed = False
                 self.log.error("Unexpected exception '{0}' for key '{1}'"
                                .format(failed_doc["error"], key))
@@ -154,7 +144,7 @@ class DurabilityHelper:
         :return op_failed: Success status of all CRUDs (bool)
         """
         op_failed = False
-        for key, doc_info in doc_list.items():
+        for key, doc_info in list(doc_list.items()):
             # If doc expiry is not set, use exp=0
             if "exp" not in doc_info:
                 doc_info["exp"] = 0
@@ -254,11 +244,11 @@ class DurabilityHelper:
 
         for vb_num in range(0, vbuckets):
             vb_num = str(vb_num)
-            for op_type in ops_val.keys():
+            for op_type in list(ops_val.keys()):
                 ops_val[op_type] += int(vb_details_stats[vb_num][op_type])
 
         # Verification block
-        for op_type in ops_val.keys():
+        for op_type in list(ops_val.keys()):
             self.log.debug("%s for %s: %s" % (op_type, bucket.name,
                                               ops_val[op_type]))
 
@@ -279,14 +269,14 @@ class DurabilityHelper:
         target_vb_type = "replica"
         simulate_error = CouchbaseError.STOP_MEMCACHED
 
-        if d_level == Bucket.DurabilityLevel.MAJORITY:
+        if d_level == SDKConstants.DurabilityLevel.MAJORITY:
             target_vb_type = "replica"
             simulate_error = CouchbaseError.STOP_MEMCACHED
         elif d_level == \
-                Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
+                SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
             target_vb_type = "active"
             simulate_error = CouchbaseError.STOP_PERSISTENCE
-        elif d_level == Bucket.DurabilityLevel.PERSIST_TO_MAJORITY:
+        elif d_level == SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY:
             target_vb_type = "replica"
             simulate_error = CouchbaseError.STOP_PERSISTENCE
         return target_vb_type, simulate_error

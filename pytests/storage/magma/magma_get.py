@@ -1,4 +1,4 @@
-from magma_basic_crud import BasicCrudTests
+from .magma_basic_crud import BasicCrudTests
 from remote.remote_util import RemoteMachineShellConnection
 
 
@@ -27,7 +27,7 @@ class BasicReadTests(BasicCrudTests):
                 self.retry_exceptions,
                 self.ignore_exceptions,
                 _sync=False)
-            tasks_info.update(update_task_info.items())
+            tasks_info.update(list(update_task_info.items()))
 
         count = 0
         self.doc_ops = "read"
@@ -52,7 +52,7 @@ class BasicReadTests(BasicCrudTests):
                 self.retry_exceptions,
                 self.ignore_exceptions,
                 _sync=False)
-            tasks_info.update(read_task_info.items())
+            tasks_info.update(list(read_task_info.items()))
             count += 1
             if self.next_half and count < self.read_thread_count:
                 read_task_info = self.bucket_util._async_validate_docs(
@@ -62,7 +62,7 @@ class BasicReadTests(BasicCrudTests):
                     timeout_secs=self.sdk_timeout,
                     retry_exceptions=self.retry_exceptions,
                     ignore_exceptions=self.ignore_exceptions)
-                tasks_info.update(read_task_info.items())
+                tasks_info.update(list(read_task_info.items()))
                 count += 1
             self.sleep(1,"Ensures all main read tasks will have unique names")
 

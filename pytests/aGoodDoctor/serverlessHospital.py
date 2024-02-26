@@ -370,7 +370,7 @@ class Murphy(BaseTestCase, OPD):
         for job in jobs["clusterJobs"]:
             if job.get("payload"):
                 if job["payload"].get("tags"):
-                    print job["payload"].get("tags"), job["status"]
+                    print((job["payload"].get("tags"), job["status"]))
                     for details in job["payload"].get("tags"):
                         if details["key"] == operation and\
                             details["value"] == service and\
@@ -560,11 +560,11 @@ class Murphy(BaseTestCase, OPD):
                             "Incorrect number of kv nodes in the cluster - Actual: {}, Expected: {}".format(kv_nodes, kv_nodes+3))
             self.create_required_collections(self.cluster, buckets)
             self.start_initial_load(buckets)
-            for dataplane in self.dataplane_objs.values():
+            for dataplane in list(self.dataplane_objs.values()):
                 prev_gsi_nodes = self.get_num_nodes_in_cluster(dataplane.id,
                                                                service="index")
                 status = self.create_gsi_indexes(buckets)
-                print "GSI Status: {}".format(status)
+                print(("GSI Status: {}".format(status)))
                 self.assertTrue(status, "GSI index creation failed")
                 if prev_gsi_nodes < 10:
                     self.check_gsi_scaling(dataplane, prev_gsi_nodes)
@@ -577,7 +577,7 @@ class Murphy(BaseTestCase, OPD):
                 self.sdk_client_pool.force_close_clients_for_bucket(bucket.name)
                 self.sleep(2, "Closing SDK connection: {}".format(bucket.name))
             except TimeoutException as e:
-                print e
+                print(e)
             except:
                 pass
 
@@ -635,11 +635,11 @@ class Murphy(BaseTestCase, OPD):
             self.assertTrue(int(kv_nodes) >= min((i+1)*3, 11),
                             "Incorrect number of kv nodes in the cluster - Actual: {}, Expected: {}".format(kv_nodes, kv_nodes+3))
             self.create_required_collections(self.cluster, buckets)
-            for dataplane in self.dataplane_objs.values():
+            for dataplane in list(self.dataplane_objs.values()):
                 prev_gsi_nodes = self.get_num_nodes_in_cluster(dataplane.id,
                                                                service="index")
                 status = self.create_gsi_indexes(buckets)
-                print "GSI Status: {}".format(status)
+                print(("GSI Status: {}".format(status)))
                 self.assertTrue(status, "GSI index creation failed")
                 if prev_gsi_nodes < 10:
                     self.check_gsi_scaling(dataplane, prev_gsi_nodes)
@@ -668,7 +668,7 @@ class Murphy(BaseTestCase, OPD):
                 self.sdk_client_pool.force_close_clients_for_bucket(bucket.name)
                 self.sleep(2, "Closing SDK connection: {}".format(bucket.name))
             except TimeoutException as e:
-                print e
+                print(e)
             except:
                 pass
 
@@ -965,7 +965,7 @@ class Murphy(BaseTestCase, OPD):
                                 "Incorrect number of kv nodes in the cluster - Actual: {}, Expected: {}".format(kv_nodes, kv_nodes+3))
             self.create_required_collections(self.cluster, buckets)
             status = self.create_gsi_indexes(buckets)
-            print "GSI Status: {}".format(status)
+            print(("GSI Status: {}".format(status)))
             self.build_gsi_index(buckets)
             self.create_fts_indexes(buckets, wait=True)
             self.start_initial_load(buckets)
@@ -984,7 +984,7 @@ class Murphy(BaseTestCase, OPD):
         buckets = self.cluster.buckets[-1:-6:-1]
         self.create_required_collections(self.cluster, buckets)
         status = self.create_gsi_indexes(buckets)
-        print "GSI Status: {}".format(status)
+        print(("GSI Status: {}".format(status)))
         self.build_gsi_index(buckets)
         self.create_fts_indexes(buckets, wait=True)
         self.start_initial_load(buckets)
@@ -1017,7 +1017,7 @@ class Murphy(BaseTestCase, OPD):
                 self.sdk_client_pool.force_close_clients_for_bucket(bucket.name)
                 self.sleep(2, "Closing SDK connection: {}".format(bucket.name))
             except TimeoutException as e:
-                print e
+                print(e)
             except:
                 pass
             self.serverless_util.delete_database(self.pod, self.tenant,
@@ -1111,11 +1111,11 @@ class Murphy(BaseTestCase, OPD):
             self.assertTrue(int(kv_nodes) >= min((i+1)*3, 11),
                             "Incorrect number of kv nodes in the cluster - Actual: {}, Expected: {}".format(kv_nodes, kv_nodes+3))
             self.create_required_collections(self.cluster, buckets)
-            for dataplane in self.dataplane_objs.values():
+            for dataplane in list(self.dataplane_objs.values()):
                 prev_gsi_nodes = self.get_num_nodes_in_cluster(dataplane.id,
                                                                service="index")
                 status = self.create_gsi_indexes(buckets)
-                print "GSI Status: {}".format(status)
+                print(("GSI Status: {}".format(status)))
                 self.assertTrue(status, "GSI index creation failed")
                 if prev_gsi_nodes < 10:
                     self.check_gsi_scaling(dataplane, prev_gsi_nodes)
@@ -1128,7 +1128,7 @@ class Murphy(BaseTestCase, OPD):
                         self.sdk_client_pool.force_close_clients_for_bucket(bucket.name)
                         self.sleep(2, "Closing SDK connection: {}".format(bucket.name))
                 except TimeoutException as e:
-                    print e
+                    print(e)
                 except:
                     pass
             self.sleep(30)

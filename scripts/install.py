@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import Queue
+import queue
 import logging.config
 import sys
 import threading
@@ -8,8 +8,8 @@ import time
 import traceback
 
 from custom_exceptions.exception import InstallException
-import install_constants
-import install_utils
+from . import install_constants
+from . import install_utils
 
 
 sys.path = [".", "lib", "platform_utils", "scripts"] + sys.path
@@ -82,7 +82,7 @@ def do_install(params):
     for server in params["servers"]:
         node_helper = install_utils.get_node_helper(server.ip)
         install_tasks = params["install_tasks"]
-        queue_obj = Queue.Queue()
+        queue_obj = queue.Queue()
         for task in install_tasks:
             queue_obj.put(task)
         t = threading.Thread(target=node_installer,

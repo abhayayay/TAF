@@ -2,7 +2,7 @@ import json
 
 from Rest_Connection import RestConnection
 from common_lib import sleep
-import urllib
+import urllib.request, urllib.parse, urllib.error
 from Cb_constants import CbServer
 
 class GsiHelper(RestConnection):
@@ -55,7 +55,7 @@ class GsiHelper(RestConnection):
         for index_stats in json_parsed:
             bucket = index_stats["Index"].split(":")[0]
             index_name = index_stats["Index"].split(":")[1]
-            if bucket not in index_storage_stats.keys():
+            if bucket not in list(index_storage_stats.keys()):
                 index_storage_stats[bucket] = {}
             index_storage_stats[bucket][index_name] = index_stats["Stats"]
         return index_storage_stats
@@ -66,7 +66,7 @@ class GsiHelper(RestConnection):
         status, content, header = self._http_request(api, timeout=timeout)
         if status:
             json_parsed = json.loads(content)
-            for key in json_parsed.keys():
+            for key in list(json_parsed.keys()):
                 tokens = key.split(":")
                 val = json_parsed[key]
                 if len(tokens) == 1:
@@ -82,7 +82,7 @@ class GsiHelper(RestConnection):
             content = json.loads(content)
             for val in content["indexes"]:
                 bucket_name = val['bucket'].encode('ascii', 'ignore')
-                if bucket_name not in result.keys():
+                if bucket_name not in list(result.keys()):
                     result[bucket_name] = dict()
                 index_name = val['index'].encode('ascii', 'ignore')
                 result[bucket_name][index_name] = dict()
@@ -109,7 +109,7 @@ class GsiHelper(RestConnection):
             json_parsed = json.loads(content)
             for i_map in json_parsed["indexes"]:
                 bucket_name = i_map['bucket'].encode('ascii', 'ignore')
-                if bucket_name not in index_map.keys():
+                if bucket_name not in list(index_map.keys()):
                     index_map[bucket_name] = {}
                 index_name = i_map['index'].encode('ascii', 'ignore')
                 index_map[bucket_name][index_name] = {}
@@ -207,7 +207,7 @@ class GsiHelper(RestConnection):
         return json.loads(content)
 
     def full_table_scan_gsi_index(self, index_id, body):
-        if "limit" not in body.keys():
+        if "limit" not in list(body.keys()):
             body["limit"] = 900000
         url = 'internal/index/{0}?scanall=true'.format(index_id)
         api = self.indexUrl + url
@@ -226,7 +226,7 @@ class GsiHelper(RestConnection):
         return json.loads(chunkless_content)
 
     def range_scan_gsi_index(self, index_id, body):
-        if "limit" not in body.keys():
+        if "limit" not in list(body.keys()):
             body["limit"] = 300000
         url = 'internal/index/{0}?range=true'.format(index_id)
         api = self.indexUrl + url
@@ -325,7 +325,7 @@ class GsiHelper(RestConnection):
         if status:
             content = json.loads(content)
             result = dict()
-            for key, value in content.items():
+            for key, value in list(content.items()):
                 t_key = key.split(":")
                 if len(t_key) == 3:
                     if t_key[0] not in result:
@@ -356,8 +356,8 @@ class GsiHelper(RestConnection):
         while timer < timeout and index_completed is False:
             index_completed = True
             stats = self.get_index_stats()
-            if bucket_name in stats.keys():
-                for index_name, index_stats in stats[bucket_name].items():
+            if bucket_name in list(stats.keys()):
+                for index_name, index_stats in list(stats[bucket_name].items()):
                     if target_index is not None and index_name != target_index:
                         continue
                     if index_stats["num_docs_queued"] != 0:
@@ -373,7 +373,7 @@ class GsiHelper(RestConnection):
         for x in range(timeout):
             result = self.index_status()
             if bucket.name in result:
-                if result[bucket.name].has_key(index):
+                if index in result[bucket.name]:
                     if result[bucket.name][index]['status'] == 'Ready':
                         return True
             sleep(sleep_time)
@@ -412,7 +412,7 @@ class GsiHelper(RestConnection):
                     indexName = str(key.get('Index'))
                     backStoreStats = key.get('Stats').get('BackStore')
                     mainStoreStats = key.get('Stats').get('MainStore')
-                    for item, itemValue in mainStoreStats.items():
+                    for item, itemValue in list(mainStoreStats.items()):
                         result[indexName + "_" + item] = itemValue
             else:
                 self.log.error("Failure during get_index_stats: %s" % content)
@@ -428,12 +428,12 @@ class GsiHelper(RestConnection):
                 url = "%squery" % self.queryUrl
                 if isIndexerQuery:
                     params = {'statement': query}
-                    params = urllib.urlencode(params)
+                    params = urllib.parse.urlencode(params)
                 else:
                     if is_scan_consistency:
-                        params = urllib.urlencode({'scan_consistency': 'request_plus', 'statement': query})
+                        params = urllib.parse.urlencode({'scan_consistency': 'request_plus', 'statement': query})
                     else:
-                        params = urllib.urlencode({'statement': query})
+                        params = urllib.parse.urlencode({'statement': query})
                 status, content, header = self._http_request(url, 'POST', params,
                                                              headers=self._create_capi_headers(contentType=contentType,
                                                                               connection=connection))

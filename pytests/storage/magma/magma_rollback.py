@@ -11,7 +11,7 @@ import time
 from Cb_constants.CBServer import CbServer
 from cb_tools.cbepctl import Cbepctl
 from cb_tools.cbstats import Cbstats
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from memcached.helper.data_helper import MemcachedClientHelper
 from remote.remote_util import RemoteMachineShellConnection
 from sdk_client3 import SDKClient
@@ -233,7 +233,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                               collection=collection,
                               track_failures=False,
                               iterations=5)
-                task_info.update(temp_task_info.items())
+                task_info.update(list(temp_task_info.items()))
 
             for task in task_info:
                 self.task_manager.get_task_result(task)
@@ -257,7 +257,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                                   collection=collection,
                                   track_failures=False,
                                   iterations=3)
-                task_info.update(temp_task_info.items())
+                task_info.update(list(temp_task_info.items()))
             for task in task_info:
                 self.task_manager.get_task_result(task)
             if i == self.num_rollbacks and self.wipe_history:
@@ -300,7 +300,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                                                    name)
         start = self.num_items
         self.gen_read = copy.deepcopy(self.gen_create)
-        for _ in xrange(1, self.num_rollbacks+1):
+        for _ in range(1, self.num_rollbacks+1):
             # Stopping persistence on NodeA
             mem_client = MemcachedClientHelper.direct_client(
                 self.cluster.nodes_in_cluster[0], self.cluster.buckets[0])
@@ -1391,7 +1391,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                 scope_name, {"name": collection_name})
             self.sleep(2)
 
-        collections = self.buckets[0].scopes[scope_name].collections.keys()
+        collections = list(self.buckets[0].scopes[scope_name].collections.keys())
         self.log.debug("Collections list == {}".format(collections))
 
         tasks_info = dict()
@@ -1405,7 +1405,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                 collection=collection,
                 _sync=False,
                 doc_ops="create")
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         self.num_items -= start_items
         for task in tasks_info:
@@ -1491,7 +1491,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                                                            scope=scope_name,
                                                            collection=collection,
                                                            _sync=False)
-                        tasks_in.update(tem_tasks_in.items())
+                        tasks_in.update(list(tem_tasks_in.items()))
 
                     for task in tasks_in:
                         self.task_manager.get_task_result(task)
@@ -1649,7 +1649,7 @@ class MagmaRollbackTests(MagmaBaseTest):
         #        scope_name, {"name": collection_name})
         #    self.sleep(2)
 
-        collections = self.buckets[0].scopes[scope_name].collections.keys()
+        collections = list(self.buckets[0].scopes[scope_name].collections.keys())
         self.log.debug("Collections list == {}".format(collections))
 
         tasks_info = dict()
@@ -1663,7 +1663,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                 collection=collection,
                 _sync=False,
                 doc_ops="create")
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         self.num_items -= start_items
         for task in tasks_info:
@@ -1754,7 +1754,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                     scope=scope_name,
                     collection=collection,
                     _sync=False)
-                tasks_in.update(tem_tasks_info.items())
+                tasks_in.update(list(tem_tasks_info.items()))
 
             for task in tasks_in:
                 self.task_manager.get_task_result(task)
@@ -1818,7 +1818,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                                                        scope=scope_name,
                                                        collection=collection,
                                                        _sync=False)
-                    tasks_in.update(tem_tasks_info.items())
+                    tasks_in.update(list(tem_tasks_info.items()))
                 for task in tasks_in:
                     self.task_manager.get_task_result(task)
 
@@ -1873,7 +1873,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                     collection=collection,
                     _sync=False,
                     doc_ops="create")
-                tasks_info.update(tem_tasks_info.items())
+                tasks_info.update(list(tem_tasks_info.items()))
 
             for task in tasks_info:
                 self.task_manager.get_task_result(task)
@@ -1939,7 +1939,7 @@ class MagmaRollbackTests(MagmaBaseTest):
         start_items = self.num_items
         scope_name = CbServer.default_scope
 
-        collections = self.buckets[0].scopes[scope_name].collections.keys()
+        collections = list(self.buckets[0].scopes[scope_name].collections.keys())
         self.log.debug("Collections list == {}".format(collections))
 
         tasks_info = dict()
@@ -1953,7 +1953,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                 collection=collection,
                 _sync=False,
                 doc_ops="create")
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         self.num_items -= start_items
         for task in tasks_info:
@@ -2048,7 +2048,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                                   scope=scope_name,
                                   collection=collection,
                                   _sync=False)
-                tasks_in.update(tem_tasks_info.items())
+                tasks_in.update(list(tem_tasks_info.items()))
 
             for task in tasks_in:
                 self.task_manager.get_task_result(task)
@@ -2092,7 +2092,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                                                    scope=scope_name,
                                                    collection=collection,
                                                    _sync=False)
-                tasks_in.update(tem_tasks_info.items())
+                tasks_in.update(list(tem_tasks_info.items()))
 
             self.task.jython_task_manager.get_task_result(rebalance_task)
             self.assertTrue(rebalance_task.result, "Rebalance Failed")
@@ -2147,7 +2147,7 @@ class MagmaRollbackTests(MagmaBaseTest):
                     collection=collection,
                     _sync=False,
                     doc_ops="create")
-                tasks_info.update(tem_tasks_info.items())
+                tasks_info.update(list(tem_tasks_info.items()))
 
             for task in tasks_info:
                 self.task_manager.get_task_result(task)

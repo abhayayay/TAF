@@ -105,7 +105,7 @@ class QueryTests(BaseTestCase):
                 self.n1ql_helper.create_primary_index(
                     using_gsi=self.use_gsi_for_primary,
                     server=self.n1ql_node)
-            except Exception, ex:
+            except Exception as ex:
                 self.log.info(ex)
                 raise ex
         self.log.info("=== QueryTests setUp complete ===")
@@ -140,7 +140,7 @@ class QueryTests(BaseTestCase):
                 return self.generate_docs_array(num_items, start)
             return getattr(self, 'generate_docs_' + self.dataset)(num_items,
                                                                   start)
-        except Exception, ex:
+        except Exception as ex:
             self.log.error(str(ex))
             self.fail("There is no dataset %s, please enter a valid one"
                       % self.dataset)
@@ -206,7 +206,7 @@ class QueryTests(BaseTestCase):
 
     def generate_ops(self, docs_per_day, start=0, method=None):
         gen_docs_map = {}
-        for key in self.ops_dist_map.keys():
+        for key in list(self.ops_dist_map.keys()):
             if self.dataset != "bigdata":
                 gen_docs_map[key] = method(
                     docs_per_day=self.ops_dist_map[key]["end"],
@@ -220,7 +220,7 @@ class QueryTests(BaseTestCase):
 
     def generate_full_docs_list_after_ops(self, gen_docs_map):
         docs = []
-        for key in gen_docs_map.keys():
+        for key in list(gen_docs_map.keys()):
             if key != "delete" and key != "expiry":
                 update = False
                 if key == "update":
@@ -243,10 +243,10 @@ class QueryTests(BaseTestCase):
         for gen_load in gens_load:
             doc_gen = copy.deepcopy(gen_load)
             while doc_gen.has_next():
-                key, val = doc_gen.next()
+                key, val = next(doc_gen)
                 try:
                     val = json.loads(val)
-                    if isinstance(val, dict) and 'mutated' not in val.keys():
+                    if isinstance(val, dict) and 'mutated' not in list(val.keys()):
                         if update:
                             val['mutated'] = 1
                         else:

@@ -1,18 +1,23 @@
 from math import ceil
 from random import sample
 
+import couchbase.exceptions
+
 from Cb_constants import DocLoading, CbServer
 from basetestcase import ClusterSetup
+from cb_tools.cbepctl import Cbepctl
 from collections_helper.collections_spec_constants import \
     MetaConstants, MetaCrudParams
 from couchbase_helper.durability_helper import DurabilityHelper
+from sdk_client3 import SDKClient
 from membase.api.rest_client import RestConnection
 from BucketLib.BucketOperations import BucketHelper
 from BucketLib.bucket import Bucket
 from remote.remote_util import RemoteMachineShellConnection
+from bucket_utils.bucket_ready_functions import CollectionUtils
 from cb_tools.cbstats import Cbstats
+from sdk_client3 import SDKClient
 from sdk_exceptions import SDKException
-from java.lang import Exception as Java_base_exception
 
 
 class CollectionBase(ClusterSetup):
@@ -21,12 +26,23 @@ class CollectionBase(ClusterSetup):
         self.log_setup_status("CollectionBase", "started")
 
         self.key = 'test_collection'.rjust(self.key_size, '0')
+        self.skip_collections_during_data_load = self.input.param("skip_col_dict", None)
         self.simulate_error = self.input.param("simulate_error", None)
         self.doc_ops = self.input.param("doc_ops", None)
         self.spec_name = self.input.param("bucket_spec",
                                           "single_bucket.default")
+        self.key_size = self.input.param("key_size", 8)
+        self.range_scan_timeout = self.input.param("range_scan_timeout",
+                                                      None)
+        self.expect_range_scan_exceptions = self.input.param(
+            "expect_range_scan_exceptions",
+            ["com.couchbase.client.core.error.CouchbaseException: "
+             "The range scan internal partition UUID could not be found on the server "])
         self.data_spec_name = self.input.param("data_spec_name",
                                                "initial_load")
+        self.range_scan_collections = self.input.param("range_scan_collections", None)
+        self.skip_range_scan_collection_mutation = self.input.param(
+            "skip_range_scan_collection_mutation", True)
         self.remove_default_collection = \
             self.input.param("remove_default_collection", False)
 
@@ -43,6 +59,7 @@ class CollectionBase(ClusterSetup):
         self.change_magma_quota = self.input.param("change_magma_quota", False)
         self.crud_batch_size = 100
         self.num_nodes_affected = 1
+        self.range_scan_task = None
         if self.num_replicas > 1:
             self.num_nodes_affected = 2
 
@@ -66,8 +83,7 @@ class CollectionBase(ClusterSetup):
         try:
             self.collection_setup()
             CollectionBase.setup_collection_history_settings(self)
-        except Java_base_exception as exception:
-            self.handle_setup_exception(exception)
+            CollectionBase.setup_indexing_for_dcp_oso_backfill(self)
         except Exception as exception:
             self.handle_setup_exception(exception)
         self.supported_d_levels = \
@@ -75,16 +91,33 @@ class CollectionBase(ClusterSetup):
         self.log_setup_status("CollectionBase", "complete")
 
     def tearDown(self):
+        if self.range_scan_task is not None:
+            self.range_scan_task.stop_task = True
+            self.task.jython_task_manager.get_task_result(self.range_scan_task)
+            result = CollectionUtils.get_range_scan_results(
+                self.range_scan_task.fail_map, self.range_scan_task.expect_range_scan_failure, self.log)
+            self.assertTrue(result, "unexpected failures in range scans")
+
         cbstat_obj = Cbstats(self.cluster.kv_nodes[0])
         for bucket in self.cluster.buckets:
             if bucket.bucketType != Bucket.Type.MEMCACHED:
-                result = cbstat_obj.all_stats(bucket.name)
-                self.log.info("Bucket: %s, Active Resident ratio(DGM): %s%%"
-                              % (bucket.name,
-                                 result["vb_active_perc_mem_resident"]))
-                self.log.info("Bucket: %s, Replica Resident ratio(DGM): %s%%"
-                              % (bucket.name,
-                                 result["vb_replica_perc_mem_resident"]))
+                retry = 0
+                while True:
+                    try:
+                        result = cbstat_obj.all_stats(bucket.name)
+                        self.log.info("Bucket: %s, Active Resident ratio(DGM): %s%%"
+                                      % (bucket.name,
+                                         result["vb_active_perc_mem_resident"]))
+                        self.log.info("Bucket: %s, Replica Resident ratio(DGM): %s%%"
+                                      % (bucket.name,
+                                         result["vb_replica_perc_mem_resident"]))
+                        break
+                    except KeyError as e:
+                        if retry == 5:
+                            raise e
+                        retry += 1
+                        self.sleep(5, "Retrying due to %s" % e)
+
             if not self.skip_collections_cleanup \
                     and bucket.bucketType != Bucket.Type.MEMCACHED:
                 self.bucket_util.remove_scope_collections_for_bucket(
@@ -133,9 +166,12 @@ class CollectionBase(ClusterSetup):
 
         validate_docs = False if self.spec_name in ttl_buckets else True
 
+        CollectionBase.enable_dcp_oso_backfill(self)
         CollectionBase.create_clients_for_sdk_pool(self)
         CollectionBase.load_data_from_spec_file(self, self.data_spec_name,
                                                 validate_docs)
+        if self.range_scan_collections > 0:
+            CollectionBase.range_scan_load_setup(self)
 
     @staticmethod
     def create_sdk_clients(num_threads, master,
@@ -144,8 +180,8 @@ class CollectionBase(ClusterSetup):
         cols_in_bucket = dict()
         for bucket in buckets:
             collections_in_bucket = 0
-            for _, scope in bucket.scopes.items():
-                for _, _ in scope.collections.items():
+            for _, scope in list(bucket.scopes.items()):
+                for _, _ in list(scope.collections.items()):
                     collections_in_bucket += 1
             cols_in_bucket[bucket.name] = collections_in_bucket
 
@@ -178,8 +214,8 @@ class CollectionBase(ClusterSetup):
                 continue
             num_cols = 0
             cols = list()
-            for s_name, scope in bucket.scopes.items():
-                for c_name, col in scope.collections.items():
+            for s_name, scope in list(bucket.scopes.items()):
+                for c_name, col in list(scope.collections.items()):
                     if c_name == CbServer.default_collection:
                         continue
                     cols.append([s_name, c_name])
@@ -206,6 +242,238 @@ class CollectionBase(ClusterSetup):
         CollectionBase.mutate_history_retention_data(
             test_obj, doc_key="test_collections", update_percent=1,
             update_itrs=update_itr)
+    @staticmethod
+    def create_indexes_for_all_collections(test_obj, sdk_client,
+                                           validate_item_count=False):
+        b_util = test_obj.bucket_util
+        test_obj.log.critical("Testing oso_backfill by creating indexes")
+        for bucket in test_obj.cluster.buckets:
+            test_obj.log.info("Creating indexes for collections in bucket {}"
+                              .format(bucket.name))
+            for scope in b_util.get_active_scopes(bucket):
+                for col in b_util.get_active_collections(bucket, scope.name):
+                    query = 'create index `{0}_{1}_{2}_index` on ' \
+                            '`{0}`.`{1}`.`{2}`(`name` include missing) WITH ' \
+                            '{{ "defer_build": true, "num_replica": 1 }};' \
+                        .format(bucket.name, scope.name, col.name)
+                    test_obj.log.debug("Creating index {}".format(query))
+                    sdk_client.cluster.query(query)
+
+            test_obj.log.info("Building deferred indexes")
+            index_names = list()
+            for scope in b_util.get_active_scopes(bucket):
+                for col in b_util.get_active_collections(bucket, scope.name):
+                    i_name = "{0}_{1}_{2}_index"\
+                        .format(bucket.name, scope.name, col.name)
+                    query = "BUILD INDEX on `{0}`.`{1}`.`{2}`" \
+                            "(`{0}_{1}_{2}_index`) USING GSI" \
+                        .format(bucket.name, scope.name, col.name)
+                    try:
+                        sdk_client.cluster.query(query)
+                    except couchbase.exceptions.InternalError as e:
+                        if "Build Already In Progress" in str(e):
+                            pass
+                    index_names.append(i_name)
+
+            test_obj.log.info("Waiting for index build to complete")
+            for i_name in index_names:
+                query = "SELECT state FROM system:indexes WHERE name='{}'" \
+                    .format(i_name)
+                retry = 90
+                while retry > 0:
+                    state = sdk_client.cluster.query(query) \
+                        .rowsAsObject()[0].get("state")
+                    if state == "online":
+                        test_obj.log.debug("Index {} online".format(i_name))
+                        break
+                    test_obj.sleep(30)
+                else:
+                    test_obj.fail("{} - creation timed out".format(i_name))
+
+            if validate_item_count:
+                test_obj.log.info("Validating num_items using created indexes")
+                for scope in b_util.get_active_scopes(bucket):
+                    for col in b_util.get_active_collections(bucket,
+                                                             scope.name):
+                        query = "SELECT count(*) as num_items from " \
+                                "`{0}`.`{1}`.`{2}`" \
+                            .format(bucket.name, scope.name, col.name)
+                        doc_count = sdk_client.cluster.query(query) \
+                            .rowsAsObject()[0].getNumber("num_items")
+                        if doc_count != col.num_items:
+                            test_obj.fail(
+                                "Doc count mismatch. Exp {} != {} actual"
+                                .format(col.num_items, doc_count))
+
+    @staticmethod
+    def enable_dcp_oso_backfill(test_obj):
+        set_oso_config_using = test_obj.input.param("set_oso_config_using",
+                                                    "diag_eval")
+        if test_obj.oso_dcp_backfill is not None:
+            test_obj.cluster_util.update_cluster_nodes_service_list(
+                test_obj.cluster)
+            test_obj.log.critical("Setting oso_dcp_backfill={}"
+                                  .format(test_obj.oso_dcp_backfill))
+            if set_oso_config_using == "cbepctl":
+                for node in test_obj.cluster.kv_nodes:
+                    shell = RemoteMachineShellConnection(node)
+                    cbepctl = Cbepctl(shell)
+                    for bucket in test_obj.cluster.buckets:
+                        test_obj.log.debug(
+                            "{} - Setting oso_dcp_backfill={}"
+                            .format(node.ip, test_obj.oso_dcp_backfill))
+                        cbepctl.set(bucket.name, "dcp_param",
+                                    "dcp_oso_backfill",
+                                    test_obj.oso_dcp_backfill)
+            elif set_oso_config_using == "diag_eval":
+                test_obj.log.info("Setting oso_dcp_backfill={} using diag_eval"
+                                  .format(test_obj.oso_dcp_backfill))
+                master_shell = RemoteMachineShellConnection(
+                    test_obj.cluster.master)
+                master_shell.enable_diag_eval_on_non_local_hosts()
+                master_shell.disconnect()
+                for bucket in test_obj.cluster.buckets:
+                    code = 'ns_bucket:update_bucket_props("%s", ' \
+                           '[{extra_config_string, "dcp_oso_backfill=%s"}])' \
+                           % (bucket.name, test_obj.oso_dcp_backfill)
+                    RestConnection(test_obj.cluster.master).diag_eval(code)
+                for node in test_obj.cluster.kv_nodes:
+                    shell = RemoteMachineShellConnection(node)
+                    shell.restart_couchbase()
+                for node in test_obj.cluster.kv_nodes:
+                    RestConnection(node).is_ns_server_running(300)
+            else:
+                test_obj.fail("Invalid value '{}'" % set_oso_config_using)
+
+        test_obj.assertTrue(
+            test_obj.bucket_util.validate_oso_dcp_backfill_value(
+                test_obj.cluster.kv_nodes, test_obj.cluster.buckets,
+                test_obj.oso_dcp_backfill),
+            "oso_dcp_backfill value mismatch")
+
+    @staticmethod
+    def setup_indexing_for_dcp_oso_backfill(test_obj):
+        if test_obj.input.param("test_oso_backfill", False):
+            sdk_client = SDKClient([test_obj.cluster.master], None)
+            CollectionBase.create_indexes_for_all_collections(
+                test_obj, sdk_client, validate_item_count=True)
+            sdk_client.close()
+
+    @staticmethod
+    def recreate_indexes_on_each_collection(test_obj, iterations):
+        """
+        This code is used by oso_dcp_backfill tests
+        Refer: CBQE-7927
+        """
+        b_util = test_obj.bucket_util
+        sdk_client = SDKClient([test_obj.cluster.master], None)
+        for itr in range(1, iterations+1):
+            test_obj.log.info("Itr::{}. Dropping existing indexes")
+            for bucket in test_obj.cluster.buckets:
+                for scope in b_util.get_active_scopes(bucket):
+                    for col in b_util.get_active_collections(bucket,
+                                                             scope.name):
+                        query = "DROP INDEX `{0}_{1}_{2}_index` " \
+                                "on `{0}`.`{1}`.`{2}` USING GSI" \
+                            .format(bucket.name, scope.name, col.name)
+                        try:
+                            sdk_client.cluster.query(query)
+                        except (IndexFailureException,
+                                IndexNotFoundException) as e:
+                            test_obj.log.warning(e)
+            CollectionBase.create_indexes_for_all_collections(test_obj,
+                                                              sdk_client)
+        sdk_client.close()
+
+    @staticmethod
+    def range_scan_load_setup(test_obj):
+        key_size = 8
+        sdk_list = []
+        include_prefix_scan = True
+        expect_range_scan_failure = True
+        include_range_scan = True
+        timeout = 60
+        expect_exceptions = []
+        range_scan_runs_per_collection = 1
+        if hasattr(test_obj, 'include_prefix_scan'):
+            include_prefix_scan = test_obj.include_prefix_scan
+        if hasattr(test_obj, 'include_range_scan'):
+            include_range_scan = test_obj.include_range_scan
+        if hasattr(test_obj, 'range_scan_timeout') and \
+                test_obj.range_scan_timeout is not None:
+            timeout = test_obj.range_scan_timeout
+        if hasattr(test_obj, 'expect_range_scan_exceptions') and \
+                test_obj.expect_range_scan_exceptions is not None:
+            expect_exceptions = test_obj.expect_range_scan_exceptions
+        if hasattr(test_obj, 'range_scan_runs_per_collection') and \
+                test_obj.range_scan_runs_per_collection is not None:
+            range_scan_runs_per_collection = test_obj.range_scan_runs_per_collection
+        if hasattr(test_obj, 'expect_range_scan_failure') and \
+                test_obj.expect_range_scan_failure is not None:
+            expect_range_scan_failure = test_obj.range_scan_runs_per_collection
+        if test_obj.key_size is not None:
+            key_size = test_obj.key_size
+
+        # selecting random collection to be use for parallel range scan
+        # avoiding selection of system once for the above
+        if test_obj.range_scan_collections > 0:
+            buckets_to_consider = []
+            dict_to_skip = dict()
+            for bucket in test_obj.cluster.buckets:
+                dict_to_skip = {
+                    bucket.name: {
+                        "scopes": {
+                            CbServer.system_scope: {
+                                "collections": {
+                                    CbServer.eventing_collection: {},
+                                    CbServer.query_collection: {},
+                                    CbServer.mobile_collection: {},
+                                    CbServer.regulator_collection: {}
+                                }
+                            }
+                        }
+                    }
+                }
+                if bucket.bucketType != Bucket.Type.EPHEMERAL:
+                    buckets_to_consider.append(bucket)
+            collections_selected_for_range_scan = \
+                test_obj.bucket_util.get_random_collections(
+                    buckets_to_consider, test_obj.range_scan_collections, 1000,
+                    1000, exclude_from=dict_to_skip)
+            collections_created = list()
+
+            # if skip_range_scan_collection_mutation is True in the test
+            # subsequent data load will skip range scan collection
+            # test must also reuse self.skip_collections_during_data_load for
+            # any subsequent data load
+            test_obj.skip_collections_during_data_load = {}
+            for bucket in collections_selected_for_range_scan:
+                for scope in collections_selected_for_range_scan[bucket]['scopes']:
+                    for collection in collections_selected_for_range_scan[
+                        bucket]['scopes'][scope]['collections']:
+                        for t_bucket in test_obj.cluster.buckets:
+                            if t_bucket.name == bucket:
+                                sdk_list.append(SDKClient(
+                                    [test_obj.cluster.master],
+                                    t_bucket, scope, collection))
+                                collections_created.append(collection)
+            if test_obj.skip_range_scan_collection_mutation:
+                test_obj.skip_collections_during_data_load = collections_selected_for_range_scan
+            doc_loading_spec = \
+                test_obj.bucket_util.get_bucket_template_from_package(
+                    test_obj.spec_name)
+            items_per_collection = doc_loading_spec[
+                MetaConstants.NUM_ITEMS_PER_COLLECTION]
+
+            # starting parallel range scans task
+            # teardown is handled in teardown method of this class
+            test_obj.range_scan_task = test_obj.task.async_range_scan(
+                test_obj.cluster, test_obj.task.jython_task_manager,
+                sdk_list, collections_created, items_per_collection,
+                key_size=key_size, include_range_scan=include_range_scan,
+                include_prefix_scan=include_prefix_scan, timeout=timeout,
+                expect_exceptions=expect_exceptions,
+                runs_per_collection=range_scan_runs_per_collection)
 
     @staticmethod
     def get_history_retention_load_spec(test_obj, doc_key="test_collections",
@@ -265,10 +533,10 @@ class CollectionBase(ClusterSetup):
     @staticmethod
     def remove_docs_created_for_dedupe_load(test_obj, spec_load_task):
         # Remove all docs created by dedupe data loader
-        for bucket, scope_dict in spec_load_task.loader_spec.items():
-            for s_name, collection_dict in scope_dict["scopes"].items():
-                for c_name, crud_spec in collection_dict["collections"].items():
-                    for crud_name, crud_info in crud_spec.items():
+        for bucket, scope_dict in list(spec_load_task.loader_spec.items()):
+            for s_name, collection_dict in list(scope_dict["scopes"].items()):
+                for c_name, crud_spec in list(collection_dict["collections"].items()):
+                    for crud_name, crud_info in list(crud_spec.items()):
                         crud_spec[DocLoading.Bucket.DocOps.DELETE] = crud_info
                         crud_info["iterations"] = 1
                         crud_spec.pop(crud_name)
@@ -314,15 +582,15 @@ class CollectionBase(ClusterSetup):
         test_obj.bucket_util.create_buckets_using_json_data(
             test_obj.cluster, buckets_spec)
 
-        if hasattr(test_obj, "initial_version") and \
-                    float(test_obj.initial_version[:3]) < 7.6:
+        if hasattr(test_obj, "upgrade_chain") and \
+                    float(test_obj.upgrade_chain[0][:3]) < 7.6:
             for bucket in test_obj.cluster.buckets:
                 for coll in bucket.scopes[CbServer.system_scope].collections:
                     bucket.scopes[CbServer.system_scope].collections.pop(coll)
                 bucket.scopes.pop(CbServer.system_scope)
 
-        if not (hasattr(test_obj, "initial_version")
-                and int(test_obj.initial_version[0]) < 7):
+        if not (hasattr(test_obj, "upgrade_chain")
+                and int(test_obj.upgrade_chain[0][0]) < 7):
             test_obj.bucket_util.wait_for_collection_creation_to_complete(
                 test_obj.cluster)
 
@@ -331,16 +599,19 @@ class CollectionBase(ClusterSetup):
         test_obj.bucket_util.print_bucket_stats(test_obj.cluster)
 
     @staticmethod
-    def create_clients_for_sdk_pool(test_obj):
+    def create_clients_for_sdk_pool(test_obj, cluster=None):
         # Init sdk_client_pool if not initialized before
         if test_obj.sdk_client_pool is None:
             test_obj.init_sdk_pool_object()
 
+        if not cluster:
+            cluster = test_obj.cluster
+
         test_obj.log.info("Creating required SDK clients for client_pool")
         CollectionBase.create_sdk_clients(
             test_obj.task_manager.number_of_threads,
-            test_obj.cluster.master,
-            test_obj.cluster.buckets,
+            cluster.master,
+            cluster.buckets,
             test_obj.sdk_client_pool,
             test_obj.sdk_compression)
 
@@ -370,8 +641,8 @@ class CollectionBase(ClusterSetup):
 
         # Code to handle collection specific validation during upgrade test
         collection_supported = True
-        if hasattr(test_obj, "initial_version") \
-                and int(test_obj.initial_version[0]) < 7:
+        if hasattr(test_obj, "upgrade_chain") \
+                and int(test_obj.upgrade_chain[0][0]) < 7:
             collection_supported = False
 
         # Verify initial doc load count
@@ -396,11 +667,10 @@ class CollectionBase(ClusterSetup):
         if CbServer.cluster_profile == "serverless":
             bucket_spec[Bucket.ramQuotaMB] = 256
             bucket_spec[Bucket.replicaNumber] = Bucket.ReplicaNum.TWO
-            bucket_storage = Bucket.StorageBackend.magma
             bucket_spec[Bucket.evictionPolicy] = \
                 Bucket.EvictionPolicy.FULL_EVICTION
 
-        for key, val in test_obj.input.test_params.items():
+        for key, val in list(test_obj.input.test_params.items()):
             if key == "replicas":
                 bucket_spec[Bucket.replicaNumber] = test_obj.num_replicas
             elif key == "bucket_size":
@@ -446,7 +716,7 @@ class CollectionBase(ClusterSetup):
 
     @staticmethod
     def over_ride_doc_loading_template_params(test_obj, target_spec):
-        for key, value in test_obj.input.test_params.items():
+        for key, value in list(test_obj.input.test_params.items()):
             if key == "durability":
                 target_spec[MetaCrudParams.DURABILITY_LEVEL] = \
                     test_obj.durability_level
@@ -459,6 +729,9 @@ class CollectionBase(ClusterSetup):
                 target_spec["doc_crud"][
                     MetaCrudParams.DocCrud.RANDOMIZE_VALUE] \
                     = test_obj.randomize_value
+        if test_obj.key_size is not None:
+            target_spec["doc_crud"][MetaCrudParams.DocCrud.DOC_KEY_SIZE] \
+                = test_obj.key_size
 
     def load_data_for_sub_doc_ops(self, verification_dict=None):
         new_data_load_template = \
@@ -488,13 +761,13 @@ class CollectionBase(ClusterSetup):
     def update_verification_dict_from_collection_task(self,
                                                       verification_dict,
                                                       doc_loading_task):
-        for bucket, s_dict in doc_loading_task.loader_spec.items():
-            for s_name, c_dict in s_dict["scopes"].items():
-                for c_name, _ in c_dict["collections"].items():
+        for bucket, s_dict in list(doc_loading_task.loader_spec.items()):
+            for s_name, c_dict in list(s_dict["scopes"].items()):
+                for c_name, _ in list(c_dict["collections"].items()):
                     c_crud_data = doc_loading_task.loader_spec[
                         bucket]["scopes"][
                         s_name]["collections"][c_name]
-                    for op_type in c_crud_data.keys():
+                    for op_type in list(c_crud_data.keys()):
                         total_mutation = \
                             c_crud_data[op_type]["doc_gen"].end \
                             - c_crud_data[op_type]["doc_gen"].start
@@ -511,15 +784,15 @@ class CollectionBase(ClusterSetup):
 
     def validate_cruds_from_collection_mutation(self, doc_loading_task):
         # Read all the values to validate the CRUDs
-        for bucket, s_dict in doc_loading_task.loader_spec.items():
+        for bucket, s_dict in list(doc_loading_task.loader_spec.items()):
             client = self.sdk_client_pool.get_client_for_bucket(bucket)
-            for s_name, c_dict in s_dict["scopes"].items():
-                for c_name, _ in c_dict["collections"].items():
+            for s_name, c_dict in list(s_dict["scopes"].items()):
+                for c_name, _ in list(c_dict["collections"].items()):
                     c_crud_data = doc_loading_task.loader_spec[
                         bucket]["scopes"][
                         s_name]["collections"][c_name]
                     client.select_collection(s_name, c_name)
-                    for op_type in c_crud_data.keys():
+                    for op_type in list(c_crud_data.keys()):
                         doc_gen = c_crud_data[op_type]["doc_gen"]
                         is_sub_doc = False
                         if op_type in DocLoading.Bucket.SUB_DOC_OPS:

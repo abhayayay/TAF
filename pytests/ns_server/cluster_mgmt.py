@@ -1,12 +1,12 @@
-from BucketLib.bucket import Bucket
-from Jython_tasks.task import ConcurrentFailoverTask
+
+from tasks.task import ConcurrentFailoverTask
 from bucket_collections.collections_base import CollectionBase
 from cb_tools.cb_cli import CbCli
 from collections_helper.collections_spec_constants import MetaCrudParams
 from error_simulation.cb_error import CouchbaseError
 from membase.api.rest_client import RestConnection
 from remote.remote_util import RemoteMachineShellConnection
-
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 
 class ClusterManagement(CollectionBase):
     def setUp(self):
@@ -44,7 +44,7 @@ class ClusterManagement(CollectionBase):
 
             # Doc_loading task options
             MetaCrudParams.DOC_TTL: 0,
-            MetaCrudParams.DURABILITY_LEVEL: Bucket.DurabilityLevel.MAJORITY,
+            MetaCrudParams.DURABILITY_LEVEL: SDKConstants.DurabilityLevel.MAJORITY,
             MetaCrudParams.SDK_TIMEOUT: 60,
             MetaCrudParams.SDK_TIMEOUT_UNIT: "seconds",
             MetaCrudParams.TARGET_VBUCKETS: "all",

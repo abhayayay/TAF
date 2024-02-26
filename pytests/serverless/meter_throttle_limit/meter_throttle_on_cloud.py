@@ -48,8 +48,8 @@ class MeteringOnCloud(TenantMgmtOnCloud):
             self.buckets = self.cluster.buckets
 
         for bucket in self.buckets:
-            for scope in bucket.scopes.keys():
-                for collection in bucket.scopes[scope].collections.keys():
+            for scope in list(bucket.scopes.keys()):
+                for collection in list(bucket.scopes[scope].collections.keys()):
                     if scope == CbServer.system_scope:
                         continue
                     work_load_settings = DocLoaderUtils.get_workload_settings(
@@ -209,7 +209,7 @@ class MeteringOnCloud(TenantMgmtOnCloud):
         self.db_name = "%s-testmetering" % self.db_name
         # validate initial throughput is 5000/3 = 1666
         for bucket in self.cluster.buckets:
-            print(bucket.servers)
+            print((bucket.servers))
             self.assertEqual(self.bucket_util.get_throttle_limit(bucket),
                              self.bucket_throttling_limit)
 

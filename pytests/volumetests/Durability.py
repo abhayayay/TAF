@@ -146,7 +146,7 @@ class volume(BaseTestCase):
                                                             process_concurrency = self.process_concurrency,
                                                             retries=self.sdk_retries)
 
-            for task, task_info in tasks_info.items():
+            for task, task_info in list(tasks_info.items()):
                 self.task_manager.get_task_result(task)
         self.sleep(10)
 
@@ -164,7 +164,7 @@ class volume(BaseTestCase):
 
     def doc_loader_txn(self, op_type, kv_gen):
         if op_type == "update":
-            print("Value of Mutated is", self.mutate)
+            print(("Value of Mutated is", self.mutate))
             self.sleep(5)
         process_concurrency = self.process_concurrency
         # if op_type == "update":
@@ -202,13 +202,13 @@ class volume(BaseTestCase):
         tasks_info = dict()
         if "update" in self.doc_ops and self.gen_update_users is not None:
             task_info = self.doc_loader("update", self.gen_update_users)
-            tasks_info.update(task_info.items())
+            tasks_info.update(list(task_info.items()))
         if "create" in self.doc_ops and self.gen_create_users is not None:
             task_info = self.doc_loader("create", self.gen_create_users)
-            tasks_info.update(task_info.items())
+            tasks_info.update(list(task_info.items()))
         if "delete" in self.doc_ops and self.gen_delete_users is not None:
             task_info = self.doc_loader("delete", self.gen_delete_users)
-            tasks_info.update(task_info.items())
+            tasks_info.update(list(task_info.items()))
         return tasks_info
 
     def doc_loader(self, op_type, kv_gen):
@@ -283,7 +283,7 @@ class volume(BaseTestCase):
 
     def rebalance_validation(self, tasks_info, rebalance_task):
         if not rebalance_task.result:
-            for task, _ in tasks_info.items():
+            for task, _ in list(tasks_info.items()):
                 self.task.jython_task_manager.get_task_result(task)
             self.fail("Rebalance Failed")
 
@@ -297,7 +297,7 @@ class volume(BaseTestCase):
 
             self.sleep(10)
 
-            for task, task_info in tasks_info.items():
+            for task, task_info in list(tasks_info.items()):
                 self.assertFalse(
                     task_info["ops_failed"],
                     "Doc ops failed for task: {}".format(task.thread_name))

@@ -396,7 +396,7 @@ class EventingSanity(EventingBaseTest):
                     timeout_secs=self.sdk_timeout)
                 self.task.jython_task_manager.get_task_result(task)
                 verification_dict["ops_create"] += crud_batch_size
-                if len(task.fail.keys()) != 0:
+                if len(list(task.fail.keys())) != 0:
                     self.log_failure("Some failures seen during doc_ops")
                 self.verify_eventing_results(self.function_name,
                                              verification_dict["ops_create"],
@@ -411,7 +411,7 @@ class EventingSanity(EventingBaseTest):
                     timeout_secs=self.sdk_timeout)
                 self.task.jython_task_manager.get_task_result(task)
                 verification_dict["ops_update"] += crud_batch_size
-                if len(task.fail.keys()) != 0:
+                if len(list(task.fail.keys())) != 0:
                     self.log_failure("Some failures seen during doc_ops")
                 self.verify_eventing_results(self.function_name,
                                              verification_dict["ops_update"],
@@ -579,7 +579,7 @@ class EventingSanity(EventingBaseTest):
                     durability=self.durability_level,
                     timeout_secs=self.sdk_timeout)
                 self.task.jython_task_manager.get_task_result(task)
-                if len(task.fail.keys()) != 0:
+                if len(list(task.fail.keys())) != 0:
                     self.log_failure("Some failures seen during doc_ops")
                 verification_dict["ops_create"] += crud_batch_size
                 self.validate_indexed_doc_count(self.index_name, verification_dict["ops_create"])
@@ -592,7 +592,7 @@ class EventingSanity(EventingBaseTest):
                     durability=self.durability_level,
                     timeout_secs=self.sdk_timeout)
                 self.task.jython_task_manager.get_task_result(task)
-                if len(task.fail.keys()) != 0:
+                if len(list(task.fail.keys())) != 0:
                     self.log_failure("Some failures seen during doc_ops")
                 verification_dict["ops_update"] += crud_batch_size
                 self.validate_indexed_doc_count(self.index_name , verification_dict["ops_create"])
@@ -643,6 +643,6 @@ class EventingSanity(EventingBaseTest):
 
     def validate_indexed_doc_count(self, index, expected_index_item_count):
         actual_item_count = self.rest.get_fts_index_doc_count(index)
-        print("actual_item_count : {0} expected_index_item_count : {1}".format(actual_item_count, expected_index_item_count))
+        print(("actual_item_count : {0} expected_index_item_count : {1}".format(actual_item_count, expected_index_item_count)))
         if expected_index_item_count != actual_item_count:
             raise Exception("data mismatch in fts index")

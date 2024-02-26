@@ -30,7 +30,7 @@ def run(command, session):
         fu2.close()
         _ssh_client.disconnect()
     except JSchException as e:
-        print("JSch exception on %s: %s" % (server, str(e)))
+        print(("JSch exception on %s: %s" % (server, str(e))))
     return output, error
 
 
@@ -72,7 +72,7 @@ def scan_all_slaves():
                   ]
     count = 1
     for server in all_slaves:
-        print("--+--+--+--+-- %s. CHECKING ON SLAVE: %s --+--+--+--+--" % (count, server))
+        print(("--+--+--+--+-- %s. CHECKING ON SLAVE: %s --+--+--+--+--" % (count, server)))
         count += 1
         session = connection(server)
         if session is None:
@@ -91,10 +91,10 @@ def scan_all_slaves():
                     log_files, _ = run("zipinfo -1 {}".format(cbcollect_zips), session)
                     for file in log_files:
                         if file.rstrip().endswith("dmp"):
-                            print "#######################"
-                            print "checking: %s" % cbcollect_zips.rstrip()
-                            print "#######################"
-                            print file.rstrip()
+                            print("#######################")
+                            print(("checking: %s" % cbcollect_zips.rstrip()))
+                            print("#######################")
+                            print((file.rstrip()))
                             flag = False
                             break
                     run("rm -rf /root/cbcollect*", session)[0]
@@ -103,10 +103,10 @@ def scan_all_slaves():
                     o, _ = run("grep 'CRITICAL\| ERROR ' {} | grep -v {}".format(memcached, exclude), session)
                     if o:
                         if flag:
-                            print "#######################"
-                            print "checking: %s" % cbcollect_zips.rstrip()
-                            print "#######################"
-                        print "".join(o)
+                            print("#######################")
+                            print(("checking: %s" % cbcollect_zips.rstrip()))
+                            print("#######################")
+                        print(("".join(o)))
             except:
                 pass
         session.disconnect()
@@ -138,8 +138,8 @@ def check_coredump_exist(server):
         gdbOut = " ".join(gdbOut)
         return gdbOut
 
-    print(server + " : SSH Successful")
-    print(server + " : Looking for crash dump files")
+    print((server + " : SSH Successful"))
+    print((server + " : Looking for crash dump files"))
     crashDir = libCb + "crash/"
     dmpFiles = run("ls -lt " + crashDir, session)[0]
     dmpFiles = [f for f in dmpFiles if ".core" not in f]
@@ -147,16 +147,16 @@ def check_coredump_exist(server):
     dmpFiles = [f.split()[-1] for f in dmpFiles if ".core" not in f]
     dmpFiles = [f.strip("\n") for f in dmpFiles]
     if dmpFiles:
-        print(run("cat /opt/couchbase/VERSION.txt", session)[0])
+        print((run("cat /opt/couchbase/VERSION.txt", session)[0]))
         msg = "Node %s - Core dump seen: %s" % (server, str(len(dmpFiles)))
         dmpmsg += msg + "\n"
         print(msg)
-        print(server + " : Stack Trace of first crash: " + dmpFiles[-1])
-        print(get_gdb(crashDir, dmpFiles[-1]))
+        print((server + " : Stack Trace of first crash: " + dmpFiles[-1]))
+        print((get_gdb(crashDir, dmpFiles[-1])))
     else:
-        print(server + " : No crash files found")
+        print((server + " : No crash files found"))
 
-    print(server + " : Looking for CRITICAL messages in log")
+    print((server + " : Looking for CRITICAL messages in log"))
     logsDir = libCb + "logs/"
     logFiles = run("ls " + logsDir + "memcached.log.*", session)[0]
     for logFile in logFiles:
@@ -164,8 +164,8 @@ def check_coredump_exist(server):
         index = findIndexOf(criticalMessages, "Fatal error encountered during exception handling")
         criticalMessages = criticalMessages[:index]
         if (criticalMessages):
-            print(server + " : Found message in " + logFile.strip("\n"))
-            print("".join(criticalMessages))
+            print((server + " : Found message in " + logFile.strip("\n")))
+            print(("".join(criticalMessages)))
             break
 
     session.disconnect()
@@ -184,8 +184,8 @@ def scan_all_servers():
 
     count = 1
     for server in result.rowsAsObject():
-        print("--+--+--+--+-- %s. CHECKING ON SERVER: %s --+--+--+--+--"
-              % (count, server.get("id")))
+        print(("--+--+--+--+-- %s. CHECKING ON SERVER: %s --+--+--+--+--"
+              % (count, server.get("id"))))
         count += 1
         check_coredump_exist(server.get("id"))
 
@@ -196,4 +196,4 @@ if __name__ == "__main__":
 
     if failed:
         for server in failed:
-            print("ssh failed: %s" % server)
+            print(("ssh failed: %s" % server))

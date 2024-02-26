@@ -60,7 +60,7 @@ class CreateDeleteViewTests(ClusterSetup):
             self.log.info("Processing Create DDoc Operation On Bucket {0}".format(bucket))
             # if there are ddocs already, add to that else start with an empty map
             ddoc_view_map = self.bucket_ddoc_map.pop(bucket, {})
-            for ddoc_count in xrange(num_ddocs):
+            for ddoc_count in range(num_ddocs):
                 design_doc_name = prefix_ddoc + str(ddoc_count)
                 view_list = []
                 # Add views if flag is true
@@ -80,12 +80,12 @@ class CreateDeleteViewTests(ClusterSetup):
             ddoc_view_map = self.bucket_ddoc_map[bucket]
             ddoc_map_loop_cnt = 0
             # iterate for all the ddocs
-            for ddoc_name, view_list in ddoc_view_map.items():
+            for ddoc_name, view_list in list(ddoc_view_map.items()):
                 if ddoc_map_loop_cnt < num_ddocs:
                     # Update views if flag is true
                     if test_with_view:
                         # iterate and update all the views as per num_views_per_ddoc
-                        for view_count in xrange(num_views_per_ddoc):
+                        for view_count in range(num_views_per_ddoc):
                             # create new View object to be updated
                             updated_view = View(view_list[start_pos_for_mutation + view_count].name,
                                                 self.updated_map_func, None, False)
@@ -102,11 +102,11 @@ class CreateDeleteViewTests(ClusterSetup):
             ddoc_view_map = self.bucket_ddoc_map[bucket]
             ddoc_map_loop_cnt = 0
             # iterate for all the ddocs
-            for ddoc_name, view_list in ddoc_view_map.items():
+            for ddoc_name, view_list in list(ddoc_view_map.items()):
                 if ddoc_map_loop_cnt < num_ddocs:
                     # Update views if flag is true
                     if test_with_view:
-                        for view_count in xrange(num_views_per_ddoc):
+                        for view_count in range(num_views_per_ddoc):
                             # iterate and update all the views as per num_views_per_ddoc
                             self.bucket_util.delete_view(self.cluster.master, ddoc_name,
                                                      view_list[start_pos_for_mutation + view_count], bucket,
@@ -134,8 +134,8 @@ class CreateDeleteViewTests(ClusterSetup):
         self.log.info("DDoc Validation Started")
         rest = RestConnection(self.cluster.master)
         #Iterate over all the DDocs/Views stored in the internal dictionary
-        for bucket, self.ddoc_view_map in self.bucket_ddoc_map.items():
-            for ddoc_name, view_list in self.ddoc_view_map.items():
+        for bucket, self.ddoc_view_map in list(self.bucket_ddoc_map.items()):
+            for ddoc_name, view_list in list(self.ddoc_view_map.items()):
                 try:
                     #fetch the DDoc information from the database
                     ddoc_json, header = rest.get_ddoc(bucket, ddoc_name)
@@ -157,10 +157,10 @@ class CreateDeleteViewTests(ClusterSetup):
         """
         rest = RestConnection(self.cluster.master)
         query = {"stale" : "false", "full_set" : "true", "connection_timeout" : 60000}
-        for bucket, self.ddoc_view_map in self.bucket_ddoc_map.items():
-            num_items = sum([len(kv_store) for kv_store in bucket.kvs.values()])
+        for bucket, self.ddoc_view_map in list(self.bucket_ddoc_map.items()):
+            num_items = sum([len(kv_store) for kv_store in list(bucket.kvs.values())])
             self.log.info("DDoc Data Validation Started on bucket {0}. Expected Data Items {1}".format(bucket, num_items))
-            for ddoc_name, view_list in self.ddoc_view_map.items():
+            for ddoc_name, view_list in list(self.ddoc_view_map.items()):
                 for view in view_list:
                     result = self.bucket_util.query_view(self.cluster.master, ddoc_name, view.name, query, num_items, bucket)
                     if not result:
@@ -169,7 +169,7 @@ class CreateDeleteViewTests(ClusterSetup):
 
     def test_view_ops(self):
         tasks = []
-        age = range(5)
+        age = list(range(5))
         first = ['james', 'sharon']
         template = '{{ "mutated" : 0, "age": {0}, "first_name": "{1}" }}'
         gen_load = DocumentGenerator('test_docs', template, age, first,

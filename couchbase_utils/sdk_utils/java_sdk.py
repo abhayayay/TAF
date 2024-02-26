@@ -1,6 +1,6 @@
-from com.couchbase.client.core.msg.kv import DurabilityLevel
 from com.couchbase.client.core.retry import \
     BestEffortRetryStrategy, FailFastRetryStrategy
+from com.couchbase.client.core.msg.kv import DurabilityLevel as KVDurabilityLevel
 
 from com.couchbase.client.java.kv import \
     GetAllReplicasOptions, \
@@ -12,13 +12,12 @@ from com.couchbase.client.java.kv import \
     ReplaceOptions, \
     ReplicateTo, \
     TouchOptions, \
-    UpsertOptions
+    UpsertOptions, \
+    ScanOptions
 
 from java.time import Duration
 from java.time.temporal import ChronoUnit
-
-from BucketLib.bucket import Bucket
-from constants.sdk_constants.java_client import SDKConstants
+from constants.sdk_constants.sdk_client_constants import SDKConstants
 
 
 class SDKOptions(object):
@@ -59,17 +58,17 @@ class SDKOptions(object):
     @staticmethod
     def get_durability_level(durability_level):
         durability_level = durability_level.upper()
-        if durability_level == Bucket.DurabilityLevel.MAJORITY:
-            return DurabilityLevel.MAJORITY
+        if durability_level == SDKConstants.DurabilityLevel.MAJORITY:
+            return KVDurabilityLevel.MAJORITY
 
         if durability_level == \
-                Bucket.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
-            return DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE
+                SDKConstants.DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE:
+            return KVDurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE
 
-        if durability_level == Bucket.DurabilityLevel.PERSIST_TO_MAJORITY:
-            return DurabilityLevel.PERSIST_TO_MAJORITY
+        if durability_level == SDKConstants.DurabilityLevel.PERSIST_TO_MAJORITY:
+            return KVDurabilityLevel.PERSIST_TO_MAJORITY
 
-        return DurabilityLevel.NONE
+        return KVDurabilityLevel.NONE
 
     @staticmethod
     def set_options(options, cas=0,
@@ -130,6 +129,13 @@ class SDKOptions(object):
             options = options.storeSemantics(store_semantics)
         return options
 
+    @staticmethod
+    def get_scan_options(timeout=5,
+                         time_unit=SDKConstants.TimeUnit.SECONDS):
+        return SDKOptions.set_options(
+            ScanOptions.scanOptions(),
+            timeout=timeout, timeunit=time_unit)
+
     # Document operations' getOptions APIs
     @staticmethod
     def get_insert_options(exp=0, exp_unit=SDKConstants.TimeUnit.SECONDS,
@@ -145,10 +151,13 @@ class SDKOptions(object):
 
     @staticmethod
     def get_read_options(timeout, time_unit=SDKConstants.TimeUnit.SECONDS,
-                         sdk_retry_strategy=None):
-        return SDKOptions.set_options(GetOptions.getOptions(),
-                                      timeout=timeout, timeunit=time_unit,
-                                      retry_strategy=sdk_retry_strategy)
+                         sdk_retry_strategy=None, with_expiry=None):
+        options = SDKOptions.set_options(GetOptions.getOptions(),
+                                         timeout=timeout, timeunit=time_unit,
+                                         retry_strategy=sdk_retry_strategy)
+        if with_expiry is not None:
+            options = options.withExpiry(with_expiry)
+        return options
 
     @staticmethod
     def get_upsert_options(exp=0, exp_unit=SDKConstants.TimeUnit.SECONDS,

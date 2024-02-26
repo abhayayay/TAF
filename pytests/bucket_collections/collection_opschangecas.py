@@ -42,10 +42,10 @@ class OpsChangeCasTests(CollectionBase):
         client = self.sdk_client_pool.get_client_for_bucket(
             bucket, scope, collection)
         while generator.has_next():
-            key, value = generator.next()
+            key, value = next(generator)
             vb_of_key = self.bucket_util.get_vbucket_num_for_key(key)
             active_node_ip = None
-            for node_ip in self.shell_conn.keys():
+            for node_ip in list(self.shell_conn.keys()):
                 if vb_of_key in self.vb_details[node_ip]["active"]:
                     active_node_ip = node_ip
                     break
@@ -215,11 +215,11 @@ class OpsChangeCasTests(CollectionBase):
 
         collections = BucketUtils.get_random_collections(
                                     self.cluster.buckets, 2, 2, 1)
-        for bucket_name, scope_dict in collections.iteritems():
+        for bucket_name, scope_dict in list(collections.items()):
             bucket = self.bucket_util.get_bucket_obj(self.cluster.buckets,
                                                      bucket_name)
-            for scope_name, collection_dict in scope_dict["scopes"].items():
-                for c_name, c_data in collection_dict["collections"].items():
+            for scope_name, collection_dict in list(scope_dict["scopes"].items()):
+                for c_name, c_data in list(collection_dict["collections"].items()):
                     threads = list()
                     if self.doc_ops is not None:
                         if DocLoading.Bucket.DocOps.UPDATE in self.doc_ops:
@@ -281,14 +281,14 @@ class OpsChangeCasTests(CollectionBase):
         client = self.sdk_client_pool.get_client_for_bucket(self.bucket)
         collections = BucketUtils.get_random_collections([self.bucket],
                                                          2, 2, 1)
-        for bucket_name, scope_dict in collections.iteritems():
-            for scope_name, collection_dict in scope_dict["scopes"].items():
-                for c_name, c_data in collection_dict["collections"].items():
+        for bucket_name, scope_dict in list(collections.items()):
+            for scope_name, collection_dict in list(scope_dict["scopes"].items()):
+                for c_name, c_data in list(collection_dict["collections"].items()):
                     self.log.info("CAS test on collection %s: %s"
                                   % (scope_name, c_name))
                     client.select_collection(scope_name, c_name)
                     while load_gen.has_next():
-                        key, _ = load_gen.next()
+                        key, _ = next(load_gen)
                         result = client.crud(DocLoading.Bucket.DocOps.TOUCH,
                                              key,
                                              durability=self.durability_level,
@@ -351,16 +351,16 @@ class OpsChangeCasTests(CollectionBase):
 
         self.key = "test_key_not_exists"
         load_gen = doc_generator(self.key, 0, 1, doc_size=256)
-        key, val = load_gen.next()
+        key, val = next(load_gen)
 
         collections = BucketUtils.get_random_collections([self.bucket],
                                                          2, 2, 1)
         threads = list()
-        for bucket_name, scope_dict in collections.iteritems():
+        for bucket_name, scope_dict in list(collections.items()):
             bucket_obj = self.bucket_util.get_bucket_obj(
                 self.cluster.buckets, bucket_name)
-            for scope_name, collection_dict in scope_dict["scopes"].items():
-                for c_name, c_data in collection_dict["collections"].items():
+            for scope_name, collection_dict in list(scope_dict["scopes"].items()):
+                for c_name, c_data in list(collection_dict["collections"].items()):
                     thread = Thread(target=run_test,
                                     args=[bucket_obj, scope_name, c_name])
                     thread.start()

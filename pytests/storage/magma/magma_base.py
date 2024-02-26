@@ -86,7 +86,7 @@ class MagmaBaseTest(StorageBase):
                 if self.check_bloom_filters:
                     self.totalBloomFilterMemUsed = self.get_magma_params(self.buckets[0], self.cluster.nodes_in_cluster)
                     self.memoryQuota = self.get_magma_params(self.buckets[0], self.cluster.nodes_in_cluster, param="MemoryQuota")
-                    self.memory_quota = max([max(val) for val in self.memoryQuota.values()])
+                    self.memory_quota = max([max(val) for val in list(self.memoryQuota.values())])
                     self.log.info("magma_memory_quota :: {}".format(self.memory_quota))
             self.dgm_prcnt = self.get_bucket_dgm(self.buckets[0])
             self.log.info("DGM percentage after init loading is {}".format(self.dgm_prcnt))
@@ -310,7 +310,7 @@ class MagmaBaseTest(StorageBase):
                     stats.append(_res)
                 result.update({server.ip: fragmentation_values})
             res = list()
-            for value in result.values():
+            for value in list(result.values()):
                 res.append(max(value))
             self.log.info("frag_factor is {}".format(frag_factor))
             if (max(res)) <= frag_factor * (float(self.fragmentation)/100):
@@ -365,12 +365,12 @@ class MagmaBaseTest(StorageBase):
             self.iteration += 1
             self.log.info("Stats iteration {}".format(self.iteration))
             self.totalBloomFilterMemUsed = self.get_magma_params(self.buckets[0], self.cluster.nodes_in_cluster)
-            max_bloom_mem_used = max([max(val) for val in self.totalBloomFilterMemUsed.values()])
+            max_bloom_mem_used = max([max(val) for val in list(self.totalBloomFilterMemUsed.values())])
             self.log.info("max_bloom_mem_used ::{}".format(max_bloom_mem_used))
             time_end = time.time() + 20
             while max_bloom_mem_used > self.memory_quota and time.time() < time_end:
                 self.totalBloomFilterMemUsed = self.get_magma_params(self.buckets[0], self.cluster.nodes_in_cluster)
-                max_bloom_mem_used = max([max(val) for val in self.totalBloomFilterMemUsed.values()])
+                max_bloom_mem_used = max([max(val) for val in list(self.totalBloomFilterMemUsed.values())])
 
             if max_bloom_mem_used > self.memory_quota:
                 self.log.info("exceeded max_bloom_mem_used is {}".format(max_bloom_mem_used))
@@ -519,7 +519,7 @@ class MagmaBaseTest(StorageBase):
                 for node in nodes:
                     shell = RemoteMachineShellConnection(node)
                     connections.update({node: shell})
-                for node, shell in connections.items():
+                for node, shell in list(connections.items()):
                     if "kv" in node.services:
                         if self.graceful:
                             while count > 0:
@@ -532,7 +532,7 @@ class MagmaBaseTest(StorageBase):
                                 self.sleep(3, "Sleep before killing memcached on same node again.")
                                 count -= 1
                         count = kill_count
-                for _, shell in connections.items():
+                for _, shell in list(connections.items()):
                     shell.disconnect()
 
             while not self.stop_enable_disable_history:
@@ -584,7 +584,7 @@ class MagmaBaseTest(StorageBase):
             loop_itr += 1
             for bucket in buckets:
                 if self.change_history_size_values:
-                    print("type {} and val {}".format(type(history_size_values), history_size_values ))
+                    print(("type {} and val {}".format(type(history_size_values), history_size_values )))
                     for value in history_size_values:
                         sleep = random.randint(90, 120)
                         self.sleep(sleep, "Iteration:{} waiting for {} sec before setting history size values".
@@ -639,7 +639,7 @@ class MagmaBaseTest(StorageBase):
         self.log.info("seqnumber_count/kvstore {}".format(result))
         seqnumber_count = 0
         for node in self.cluster.nodes_in_cluster:
-            for count in result["_".join(node.ip.split("."))].values():
+            for count in list(result["_".join(node.ip.split("."))].values()):
                 seqnumber_count += int(count)
         self.log.info("seqnumber_count {}".format(seqnumber_count))
         return seqnumber_count

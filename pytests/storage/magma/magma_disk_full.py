@@ -10,10 +10,10 @@ import time
 
 from Cb_constants.CBServer import CbServer
 from cb_tools.cbstats import Cbstats
-from magma_base import MagmaBaseTest
+from .magma_base import MagmaBaseTest
 from memcached.helper.data_helper import MemcachedClientHelper
 from remote.remote_util import RemoteMachineShellConnection
-from sdk_constants.java_client import SDKConstants
+from sdk_constants.sdk_client_constants import SDKConstants
 
 
 class MagmaDiskFull(MagmaBaseTest):
@@ -55,7 +55,7 @@ class MagmaDiskFull(MagmaBaseTest):
                                                    doc_ops=self.doc_ops,
                                                    track_failures=False,
                                                    sdk_retry_strategy=SDKConstants.RetryStrategy.FAIL_FAST)
-                tasks_info.update(tem_tasks_info.items())
+                tasks_info.update(list(tem_tasks_info.items()))
 
             for task in tasks_info:
                 self.task_manager.get_task_result(task)
@@ -138,10 +138,10 @@ class MagmaDiskFull(MagmaBaseTest):
         for node in self.cluster.nodes_in_cluster:
             shell = RemoteMachineShellConnection(node)
             connections.update({node: shell})
-        for node, shell in connections.items():
+        for node, shell in list(connections.items()):
             if "kv" in node.services:
                 shell.restart_couchbase()
-        for _, shell in connections.items():
+        for _, shell in list(connections.items()):
             shell.disconnect()
 
         for node in self.cluster.nodes_in_cluster:
@@ -161,9 +161,9 @@ class MagmaDiskFull(MagmaBaseTest):
                                                collection=collection,
                                                suppress_error_table=True,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             self.assertFalse(task_info["ops_failed"],
                              "Doc ops failed for task: {}".format(task.thread_name))
 
@@ -194,7 +194,7 @@ class MagmaDiskFull(MagmaBaseTest):
                                                collection=collection,
                                                suppress_error_table=True,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
     def test_rollback_after_disk_full(self):
         self.doc_ops = "create"
@@ -285,7 +285,7 @@ class MagmaDiskFull(MagmaBaseTest):
                                                _sync=False,
                                                doc_ops=self.doc_ops,
                                                track_failures=False)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         data_validation = self.task.async_validate_docs(
                 self.cluster, self.cluster.buckets[0],
@@ -315,9 +315,9 @@ class MagmaDiskFull(MagmaBaseTest):
                                                scope=CbServer.default_scope,
                                                collection=collection,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             self.assertFalse(task_info["ops_failed"],
                              "Doc ops failed for task: {}".format(task.thread_name))
 
@@ -344,7 +344,7 @@ class MagmaDiskFull(MagmaBaseTest):
                                                _sync=False,
                                                doc_ops=self.doc_ops,
                                                track_failures=False)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         data_validation = self.task.async_validate_docs(
                 self.cluster, self.cluster.buckets[0],
@@ -374,9 +374,9 @@ class MagmaDiskFull(MagmaBaseTest):
                                                scope=CbServer.default_scope,
                                                collection=collection,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             self.assertFalse(task_info["ops_failed"],
                              "Doc ops failed for task: {}".format(task.thread_name))
 
@@ -403,7 +403,7 @@ class MagmaDiskFull(MagmaBaseTest):
                                                _sync=False,
                                                doc_ops=self.doc_ops,
                                                track_failures=False)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         data_validation = self.task.async_validate_docs(
                 self.cluster, self.cluster.buckets[0],
@@ -433,9 +433,9 @@ class MagmaDiskFull(MagmaBaseTest):
                                                scope=CbServer.default_scope,
                                                collection=collection,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             self.assertFalse(task_info["ops_failed"],
                              "Doc ops failed for task: {}".format(task.thread_name))
 
@@ -462,7 +462,7 @@ class MagmaDiskFull(MagmaBaseTest):
                                                _sync=False,
                                                doc_ops=self.doc_ops,
                                                track_failures=False)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         data_validation = self.task.async_validate_docs(
                 self.cluster, self.cluster.buckets[0],
@@ -491,9 +491,9 @@ class MagmaDiskFull(MagmaBaseTest):
                                                scope=CbServer.default_scope,
                                                collection=collection,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             self.assertFalse(task_info["ops_failed"],
                              "Doc ops failed for task: {}".format(task.thread_name))
 
@@ -521,7 +521,7 @@ class MagmaDiskFull(MagmaBaseTest):
                                                _sync=False,
                                                doc_ops=self.doc_ops,
                                                track_failures=False)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
         self.crash_th = threading.Thread(target=self.crash,
                                          kwargs=dict(graceful=self.graceful,
                                                      wait=wait_warmup))
@@ -556,7 +556,7 @@ class MagmaDiskFull(MagmaBaseTest):
                                                _sync=False,
                                                doc_ops=self.doc_ops,
                                                track_failures=False)
-                tasks_info.update(tem_tasks_info.items())
+                tasks_info.update(list(tem_tasks_info.items()))
                 for task in tasks_info:
                     self.task_manager.get_task_result(task)
                 self.create_start = self.create_end
@@ -615,9 +615,9 @@ class MagmaDiskFull(MagmaBaseTest):
                                                scope=CbServer.default_scope,
                                                collection=collection,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             self.assertFalse(task_info["ops_failed"],
                              "Doc ops failed for task: {}".format(task.thread_name))
 
@@ -667,9 +667,9 @@ class MagmaDiskFull(MagmaBaseTest):
                                                scope=CbServer.default_scope,
                                                collection=collection,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             self.assertFalse(task_info["ops_failed"],
                              "Doc ops failed for task: {}".format(task.thread_name))
 
@@ -690,7 +690,7 @@ class MagmaDiskFull(MagmaBaseTest):
                                                _sync=False,
                                                doc_ops=self.doc_ops,
                                                track_failures=False)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
         for task in tasks_info:
             self.task_manager.get_task_result(task)
@@ -714,9 +714,9 @@ class MagmaDiskFull(MagmaBaseTest):
                                                scope=CbServer.default_scope,
                                                collection=collection,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             self.assertFalse(task_info["ops_failed"],
                              "Doc ops failed for task: {}".format(task.thread_name))
 
@@ -819,8 +819,8 @@ class MagmaDiskFull(MagmaBaseTest):
                                                scope=CbServer.default_scope,
                                                collection=collection,
                                                doc_ops=self.doc_ops)
-            tasks_info.update(tem_tasks_info.items())
+            tasks_info.update(list(tem_tasks_info.items()))
 
-        for task, task_info in tasks_info.items():
+        for task, task_info in list(tasks_info.items()):
             self.assertFalse(task_info["ops_failed"],
                              "Doc ops failed for task: {}".format(task.thread_name))

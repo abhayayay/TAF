@@ -66,9 +66,9 @@ class SDKCompression(CollectionBase):
             self.cluster.buckets,
             req_num=1,
             consider_scopes="all", consider_buckets="all")
-        for bucket_name, scope_dict in bucket_dict.items():
-            for scope_name, col_dict in scope_dict["scopes"].items():
-                for collection_name, _ in col_dict["collections"].items():
+        for bucket_name, scope_dict in list(bucket_dict.items()):
+            for scope_name, col_dict in list(scope_dict["scopes"].items()):
+                for collection_name, _ in list(col_dict["collections"].items()):
                     s_name = scope_name
                     c_name = collection_name
 
@@ -93,14 +93,14 @@ class SDKCompression(CollectionBase):
                       % read_client.compression)
 
         self.log.info("Performing doc loading in bucket %s" % self.bucket)
-        for _, scope in self.bucket.scopes.items():
+        for _, scope in list(self.bucket.scopes.items()):
             self.log.info("Mutating docs under scope: %s" % scope.name)
-            for _, collection in scope.collections.items():
+            for _, collection in list(scope.collections.items()):
                 self.snappy_client.select_collection(scope.name,
                                                      collection.name)
                 while self.create_gen.has_next():
                     # Add new doc using snappy client
-                    key, value = self.create_gen.next()
+                    key, value = next(self.create_gen)
                     result = create_client.crud(
                         "create", key, value,
                         exp=self.maxttl,
@@ -110,7 +110,7 @@ class SDKCompression(CollectionBase):
                                          % (key, collection.name, result))
 
                     # Mutate same doc using the same client
-                    key, value = self.update_gen.next()
+                    key, value = next(self.update_gen)
                     result = update_client.crud(
                         "update", key, value,
                         exp=self.maxttl,
@@ -126,13 +126,13 @@ class SDKCompression(CollectionBase):
                 self.validate_test_failure()
 
         self.log.info("Validating docs in bucket %s" % self.bucket)
-        for _, scope in self.bucket.scopes.items():
+        for _, scope in list(self.bucket.scopes.items()):
             self.log.info("Reading docs under scope: %s" % scope.name)
-            for _, collection in scope.collections.items():
+            for _, collection in list(scope.collections.items()):
                 read_client.select_collection(scope.name,
                                               collection.name)
                 while self.update_gen.has_next():
-                    key, value = self.update_gen.next()
+                    key, value = next(self.update_gen)
                     result = read_client.crud("read", key)
                     if str(result["value"]) != str(value):
                         self.log_failure(
@@ -161,9 +161,9 @@ class SDKCompression(CollectionBase):
             self.cluster.buckets,
             req_num=1,
             consider_scopes="all", consider_buckets="all")
-        for bucket_name, scope_dict in bucket_dict.items():
-            for scope_name, col_dict in scope_dict["scopes"].items():
-                for collection_name, _ in col_dict["collections"].items():
+        for bucket_name, scope_dict in list(bucket_dict.items()):
+            for scope_name, col_dict in list(scope_dict["scopes"].items()):
+                for collection_name, _ in list(col_dict["collections"].items()):
                     scope = scope_name
                     collection = collection_name
 
@@ -206,9 +206,9 @@ class SDKCompression(CollectionBase):
 
         for task in tasks:
             self.task_manager.get_task_result(task)
-            if task.fail.keys():
+            if list(task.fail.keys()):
                 self.log_failure("Failures during initial doc loading "
-                                 "for keys: %s" % task.fail.keys())
+                                 "for keys: %s" % list(task.fail.keys()))
 
         self.bucket.scopes[scope].collections[collection].num_items \
             += (self.num_items * 2)
@@ -237,9 +237,9 @@ class SDKCompression(CollectionBase):
             scope=scope, collection=collection))
         for task in tasks:
             self.task_manager.get_task_result(task)
-            if task.fail.keys():
+            if list(task.fail.keys()):
                 self.log_failure("Failures during %s updates for keys: %s"
-                                 % (task.thread_name, task.fail.keys()))
+                                 % (task.thread_name, list(task.fail.keys())))
 
         # Validate docs using snappy/non-snappy client in random
         task = self.task.async_validate_docs(
@@ -276,9 +276,9 @@ class SDKCompression(CollectionBase):
 
         for task in tasks:
             self.task_manager.get_task_result(task)
-            if task.fail.keys():
+            if list(task.fail.keys()):
                 self.log_failure("Failures during initial doc loading "
-                                 "for keys: %s" % task.fail.keys())
+                                 "for keys: %s" % list(task.fail.keys()))
 
         # Doc validation
         self.bucket.scopes[scope].collections[collection].num_items \

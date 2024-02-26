@@ -282,7 +282,7 @@ class PlasmaServerless(PlasmaBaseTest, ServerlessOnPremBaseTest):
     
         while total_tenants_quota < plasma_quota and time.time() < end_time:
             counter += 1
-            print("Loop number ", counter)
+            print(("Loop number ", counter))
             # full scans for all except 1 bucket
             self.full_scan(self.cluster.buckets[1:], totalCount, offset)
 
@@ -987,10 +987,10 @@ class PlasmaServerless(PlasmaBaseTest, ServerlessOnPremBaseTest):
         final_storage_stats = indexer_rest.get_plasma_stats(nodes_list=self.cluster.index_nodes)
 
         for bucket in self.cluster.buckets:
-            for scope_name, scope in bucket.scopes.items():
+            for scope_name, scope in list(bucket.scopes.items()):
                 if scope_name == '_default' or scope_name == '_system':
                     continue
-                for _, collection in scope.collections.items():
+                for _, collection in list(scope.collections.items()):
                     gsi_index_names = self.index_map[bucket.name][scope.name][collection.name]
                     for gsi_index_name in list(gsi_index_names):
                         buck_ind = bucket.name + ':' + scope_name + ':' + collection.name + ':' + gsi_index_name

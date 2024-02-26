@@ -109,7 +109,7 @@ class DoctorFTS:
     def wait_for_fts_index_online(self, buckets, timeout=86400):
         status = False
         for bucket in buckets:
-            for index_name, _ in bucket.ftsIndexes.items():
+            for index_name, _ in list(bucket.ftsIndexes.items()):
                 status = False
                 stop_time = time.time() + timeout
                 while time.time() < stop_time:
@@ -180,7 +180,7 @@ class FTSQueryLoad:
 
     def _run_query(self, validate_item_count=False, expected_count=0):
         while not self.stop_run:
-            index, queries = random.choice(self.bucket.ftsIndexes.items())
+            index, queries = random.choice(list(self.bucket.ftsIndexes.items()))
             query = random.choice(queries)
             start = time.time()
             e = ""
@@ -189,11 +189,11 @@ class FTSQueryLoad:
                 result = self.execute_fts_query("{}".format(index), query)
                 if validate_item_count:
                     if result.metaData().metrics().totalRows() != expected_count:
-                        self.failed_count.next()
+                        next(self.failed_count)
                     else:
-                        self.success_count.next()
+                        next(self.success_count)
                 else:
-                    self.success_count.next()
+                    next(self.success_count)
             except TimeoutException or AmbiguousTimeoutException or UnambiguousTimeoutException as e:
                 pass
             except RequestCanceledException as e:
@@ -205,11 +205,11 @@ class FTSQueryLoad:
             if str(e).find("TimeoutException") != -1\
                 or str(e).find("AmbiguousTimeoutException") != -1\
                     or str(e).find("UnambiguousTimeoutException") != -1:
-                self.timeout_count.next()
+                next(self.timeout_count)
             elif str(e).find("RequestCanceledException") != -1:
-                self.failures += self.cancel_count.next()
+                self.failures += next(self.cancel_count)
             elif str(e).find("CouchbaseException") != -1:
-                self.failures += self.error_count.next()
+                self.failures += next(self.error_count)
 
             if str(e).find("no more information available") != -1:
                 self.log.critical(query)

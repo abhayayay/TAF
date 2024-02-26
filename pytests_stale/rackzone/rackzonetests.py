@@ -38,6 +38,6 @@ class RackZoneTests(RackzoneBaseTest):
         try:
             self.log.info("create zone {0}".format(zone_name))
             rest.add_zone(zone_name)
-        except Exception,e :
-            print e
+        except Exception as e :
+            print(e)
         self._verify_zone(zone_name)
