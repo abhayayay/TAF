@@ -28,7 +28,7 @@ from BucketLib.MemcachedOperations import MemcachedHelper
 from BucketLib.bucket import Bucket, Serverless
 from Cb_constants import constants, CbServer, DocLoading, ClusterRun
 from CbasLib.CBASOperations import CBASHelper
-from CbasLib.cbas_entity import Dataverse, CBAS_Collection, Dataset, Synonym, \
+from CbasLib.cbas_entity import Dataverse, Dataset, Synonym, \
     CBAS_Index, CBAS_UDF
 from tasks.task_manager import TaskManager
 from cb_tools.cbstats import Cbstats
@@ -7618,13 +7618,6 @@ class CreateDatasetsTask(Task):
             num_of_items = collection.num_items
 
             if creation_method == "cbas_collection":
-                dataset_obj = CBAS_Collection(
-                    name=name, dataverse_name=dataverse.name,
-                    link_name=link_name,
-                    dataset_source="internal", dataset_properties={},
-                    bucket=bucket, scope=scope, collection=collection,
-                    enabled_from_KV=enabled_from_KV, num_of_items=num_of_items)
-            else:
                 dataset_obj = Dataset(
                     name=name, dataverse_name=dataverse.name,
                     dataset_source="internal", dataset_properties={},
@@ -7655,9 +7648,7 @@ class CreateDatasetsTask(Task):
                     self.cluster, dataset.get_fully_qualified_kv_entity_name(1),
                     False, False, None, None, None, 120, 120)
         else:
-            if isinstance(dataset, CBAS_Collection):
-                analytics_collection = True
-            elif isinstance(dataset, Dataset):
+            if isinstance(dataset, Dataset):
                 analytics_collection = False
             if self.kv_name_cardinality > 1 and self.cbas_name_cardinality > 1:
                 return self.cbas_util.create_dataset(

@@ -11,6 +11,9 @@ from goldfishAPI.GoldfishAPIs.DocloadingAPIs.DocloadingAPIs import DocloadingAPI
 
 class GoldFishBaseTest(BaseTestCase):
 
+    def __init__(self, methodName: str = "runTest"):
+        super().__init__(methodName)
+
     def setUp(self):
         """
         Since BaseTestCase will initialize at least one cluster, we pass service
@@ -31,11 +34,10 @@ class GoldFishBaseTest(BaseTestCase):
         self.sdk_clients_per_user = self.input.param("sdk_clients_per_user", 1)
 
         if self.use_sdk_for_cbas:
-            for cluster in self.user.project.clusters:
-                for db_user in cluster.db_users:
-                    self.init_sdk_pool_object(
-                        cluster, self.sdk_clients_per_user,
-                        db_user.username, db_user.password)
+            for instance in self.project.instances:
+                self.init_sdk_pool_object(
+                    instance, self.sdk_clients_per_user,
+                    instance.api_access_key, instance.api_secret_key)
 
         # This is to support static remote clusters. Multiple remote cluster
         # IPs can be passed in format ip1:ip2

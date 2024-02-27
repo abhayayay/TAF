@@ -9,7 +9,7 @@ import json
 import numbers
 
 if mode.java:
-    from CbasLib.CBASOperations_JavaSDK import CBASHelper as CbasLib
+    from CbasLib.CBASOperations_PythonSDK import CBASHelper as CbasLib
 elif mode.cli:
     from CbasLib.CBASOperations_CLI import CBASHelper as CbasLib
 else:

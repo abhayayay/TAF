@@ -50,6 +50,51 @@ class SDKClientPool(object):
                 client.close()
         self.clients = dict()
 
+    def create_cluster_clients(
+            self, cluster, servers, req_clients=1, username="Administrator",
+            password="password", compression_settings=None):
+        """
+        Create set of clients for the specified cluster.
+        All created clients will be saved under the respective cluster key.
+        :param cluster: cluster object for which the clients will be created
+        :param servers: List of servers for SDK to establish initial
+                        connections with
+        :param req_clients: Required number of clients to be created for the
+                            given bucket and client settings
+        :param username: User name using which to establish the connection
+        :param password: Password for username authentication
+        :param compression_settings: Same as expected by SDKClient class
+        :return:
+        """
+        if cluster.name not in self.clients:
+            self.clients[cluster.name] = dict()
+            self.clients[cluster.name]["lock"] = Lock()
+            self.clients[cluster.name]["idle_clients"] = list()
+            self.clients[cluster.name]["busy_clients"] = list()
+
+        for _ in range(req_clients):
+            self.clients[cluster.name]["idle_clients"].append(SDKClient(
+                servers, None,
+                username=username, password=password,
+                compression_settings=compression_settings))
+
+    def get_cluster_client(self, cluster):
+        """
+        Method to get a cluster client which can be used for SDK operations
+        further by a callee.
+        :param cluster: Cluster object for which the client has to selected
+        :return client: Instance of SDKClient object
+        """
+        client = None
+        if not self.clients:
+            return client
+        while client is None:
+            self.clients[cluster.name]["lock"].acquire()
+            client = self.clients[cluster.name]["idle_clients"].pop()
+            self.clients[cluster.name]["busy_clients"].append(client)
+            self.clients[cluster.name]["lock"].release()
+        return client
+
     def create_clients(self, bucket, servers,
                        req_clients=1,
                        username="Administrator", password="password",
@@ -219,7 +264,11 @@ class SDKClient(object):
             else:
                 self.scheme = "couchbase"
             if not ClusterRun.is_enabled:
-                self.hosts.append(server.ip)
+                if server.type == "columnar":
+                    self.hosts.append(server.ip + ":" + str(
+                        16001))
+                else:
+                    self.hosts.append(server.ip)
         strt = time.time()
         self.__create_conn()
         if bucket is not None:
@@ -255,14 +304,14 @@ class SDKClient(object):
                                          compression_min_size=compression_min_size,
                                          compression_min_ratio=compression_min_ratio,
                                          tls_verify=TLSVerifyMode('none'))
-            # Set metadata-collection for storing transactional docs / subdocs
-            # Default it uses _default collection
-            # if self.transaction_conf.transaction_keyspace:
-            #     b_name, scope, col = self.transaction_conf.transaction_keyspace
-            #     tnx_keyspace = TransactionKeyspace.create(b_name, scope, col)
-            #     trans_conf = trans_conf.metadataCollection(tnx_keyspace)
-            #
-            # t_cluster_env = t_cluster_env.transactionsConfig(trans_conf)
+        # Set metadata-collection for storing transactional docs / subdocs
+        # Default it uses _default collection
+        # if self.transaction_conf.transaction_keyspace:
+        #     b_name, scope, col = self.transaction_conf.transaction_keyspace
+        #     tnx_keyspace = TransactionKeyspace.create(b_name, scope, col)
+        #     trans_conf = trans_conf.metadataCollection(tnx_keyspace)
+        #
+        # t_cluster_env = t_cluster_env.transactionsConfig(trans_conf)
 
         i = 1
         while i <= 5:

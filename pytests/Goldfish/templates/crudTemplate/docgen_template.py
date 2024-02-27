@@ -1,8 +1,7 @@
 import json
 import random
 import string
-from java.util import Date
-from java.lang import StringBuilder
+from datetime import datetime
 
 
 class Rating:
@@ -22,12 +21,12 @@ class Review:
     """
 
     def __init__(self):
-        self.date = str(Date())
+        self.date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self.author = self.generate_author()
         self.rating = Rating()
 
     def generate_author(self):
-        author_builder = StringBuilder()
+        author_builder = ""
         author_builder.append(''.join(random.choice(string.ascii_letters + ' ') for _ in range(random.randint(10, 20))))
         return str(author_builder)
 

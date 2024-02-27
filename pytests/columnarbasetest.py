@@ -301,10 +301,10 @@ class OnCloudBaseTest(CouchbaseBaseTest):
             self.capella["project_id"] = self.capella["instance_id"] = ""
             delete_cloud_infra()
 
-    def start_threads(self, thread_list, async=False):
+    def start_threads(self, thread_list, async_run=False):
         for thread in thread_list:
             thread.start()
-        if not async:
+        if not async_run:
             for thread in thread_list:
                 thread.join()
 

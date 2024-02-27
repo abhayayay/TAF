@@ -7,7 +7,7 @@ import json
 import time
 import random
 import requests
-from Queue import Queue
+from queue import Queue
 from couchbase_utils.capella_utils.dedicated import CapellaUtils
 from capellaAPI.capella.dedicated.CapellaAPI_v4 import CapellaAPI
 from CbasLib.cbas_entity import (
@@ -22,7 +22,7 @@ from Goldfish.goldfish_base import GoldFishBaseTest
 class StandaloneCollection(GoldFishBaseTest):
     def setUp(self):
         super(StandaloneCollection, self).setUp()
-        self.cluster = self.user.project.clusters[0]
+        self.cluster = self.project.instances[0]
 
         self.initial_doc_count = self.input.param("initial_doc_count", 100)
         self.doc_size = self.input.param("doc_size", 1024)
@@ -224,7 +224,7 @@ class StandaloneCollection(GoldFishBaseTest):
                 self.cluster):
             self.fail("Error while deleting cbas entities")
 
-        super(StandaloneCollection, self).tearDown()
+        # super(StandaloneCollection, self).tearDown()
         self.log_setup_status(self.__class__.__name__, "Finished", stage="Teardown")
 
     def start_source_ingestion(self, no_of_docs=1000000, doc_size=100000):
